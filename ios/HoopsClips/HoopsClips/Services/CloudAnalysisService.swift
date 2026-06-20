@@ -731,7 +731,7 @@ struct CloudAnalysisService {
         onCloudHandoff: HandoffHandler? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudUploadResumeOutcome? {
-        guard let manifest = await CloudUploadResumeStore.shared.pendingManifest() else {
+        guard var manifest = await CloudUploadResumeStore.shared.pendingManifest() else {
             return nil
         }
         guard manifest.installID == installID else {
@@ -786,6 +786,7 @@ struct CloudAnalysisService {
         )
         if !manifest.activeSessionIdentifiers.isEmpty,
            manifest.completedParts.count < manifest.partCount {
+            let sessionInspection = await inspectBackgroundUploadSessions(manifest.activeSessionIdentifiers)
             let completedBytes = Self.completedUploadBytes(
                 completedParts: manifest.completedParts,
                 chunkSizeBytes: manifest.chunkSizeBytes,
@@ -793,18 +794,39 @@ struct CloudAnalysisService {
             )
             await tracker.update(uploadedBytes: completedBytes, totalBytes: manifest.totalFileSizeBytes)
             let snapshot = await tracker.snapshot()
-            reportUploadProgress(snapshot, true, "background upload still running")
+            if sessionInspection.taskCount > 0 {
+                reportUploadProgress(snapshot, true, "background upload still running")
+                Self.recordLatestUploadProgressSummary(
+                    stage: stage,
+                    snapshot: snapshot,
+                    transferContext: "background upload still running",
+                    stalled: true
+                )
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "resume_manifest_active_sessions_pending",
+                    metadata: "activeSessions=\(manifest.activeSessionIdentifiers.count) taskCount=\(sessionInspection.taskCount) checked=\(sessionInspection.checkedCount) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+                )
+                return .pendingUpload
+            }
+
+            await CloudUploadResumeStore.shared.clearActiveSessions(
+                jobID: manifest.jobID,
+                uploadID: manifest.uploadID,
+                sessionIdentifiers: sessionInspection.checkedIdentifiers,
+                reason: "stale_no_tasks"
+            )
+            manifest.activeSessionIdentifiers.removeAll { sessionInspection.checkedIdentifiers.contains($0) }
+            reportUploadProgress(snapshot, true, "reconnecting saved upload")
             Self.recordLatestUploadProgressSummary(
                 stage: stage,
                 snapshot: snapshot,
-                transferContext: "background upload still running",
+                transferContext: "reconnecting saved upload",
                 stalled: true
             )
             LaunchTelemetry.shared.recordBackgroundUploadProof(
-                "resume_manifest_active_sessions_pending",
-                metadata: "activeSessions=\(manifest.activeSessionIdentifiers.count) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+                "resume_manifest_active_sessions_stale",
+                metadata: "cleared=\(sessionInspection.checkedIdentifiers.count) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
             )
-            return .pendingUpload
         }
         if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
             guard !manifest.completedParts.isEmpty else {
@@ -1144,6 +1166,35 @@ struct CloudAnalysisService {
             return partial + max(partEnd - partStart, 0)
         }
         return min(completedBytes, safeTotal)
+    }
+
+    private struct BackgroundUploadSessionInspection {
+        let checkedIdentifiers: [String]
+        let taskCount: Int
+
+        var checkedCount: Int {
+            checkedIdentifiers.count
+        }
+    }
+
+    private func inspectBackgroundUploadSessions(_ identifiers: [String]) async -> BackgroundUploadSessionInspection {
+        var checkedIdentifiers: [String] = []
+        var taskCount = 0
+
+        for identifier in identifiers {
+            let tasks = await CloudUploadBackgroundSessionRegistry.shared.inspectTaskCount(for: identifier)
+            checkedIdentifiers.append(identifier)
+            taskCount += tasks
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_active_session_checked",
+                metadata: "taskCount=\(tasks)"
+            )
+        }
+
+        return BackgroundUploadSessionInspection(
+            checkedIdentifiers: checkedIdentifiers,
+            taskCount: taskCount
+        )
     }
 
     private func uploadVideoInChunks(
@@ -1798,6 +1849,41 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         }
     }
 
+    func inspectTaskCount(for identifier: String) async -> Int {
+        let session: URLSession
+
+        lock.lock()
+        if let existingSession = relaunchSessions[identifier] {
+            session = existingSession
+        } else {
+            let delegate = CloudUploadBackgroundRelaunchDelegate(identifier: identifier)
+            let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
+            configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: true)
+            session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+            relaunchDelegates[identifier] = delegate
+            relaunchSessions[identifier] = session
+        }
+        lock.unlock()
+
+        let tasks = await Self.allTasks(in: session)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "reattached_session_foreground_checked",
+            metadata: "source=foreground_resume taskCount=\(tasks.count)"
+        )
+        if tasks.isEmpty {
+            finishEvents(for: identifier)
+        }
+        return tasks.count
+    }
+
+    private static func allTasks(in session: URLSession) async -> [URLSessionTask] {
+        await withCheckedContinuation { continuation in
+            session.getAllTasks { tasks in
+                continuation.resume(returning: tasks)
+            }
+        }
+    }
+
     private func recheckEmptySessionBeforeFinishing(identifier: String, session: URLSession) {
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "reattached_session_empty_recheck_scheduled",
@@ -2101,6 +2187,20 @@ private actor CloudUploadResumeStore {
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_session_completed",
             metadata: "sessionCount=\(manifest.activeSessionIdentifiers.count)"
+        )
+    }
+
+    func clearActiveSessions(jobID: String, uploadID: String, sessionIdentifiers: [String], reason: String) {
+        guard var manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID),
+              !sessionIdentifiers.isEmpty else { return }
+        let staleIdentifiers = Set(sessionIdentifiers)
+        let beforeCount = manifest.activeSessionIdentifiers.count
+        manifest.activeSessionIdentifiers.removeAll { staleIdentifiers.contains($0) }
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_sessions_cleared",
+            metadata: "reason=\(reason) before=\(beforeCount) after=\(manifest.activeSessionIdentifiers.count)"
         )
     }
 
