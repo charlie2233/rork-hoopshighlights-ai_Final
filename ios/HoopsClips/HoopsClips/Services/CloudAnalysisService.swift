@@ -98,7 +98,7 @@ struct CloudAnalysisService {
         parts.append(formatUploadElapsedTime(elapsedSeconds))
 
         if stalled {
-            parts.append("connection may be slow")
+            parts.append("paused or slow connection, will resume")
         }
 
         return parts.joined(separator: " · ")
@@ -675,13 +675,25 @@ struct CloudAnalysisService {
                 progress(progressValue, message)
             }
         }
-        let delegate = CloudUploadProgressDelegate { uploadedBytes, totalBytes in
-            Task {
-                await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
-                let snapshot = await tracker.snapshot()
-                reportUploadProgress(snapshot, false)
+        let delegate = CloudUploadProgressDelegate(
+            onProgress: { uploadedBytes, totalBytes in
+                Task {
+                    await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
+                    let snapshot = await tracker.snapshot()
+                    reportUploadProgress(snapshot, false)
+                }
+            },
+            onWaitingForConnectivity: {
+                Task {
+                    let snapshot = await tracker.snapshot()
+                    reportUploadProgress(snapshot, true)
+                    LaunchTelemetry.shared.recordBackgroundUploadProof(
+                        "upload_waiting_for_connectivity",
+                        metadata: "kind=source"
+                    )
+                }
             }
-        }
+        )
         let uploadMonitorTask = Task {
             while !Task.isCancelled {
                 do {
@@ -990,13 +1002,25 @@ struct CloudAnalysisService {
                     request.setValue(value, forHTTPHeaderField: header)
                 }
 
-                let delegate = CloudUploadProgressDelegate { sentBytes, _ in
-                    Task {
-                        await tracker.update(uploadedBytes: alreadyUploadedBytes + sentBytes, totalBytes: totalBytes)
-                        let snapshot = await tracker.snapshot()
-                        reportUploadProgress(snapshot, false)
+                let delegate = CloudUploadProgressDelegate(
+                    onProgress: { sentBytes, _ in
+                        Task {
+                            await tracker.update(uploadedBytes: alreadyUploadedBytes + sentBytes, totalBytes: totalBytes)
+                            let snapshot = await tracker.snapshot()
+                            reportUploadProgress(snapshot, false)
+                        }
+                    },
+                    onWaitingForConnectivity: {
+                        Task {
+                            let snapshot = await tracker.snapshot()
+                            reportUploadProgress(snapshot, true)
+                            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                                "upload_waiting_for_connectivity",
+                                metadata: "kind=chunk partNumber=\(partTarget.partNumber)"
+                            )
+                        }
                     }
-                }
+                )
                 let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
                 defer {
                     try? FileManager.default.removeItem(at: chunkFileURL)
@@ -1715,11 +1739,16 @@ private actor CloudUploadProgressTracker {
 
 private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void
+    private let onWaitingForConnectivity: @Sendable () -> Void
     private let lock = NSLock()
     private var continuation: CheckedContinuation<URLResponse, Error>?
 
-    init(onProgress: @escaping @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void) {
+    init(
+        onProgress: @escaping @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void,
+        onWaitingForConnectivity: @escaping @Sendable () -> Void
+    ) {
         self.onProgress = onProgress
+        self.onWaitingForConnectivity = onWaitingForConnectivity
         super.init()
     }
 
@@ -1746,6 +1775,10 @@ private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegat
     ) {
         guard totalBytesExpectedToSend > 0 else { return }
         onProgress(totalBytesSent, totalBytesExpectedToSend)
+    }
+
+    func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        onWaitingForConnectivity()
     }
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
