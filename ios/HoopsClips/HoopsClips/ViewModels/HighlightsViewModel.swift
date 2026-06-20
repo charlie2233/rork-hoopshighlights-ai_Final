@@ -467,6 +467,26 @@ final class HighlightsViewModel {
         startAnalysisTask {}
     }
 
+    func resumePendingBackgroundUploadFromPlayer() {
+        guard activeAnalysisTask == nil,
+              !isVideoImportInProgress,
+              !analysisService.isAnalyzing,
+              analysisService.clips.isEmpty else {
+            return
+        }
+
+        activeAnalysisTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.activeAnalysisTask = nil }
+
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "upload.resume.manual_requested",
+                metadata: "mode=\(self.analysisMode.rawValue)"
+            )
+            _ = await self.resumePendingBackgroundUploadIfNeeded()
+        }
+    }
+
     func resumeInFlightCloudAnalysisIfNeeded() async {
         guard AppConstants.cloudAnalysisEnabled,
               !analysisService.isAnalyzing,

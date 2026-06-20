@@ -1064,7 +1064,9 @@ struct VideoPlayerView: View {
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
             } else {
-                if let failedUploadProofPromptText {
+                if let pendingUploadResumePromptText {
+                    pendingUploadResumePrompt(pendingUploadResumePromptText)
+                } else if let failedUploadProofPromptText {
                     failedUploadProofPrompt(failedUploadProofPromptText)
                 }
 
@@ -2022,6 +2024,44 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.failedUploadProofPrompt")
     }
 
+    private func pendingUploadResumePrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "arrow.clockwise.icloud.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.cyan)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                viewModel.resumePendingBackgroundUploadFromPlayer()
+            } label: {
+                Label("Resume saved upload", systemImage: "play.circle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.cyan.opacity(0.18), in: .rect(cornerRadius: 14))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.cyan.opacity(0.30), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("analysis.resumePendingBackgroundUploadButton")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.cyan.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.pendingUploadResumePrompt")
+    }
+
     private var analysisUploadMetricText: String? {
         let statusMessage = viewModel.analysisService.statusMessage
         let lowercasedStatus = statusMessage.lowercased()
@@ -2137,6 +2177,28 @@ struct VideoPlayerView: View {
             return "Upload stopped because the connection looked unstable. Send proof, then retry on Wi-Fi."
         }
         return "Upload did not finish. Send proof so we can see the safe failure reason before retrying."
+    }
+
+    private var pendingUploadResumePromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        guard summary.contains("pending=true"),
+              summary.contains("source=available") else {
+            return nil
+        }
+
+        let completedSummary = summary
+            .split(separator: " ")
+            .first { $0.hasPrefix("completed=") }
+            .map { String($0.dropFirst("completed=".count)) }
+        if let completedSummary, completedSummary != "0/1" {
+            return "Saved background upload found. Resume it and HoopClips will skip completed chunks (\(completedSummary))."
+        }
+        return "Saved background upload found. Resume it instead of starting over."
     }
 
     private var analysisRecoveredUploadProofPromptText: String? {

@@ -58,6 +58,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 15. Relaunch HoopClips.
 16. Confirm canceled upload does not recover as a stale pending upload.
 17. If upload fails instead, confirm the failed-upload proof prompt appears and tap `Send proof`.
+18. If HoopClips opens idle with a saved available upload, confirm the `Resume saved upload` card appears and resumes progress.
 
 ## Real iPhone TestFlight smoke checklist
 
