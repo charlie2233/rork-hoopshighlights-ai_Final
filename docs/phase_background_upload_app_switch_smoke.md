@@ -120,6 +120,7 @@ Settings smoke proof should also include:
 - `serverUploadPlan=...`
 - `serverUploadCapability=...`
 - `pendingBackgroundUploadManifest=...`
+- Visible Settings row `settings.backgroundUpload.status` should summarize pending upload, live progress, loaded backend limits, or latest proof.
 
 Helpful proof events:
 

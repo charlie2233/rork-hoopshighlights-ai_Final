@@ -488,6 +488,8 @@ struct SettingsView: View {
                 .settingsPreviewStatCard()
             }
 
+            settingsBackgroundUploadStatusRow
+
             Button {
                 copySmokeProof()
             } label: {
@@ -544,6 +546,99 @@ struct SettingsView: View {
             glow: AppTheme.courtBlue,
             glowOpacity: 0.05
         )
+    }
+
+    private var settingsBackgroundUploadStatusRow: some View {
+        let status = backgroundUploadStatusPreview
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: status.icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(status.tint)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(status.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(status.detail)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .layoutPriority(1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(status.tint.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(status.tint.opacity(0.20), lineWidth: 1)
+        }
+        .accessibilityIdentifier("settings.backgroundUpload.status")
+    }
+
+    private var backgroundUploadStatusPreview: (icon: String, title: String, detail: String, tint: Color) {
+        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let deployedCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
+        let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
+
+        if pendingManifest.contains("pending=true") {
+            return (
+                icon: pendingManifest.contains("source=available") ? "arrow.clockwise.icloud.fill" : "exclamationmark.icloud.fill",
+                title: pendingManifest.contains("source=available") ? "Saved upload ready" : "Saved upload needs source",
+                detail: compactUploadStatusDetail(pendingManifest),
+                tint: pendingManifest.contains("source=available") ? Color.cyan : AppTheme.warningYellow
+            )
+        }
+
+        if latestProgress != "none" {
+            let isStalled = latestProgress.contains("stalled=true")
+            return (
+                icon: isStalled ? "wifi.exclamationmark" : "speedometer",
+                title: isStalled ? "Upload waiting" : "Latest upload progress",
+                detail: compactUploadStatusDetail(latestProgress),
+                tint: isStalled ? AppTheme.warningYellow : Color.cyan
+            )
+        }
+
+        if deployedCapability != "none" {
+            return (
+                icon: "checkmark.icloud.fill",
+                title: "Backend limits loaded",
+                detail: compactUploadStatusDetail(deployedCapability),
+                tint: AppTheme.successGreen
+            )
+        }
+
+        if latestProof != "none" {
+            return (
+                icon: "doc.text.magnifyingglass",
+                title: "Upload proof available",
+                detail: compactUploadStatusDetail(latestProof),
+                tint: AppTheme.courtBlue
+            )
+        }
+
+        return (
+            icon: "icloud.and.arrow.up.fill",
+            title: "Background upload ready",
+            detail: "Start cloud analysis to capture upload progress, resumable status, and proof.",
+            tint: AppTheme.subtleText
+        )
+    }
+
+    private func compactUploadStatusDetail(_ value: String) -> String {
+        let compact = proofTextValue(value)
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else {
+            return "No upload status yet."
+        }
+        return String(compact.prefix(140))
     }
 
     private var aboutHubLink: some View {
