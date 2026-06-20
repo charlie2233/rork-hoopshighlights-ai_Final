@@ -57,6 +57,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 14. Cancel the upload.
 15. Relaunch HoopClips.
 16. Confirm canceled upload does not recover as a stale pending upload.
+17. If upload fails instead, confirm the failed-upload proof prompt appears and tap `Send proof`.
 
 ## Real iPhone TestFlight smoke checklist
 
@@ -73,6 +74,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 11. If upload completes, confirm cloud analysis continues to Review-ready state.
 12. If upload stalls, confirm status says it is paused or slow and will resume.
 13. Cancel once and confirm a later relaunch does not recover the canceled upload.
+14. If upload fails instead of completing, confirm the failed-upload proof prompt appears and send proof before retrying.
 
 ## Proof fields to capture
 

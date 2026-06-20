@@ -1064,6 +1064,10 @@ struct VideoPlayerView: View {
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
             } else {
+                if let failedUploadProofPromptText {
+                    failedUploadProofPrompt(failedUploadProofPromptText)
+                }
+
                 teamTargetControl
                 targetHighlightLengthControl
 
@@ -1995,6 +1999,29 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.recoveredUploadProofPrompt")
     }
 
+    private func failedUploadProofPrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+
+            backgroundUploadProofActionButtons
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.11), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.failedUploadProofPrompt")
+    }
+
     private var analysisUploadMetricText: String? {
         let statusMessage = viewModel.analysisService.statusMessage
         let lowercasedStatus = statusMessage.lowercased()
@@ -2079,6 +2106,37 @@ struct VideoPlayerView: View {
             summaryParts.append("failed")
         }
         return summaryParts.joined(separator: " · ")
+    }
+
+    private var failedUploadProofPromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [status, latestProof, recentProof].joined(separator: " ")
+
+        guard combined.contains("cloud_analysis_failed")
+            || combined.contains("upload_failed")
+            || combined.contains("file_size_policy")
+            || combined.contains("duration_policy")
+            || combined.contains("empty_upload")
+            || combined.contains("connectivity")
+            || combined.contains("timed_out")
+            || combined.contains("http_status") else {
+            return nil
+        }
+
+        if combined.contains("file_size_policy") || combined.contains("duration_policy") {
+            return "Cloud rejected this video limit. Send proof so we can confirm the deployed backend policy."
+        }
+        if combined.contains("connectivity") || combined.contains("timed_out") {
+            return "Upload stopped because the connection looked unstable. Send proof, then retry on Wi-Fi."
+        }
+        return "Upload did not finish. Send proof so we can see the safe failure reason before retrying."
     }
 
     private var analysisRecoveredUploadProofPromptText: String? {
