@@ -4,6 +4,11 @@ import UserNotifications
 
 @MainActor
 final class AnalysisNotificationService: NSObject {
+    enum CompletionContext: String {
+        case analysis
+        case backgroundUploadResume
+    }
+
     static let shared = AnalysisNotificationService()
 
     private override init() {
@@ -22,7 +27,11 @@ final class AnalysisNotificationService: NSObject {
         _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
     }
 
-    func notifyAnalysisCompleted(clipsCount: Int, usedFallback: Bool) {
+    func notifyAnalysisCompleted(
+        clipsCount: Int,
+        usedFallback: Bool,
+        context: CompletionContext = .analysis
+    ) {
         Task {
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
@@ -32,9 +41,20 @@ final class AnalysisNotificationService: NSObject {
             let content = UNMutableNotificationContent()
             content.title = clipsCount > 0 ? "Review ready" : "Analysis finished"
             if clipsCount > 0 {
-                content.body = "HoopClips found \(clipsCount) clip\(clipsCount == 1 ? "" : "s"). Open Review to keep or nah."
+                let clipLabel = "clip\(clipsCount == 1 ? "" : "s")"
+                switch context {
+                case .analysis:
+                    content.body = "HoopClips found \(clipsCount) \(clipLabel). Open Review to keep or nah."
+                case .backgroundUploadResume:
+                    content.body = "Background upload finished. HoopClips found \(clipsCount) \(clipLabel). Open Review to keep or nah."
+                }
             } else {
-                content.body = "Your highlight scan finished, but no strong clips were detected."
+                switch context {
+                case .analysis:
+                    content.body = "Your highlight scan finished, but no strong clips were detected."
+                case .backgroundUploadResume:
+                    content.body = "Background upload finished, but no strong clips were detected."
+                }
             }
             content.sound = .default
             content.threadIdentifier = "hoopclips-analysis"
@@ -43,7 +63,8 @@ final class AnalysisNotificationService: NSObject {
                 "source": "HoopClips",
                 "event": "analysis_completed",
                 "clipsCount": clipsCount,
-                "usedFallback": usedFallback
+                "usedFallback": usedFallback,
+                "completionContext": context.rawValue
             ]
 
             let request = UNNotificationRequest(

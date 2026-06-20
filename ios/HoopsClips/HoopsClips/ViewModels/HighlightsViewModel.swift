@@ -571,7 +571,11 @@ final class HighlightsViewModel {
                 )
                 LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.pending", metadata: "mode=cloud")
             case .analysis(let result):
-                applyCompletedCloudAnalysisResult(result, usedFallback: false)
+                applyCompletedCloudAnalysisResult(
+                    result,
+                    usedFallback: false,
+                    notificationContext: .backgroundUploadResume
+                )
                 LaunchTelemetry.shared.recordStabilityCheckpoint(
                     "upload.resume.analysis_completed",
                     metadata: "mode=cloud clips=\(analysisService.clips.count)"
@@ -616,7 +620,11 @@ final class HighlightsViewModel {
         )
     }
 
-    private func applyCompletedCloudAnalysisResult(_ result: CloudAnalysisResult, usedFallback: Bool) {
+    private func applyCompletedCloudAnalysisResult(
+        _ result: CloudAnalysisResult,
+        usedFallback: Bool,
+        notificationContext: AnalysisNotificationService.CompletionContext = .analysis
+    ) {
         cloudQuotaRemaining = nil
         analysisService.applyCloudAnalysis(result, duration: videoDuration)
         cloudAnalysisJobID = result.analysisJobId ?? cloudAnalysisJobID
@@ -632,7 +640,8 @@ final class HighlightsViewModel {
         applyDefaultRedundantClipSuppression()
         AnalysisNotificationService.shared.notifyAnalysisCompleted(
             clipsCount: analysisService.clips.count,
-            usedFallback: usedFallback
+            usedFallback: usedFallback,
+            context: notificationContext
         )
         recordAnalysisCompleted()
     }

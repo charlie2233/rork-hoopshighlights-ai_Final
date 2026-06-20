@@ -76,6 +76,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 12. If upload stalls, confirm status says it is paused or slow and will resume.
 13. Cancel once and confirm a later relaunch does not recover the canceled upload.
 14. If upload fails instead of completing, confirm the failed-upload proof prompt appears and send proof before retrying.
+15. If a recovered background upload completes, confirm the local notification says the background upload finished.
 
 ## Proof fields to capture
 
