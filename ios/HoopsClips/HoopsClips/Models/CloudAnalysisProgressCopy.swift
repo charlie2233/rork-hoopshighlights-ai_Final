@@ -42,7 +42,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
 
         if status.contains("upload") {
-            return "Uploading is the long part. Keep HoopClips open if possible; after cloud handoff, switching apps is safe."
+            return "Uploading is the long part. HoopClips now uses iOS background transfer, so you can switch apps and reopen for live progress."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -93,7 +93,7 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         let status = statusMessage.lowercased()
         if status.contains("upload") {
-            return "Big uploads can pause if iOS backgrounds the app. If it stalls, reopen HoopClips and retry safely."
+            return "Upload is using iOS background transfer. You can switch apps; reopen HoopClips to refresh live progress."
         }
 
         if status.contains("queued")

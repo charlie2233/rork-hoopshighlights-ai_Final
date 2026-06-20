@@ -5,6 +5,8 @@ import GoogleSignIn
 
 @main
 struct HoopsClipsApp: App {
+    @UIApplicationDelegateAdaptor(HoopsClipsAppDelegate.self) private var appDelegate
+
     init() {
         Self.configureNavigationTitlePlacement()
 
@@ -72,5 +74,15 @@ struct HoopsClipsApp: App {
         if #available(iOS 15.0, *) {
             navigationBar.compactScrollEdgeAppearance = navigationAppearance
         }
+    }
+}
+
+final class HoopsClipsAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        CloudUploadBackgroundSessionRegistry.shared.setCompletionHandler(completionHandler, for: identifier)
     }
 }

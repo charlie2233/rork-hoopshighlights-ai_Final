@@ -8,6 +8,7 @@ struct CloudAnalysisService {
     private static let maxPollDelaySeconds = 5
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
+    private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -555,7 +556,9 @@ struct CloudAnalysisService {
             }
         }
         let uploadSession = URLSession(
-            configuration: uploadSessionConfiguration(),
+            configuration: uploadSessionConfiguration(
+                backgroundIdentifier: Self.backgroundUploadSessionIdentifier(jobID: job.jobId)
+            ),
             delegate: delegate,
             delegateQueue: nil
         )
@@ -699,7 +702,7 @@ struct CloudAnalysisService {
         }
 
         var lastError: Error?
-        for _ in 0..<3 {
+        for attempt in 0..<3 {
             do {
                 var request = URLRequest(url: uploadURL)
                 request.httpMethod = partTarget.uploadMethod
@@ -714,8 +717,19 @@ struct CloudAnalysisService {
                         reportUploadProgress(snapshot, false)
                     }
                 }
+                let chunkFileURL = try Self.writeTemporaryUploadChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
+                defer {
+                    try? FileManager.default.removeItem(at: chunkFileURL)
+                }
+
                 let uploadSession = URLSession(
-                    configuration: uploadSessionConfiguration(),
+                    configuration: uploadSessionConfiguration(
+                        backgroundIdentifier: Self.backgroundUploadSessionIdentifier(
+                            jobID: partTarget.jobId,
+                            partNumber: partTarget.partNumber,
+                            attempt: attempt + 1
+                        )
+                    ),
                     delegate: delegate,
                     delegateQueue: nil
                 )
@@ -723,7 +737,7 @@ struct CloudAnalysisService {
                     uploadSession.finishTasksAndInvalidate()
                 }
 
-                let (_, response) = try await uploadSession.upload(for: request, from: chunk)
+                let (_, response) = try await uploadSession.upload(for: request, fromFile: chunkFileURL)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw CloudAnalysisError.uploadFailed
                 }
@@ -779,8 +793,45 @@ struct CloudAnalysisService {
         return nil
     }
 
-    private func uploadSessionConfiguration() -> URLSessionConfiguration {
-        let configuration = URLSessionConfiguration.default
+    private static func backgroundUploadSessionIdentifier(jobID: String, partNumber: Int? = nil, attempt: Int? = nil) -> String {
+        let baseIdentifier = Bundle.main.bundleIdentifier ?? fallbackBackgroundSessionPrefix
+        var components = [baseIdentifier, "cloud-upload", sanitizedSessionComponent(jobID)]
+        if let partNumber {
+            components.append("part-\(partNumber)")
+        } else {
+            components.append("source")
+        }
+        if let attempt {
+            components.append("try-\(attempt)")
+        }
+        return components.joined(separator: ".")
+    }
+
+    private static func sanitizedSessionComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let filtered = value.map { character -> Character in
+            character.unicodeScalars.allSatisfy { allowed.contains($0) } ? character : "-"
+        }
+        let result = String(filtered).trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        return result.isEmpty ? UUID().uuidString : result
+    }
+
+    private static func writeTemporaryUploadChunk(_ data: Data, jobID: String, partNumber: Int) throws -> URL {
+        let filename = "hoops-upload-\(sanitizedSessionComponent(jobID))-part-\(partNumber)-\(UUID().uuidString).tmp"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
+        let configuration: URLSessionConfiguration
+        if let backgroundIdentifier {
+            configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+            configuration.sessionSendsLaunchEvents = true
+            configuration.isDiscretionary = false
+        } else {
+            configuration = URLSessionConfiguration.default
+        }
         configuration.waitsForConnectivity = true
         configuration.allowsCellularAccess = true
         configuration.allowsExpensiveNetworkAccess = true
@@ -914,6 +965,34 @@ struct CloudAnalysisService {
     }
 }
 
+final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
+    static let shared = CloudUploadBackgroundSessionRegistry()
+
+    private let lock = NSLock()
+    private var completionHandlers: [String: () -> Void] = [:]
+
+    private init() {}
+
+    func setCompletionHandler(_ completionHandler: @escaping () -> Void, for identifier: String) {
+        lock.lock()
+        completionHandlers[identifier] = completionHandler
+        lock.unlock()
+        LaunchTelemetry.shared.recordStabilityCheckpoint("upload.background.events_received")
+    }
+
+    func finishEvents(for identifier: String) {
+        lock.lock()
+        let completionHandler = completionHandlers.removeValue(forKey: identifier)
+        lock.unlock()
+
+        guard let completionHandler else { return }
+        DispatchQueue.main.async {
+            completionHandler()
+            LaunchTelemetry.shared.recordStabilityCheckpoint("upload.background.events_completed")
+        }
+    }
+}
+
 private struct CloudUploadProgressSnapshot: Sendable {
     let fraction: Double
     let elapsedSeconds: TimeInterval
@@ -991,5 +1070,10 @@ private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegat
     ) {
         guard totalBytesExpectedToSend > 0 else { return }
         onProgress(totalBytesSent, totalBytesExpectedToSend)
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        guard let identifier = session.configuration.identifier else { return }
+        CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
     }
 }
