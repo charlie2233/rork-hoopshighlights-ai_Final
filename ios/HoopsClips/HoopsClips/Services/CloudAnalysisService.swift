@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
 private let cloudUploadSingleSourcePrefix = "single-source-"
+private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -80,6 +81,10 @@ struct CloudAnalysisService {
             "source=\(sourceAvailability)",
             "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
         ].joined(separator: " ")
+    }
+
+    static func latestServerUploadPlanSummary() -> String {
+        UserDefaults.standard.string(forKey: cloudUploadServerPlanDefaultsKey) ?? "none"
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -200,6 +205,42 @@ struct CloudAnalysisService {
 
         fields.append("privacy=no_urls_no_object_keys_no_local_file_paths")
         return fields.joined(separator: " ")
+    }
+
+    private static func recordServerUploadPlan(_ job: CreateCloudAnalysisJobResponse) {
+        let resumableUpload = job.resumableUpload
+        let partCount = max(resumableUpload?.partCount ?? 1, 1)
+        let chunkSizeBytes = max(resumableUpload?.chunkSizeBytes ?? 0, 0)
+        let chunkSizeMB = chunkSizeBytes > 0
+            ? String(format: "%.1f", Double(chunkSizeBytes) / 1_048_576.0)
+            : "none"
+        let expiresAt = resumableUpload.map { ISO8601DateFormatter().string(from: $0.expiresAt) } ?? "none"
+        let summary = [
+            "serverChunked=\(partCount > 1)",
+            "partCount=\(partCount)",
+            "chunkSizeMB=\(chunkSizeMB)",
+            "analysisMode=\(safeUploadPlanComponent(job.analysisMode))",
+            "uploadMethod=\(safeUploadPlanComponent(job.uploadMethod))",
+            "expiresAt=\(expiresAt)",
+            "privacy=no_urls_no_object_keys_no_upload_ids"
+        ].joined(separator: " ")
+
+        UserDefaults.standard.set(summary, forKey: cloudUploadServerPlanDefaultsKey)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "server_upload_plan_received",
+            metadata: "serverChunked=\(partCount > 1) partCount=\(partCount) chunkSizeMB=\(chunkSizeMB)"
+        )
+    }
+
+    private static func safeUploadPlanComponent(_ value: String) -> String {
+        let compact = value
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else {
+            return "none"
+        }
+        return String(compact.prefix(48))
     }
 
     private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
@@ -760,6 +801,7 @@ struct CloudAnalysisService {
         )
         let uploadPartCount = job.resumableUpload?.partCount ?? 1
         let usesChunkedUpload = uploadPartCount > 1
+        Self.recordServerUploadPlan(job)
         let sourceUploadID = Self.singleSourceUploadID(jobID: job.jobId)
         let sourceSessionIdentifier = Self.backgroundUploadSessionIdentifier(jobID: job.jobId)
         if !usesChunkedUpload {
