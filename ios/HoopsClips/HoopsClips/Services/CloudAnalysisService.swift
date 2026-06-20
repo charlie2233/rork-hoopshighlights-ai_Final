@@ -1034,9 +1034,14 @@ struct CloudAnalysisService {
         }
         _ = await CloudUploadResumeStore.shared.recordCompletedPart(
             jobID: job.jobId,
-            uploadID: Self.singleSourceUploadID(jobID: job.jobId),
+            uploadID: sourceUploadID,
             partNumber: 1,
             etag: "source-upload-complete"
+        )
+        await CloudUploadResumeStore.shared.clearActiveSession(
+            jobID: job.jobId,
+            uploadID: sourceUploadID,
+            sessionIdentifier: sourceSessionIdentifier
         )
     }
 
@@ -1344,6 +1349,11 @@ struct CloudAnalysisService {
                     snapshot: snapshot,
                     transferContext: transferContext,
                     stalled: false
+                )
+                await CloudUploadResumeStore.shared.clearActiveSession(
+                    jobID: partTarget.jobId,
+                    uploadID: uploadID,
+                    sessionIdentifier: backgroundIdentifier
                 )
                 return etag
             } catch {
@@ -1971,6 +1981,18 @@ private actor CloudUploadResumeStore {
         saveManifest(manifest)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_session_recorded",
+            metadata: "sessionCount=\(manifest.activeSessionIdentifiers.count)"
+        )
+    }
+
+    func clearActiveSession(jobID: String, uploadID: String, sessionIdentifier: String) {
+        guard var manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID),
+              manifest.activeSessionIdentifiers.contains(sessionIdentifier) else { return }
+        manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_session_completed",
             metadata: "sessionCount=\(manifest.activeSessionIdentifiers.count)"
         )
     }
