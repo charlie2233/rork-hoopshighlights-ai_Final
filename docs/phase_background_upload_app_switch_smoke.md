@@ -14,6 +14,8 @@ This does not mark launch ready by itself. It is the focused proof needed for th
 - Reopening the app resumes pending manifests and skips completed chunks.
 - Player shows upload status, live progress, chunk/attempt context, recovered state, and copyable upload proof.
 - Cancel cleanup clears pending background manifests so user-canceled uploads do not resurrect later.
+- Failed source uploads and failed chunk attempts clear their active background session IDs so stale sessions do not keep showing as recoverable.
+- Player proof includes cloud route fingerprints, server upload plan/capability summaries, recent proof trail, and manual Formspree delivery status.
 
 ## Required test video
 
@@ -68,25 +70,48 @@ Paste the copied proof into the launch notes or Formspree report.
 Required fields:
 
 - `source=HoopClips Player upload card`
+- `proofGeneratedAt=...`
 - `build=...`
+- `scenePhase=...`
+- `environment=...`
+- `cloudLaunchMode=...`
+- `cloudAnalysisBaseURLConfigured=...`
+- `cloudEditBaseURLConfigured=...`
+- `cloudAnalysisEndpoint=...`
+- `cloudEditEndpoint=...`
 - `progress=...`
 - `status=...`
 - `latestBackgroundUploadProof=...`
+- `recentBackgroundUploadProofTrail=...`
+- `latestUploadProgress=...`
+- `uploadProofDeliveryStatus=...`
+- `serverUploadPlan=...`
+- `serverUploadCapability=...`
 - `pendingBackgroundUploadManifest=...`
 - `privacy=no_presigned_urls_no_object_keys_no_local_file_paths`
 
 Helpful proof events:
 
 - `source_session_started`
+- `source_upload_failed`
+- `chunked_upload_selected`
 - `chunk_session_started`
 - `upload_waiting_for_connectivity`
 - `chunk_upload_attempt_failed`
 - `chunk_upload_failed`
 - `resume_manifest_part_completed`
+- `resume_manifest_session_completed`
 - `resume_manifest_relaunch_part_completed`
 - `resume_manifest_relaunch_source_completed`
+- `events_waiting_for_manifest_persistence`
+- `manifest_persistence_finished`
+- `reattached_session_empty_recheck_scheduled`
+- `reattached_session_empty_rechecked`
+- `relaunch_task_http_failed`
 - `upload.resume.recovered`
 - `background_upload_cancel_cleanup`
+- `upload_proof_manual_send_queued`
+- `upload_proof_manual_send_succeeded`
 
 ## Pass criteria
 
@@ -95,7 +120,7 @@ The smoke passes only if all are true:
 - Upload status survives switching away from the app.
 - Relaunch or foreground resume does not lose the pending upload.
 - Completed chunks are preserved or skipped.
-- Player proof can be copied during upload.
+- Player proof can be copied during upload and, when network allows, sent through the manual proof button.
 - Cancel clears pending upload state.
 - No presigned URLs, object keys, or local file paths appear in copied proof.
 
