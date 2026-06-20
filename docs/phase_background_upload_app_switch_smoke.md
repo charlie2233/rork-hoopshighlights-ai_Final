@@ -33,6 +33,8 @@ Current client-side import limits are intentionally aligned with the staging bac
 - Import still requires enough local scratch space for the file-backed transfer.
 - Deployed Worker capability probe: `GET /v1/analysis/capabilities`.
 - Capability proof should confirm `maxFileSizeBytes`, `maxDurationSeconds`, `supportsResumableUpload`, and `resumableUploadThresholdBytes`.
+- If a file exceeds deployed Worker policy, presign should return `file_too_large`.
+- If duration exceeds deployed Worker policy, presign should return `unsupported_duration`.
 
 ## Simulator smoke checklist
 

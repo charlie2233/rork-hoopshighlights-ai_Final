@@ -51,6 +51,16 @@ import { teamIdentityMatches } from "../team-identity";
 const DEFAULT_FREE_DAILY_QUOTA = 3;
 const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 64 * 1024 * 1024;
 
+class PresignValidationError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: number = 400
+  ) {
+    super(message);
+  }
+}
+
 function handleCapabilities(
   requestId: string,
   runtime: ReturnType<typeof resolveRuntimeConfig>
@@ -334,18 +344,19 @@ async function handlePresign(
     );
     return jsonResponse(response, { status: 201 }, requestId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Invalid upload presign request.";
+    const validationError = error instanceof PresignValidationError ? error : null;
+    const message = validationError?.message ?? (error instanceof Error ? error.message : "Invalid upload presign request.");
     return jsonResponse(
       {
         requestId,
         schemaVersion,
         confidence: null,
         modelVersion: null,
-        errorCode: "invalid_request",
+        errorCode: validationError?.code ?? "invalid_request",
         errorMessage: message,
         failureReason: message
       },
-      { status: 400 },
+      { status: validationError?.status ?? 400 },
       requestId
     );
   }
@@ -1110,13 +1121,13 @@ function validateCreateRequest(
   maxDurationSeconds: number
 ): void {
   if (!body.filename || !body.contentType || !body.installId || !body.appVersion || !body.analysisVersion) {
-    throw new Error("Invalid upload presign request.");
+    throw new PresignValidationError("invalid_request", "Invalid upload presign request.");
   }
   if (body.fileSizeBytes <= 0 || body.fileSizeBytes > maxFileSizeBytes) {
-    throw new Error("File size exceeds control plane limits.");
+    throw new PresignValidationError("file_too_large", "Video exceeds the deployed cloud upload size limit.");
   }
   if (body.durationSeconds <= 0 || body.durationSeconds > maxDurationSeconds) {
-    throw new Error("Duration exceeds control plane limits.");
+    throw new PresignValidationError("unsupported_duration", "Video exceeds the deployed cloud analysis duration limit.");
   }
 }
 
