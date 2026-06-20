@@ -33,6 +33,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 - Import still requires enough local scratch space for the file-backed transfer.
 - Deployed Worker capability probe: `GET /v1/analysis/capabilities`.
 - Capability proof should confirm `maxFileSizeBytes`, `maxDurationSeconds`, `supportsResumableUpload`, `recommendedUploadPreference`, and `resumableUploadThresholdBytes`.
+- iOS capability fetch is bounded; if the Worker is slow, proof should show `server_upload_capabilities_unavailable` with `reason=timeout` and continue with client defaults.
 - If a file exceeds deployed Worker policy, presign should return `file_too_large`.
 - If duration exceeds deployed Worker policy, presign should return `unsupported_duration`.
 

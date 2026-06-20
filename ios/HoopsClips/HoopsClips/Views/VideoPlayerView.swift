@@ -480,7 +480,7 @@ struct VideoPlayerView: View {
     private func cloudCapabilitiesForImport(source: String) async -> CloudAnalysisCapabilitiesResponse? {
         guard AppConstants.cloudAnalysisEnabled else { return nil }
         do {
-            let capabilities = try await CloudAnalysisService().fetchAnalysisCapabilities()
+            let capabilities = try await fetchCloudCapabilitiesForImportWithTimeout()
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "video_import.capabilities_loaded",
                 metadata: "source=\(source) maxFileSizeBytes=\(capabilities.maxFileSizeBytes) maxDurationSeconds=\(Int(capabilities.maxDurationSeconds.rounded(.down))) resumable=\(capabilities.supportsResumableUpload)"
@@ -493,6 +493,25 @@ struct VideoPlayerView: View {
                 metadata: "source=\(source) fallback=client_defaults reason=\(fallbackReason)"
             )
             return nil
+        }
+    }
+
+    private func fetchCloudCapabilitiesForImportWithTimeout() async throws -> CloudAnalysisCapabilitiesResponse {
+        try await withThrowingTaskGroup(of: CloudAnalysisCapabilitiesResponse.self) { group in
+            group.addTask {
+                try await CloudAnalysisService().fetchAnalysisCapabilities()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 2_500_000_000)
+                throw CloudAnalysisError.timedOut
+            }
+
+            guard let capabilities = try await group.next() else {
+                group.cancelAll()
+                throw CloudAnalysisError.timedOut
+            }
+            group.cancelAll()
+            return capabilities
         }
     }
 
