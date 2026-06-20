@@ -622,13 +622,27 @@ struct CloudAnalysisService {
             try? fileHandle.close()
         }
 
-        var uploadedParts: [CloudMultipartCompletedPart] = []
         let safeChunkSize = max(resumableUpload.chunkSizeBytes, 5 * 1024 * 1024)
         let totalBytes = max(totalFileSizeBytes, 0)
+        var uploadedParts = await CloudUploadResumeStore.shared.begin(
+            jobID: job.jobId,
+            sourceURL: url.standardizedFileURL,
+            uploadID: resumableUpload.uploadId,
+            chunkSizeBytes: safeChunkSize,
+            partCount: resumableUpload.partCount,
+            totalFileSizeBytes: totalBytes
+        )
+        var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
 
         for partNumber in 1...resumableUpload.partCount {
             try Task.checkCancellation()
             let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
+            if completedPartNumbers.contains(partNumber) {
+                await tracker.update(uploadedBytes: min(Int64(offset) + Int64(safeChunkSize), totalBytes), totalBytes: totalBytes)
+                let snapshot = await tracker.snapshot()
+                reportUploadProgress(snapshot, false)
+                continue
+            }
             try fileHandle.seek(toOffset: offset)
             guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
                 break
@@ -646,10 +660,17 @@ struct CloudAnalysisService {
                 chunk: chunk,
                 alreadyUploadedBytes: min(Int64(offset), totalBytes),
                 totalBytes: totalBytes,
+                uploadID: resumableUpload.uploadId,
                 tracker: tracker,
                 reportUploadProgress: reportUploadProgress
             )
-            uploadedParts.append(CloudMultipartCompletedPart(partNumber: partNumber, etag: etag))
+            uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                jobID: job.jobId,
+                uploadID: resumableUpload.uploadId,
+                partNumber: partNumber,
+                etag: etag
+            )
+            completedPartNumbers.insert(partNumber)
         }
 
         guard uploadedParts.count == resumableUpload.partCount else {
@@ -663,6 +684,7 @@ struct CloudAnalysisService {
             uploadID: resumableUpload.uploadId,
             parts: uploadedParts
         )
+        await CloudUploadResumeStore.shared.clear(jobID: job.jobId, uploadID: resumableUpload.uploadId)
         await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
         reportUploadProgress(finalSnapshot, false)
@@ -700,6 +722,7 @@ struct CloudAnalysisService {
         chunk: Data,
         alreadyUploadedBytes: Int64,
         totalBytes: Int64,
+        uploadID: String,
         tracker: CloudUploadProgressTracker,
         reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
     ) async throws -> String {
@@ -728,13 +751,20 @@ struct CloudAnalysisService {
                     try? FileManager.default.removeItem(at: chunkFileURL)
                 }
 
+                let backgroundIdentifier = Self.backgroundUploadSessionIdentifier(
+                    jobID: partTarget.jobId,
+                    partNumber: partTarget.partNumber,
+                    attempt: attempt + 1
+                )
+                await CloudUploadResumeStore.shared.recordSession(
+                    jobID: partTarget.jobId,
+                    uploadID: uploadID,
+                    sessionIdentifier: backgroundIdentifier
+                )
+
                 let uploadSession = URLSession(
                     configuration: uploadSessionConfiguration(
-                        backgroundIdentifier: Self.backgroundUploadSessionIdentifier(
-                            jobID: partTarget.jobId,
-                            partNumber: partTarget.partNumber,
-                            attempt: attempt + 1
-                        )
+                        backgroundIdentifier: backgroundIdentifier
                     ),
                     delegate: delegate,
                     delegateQueue: nil
@@ -1056,6 +1086,128 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+    }
+}
+
+private struct CloudUploadResumeManifest: Codable, Sendable {
+    var jobID: String
+    var sourceFilePath: String
+    var uploadID: String
+    var chunkSizeBytes: Int
+    var partCount: Int
+    var totalFileSizeBytes: Int64
+    var completedParts: [CloudMultipartCompletedPart]
+    var activeSessionIdentifiers: [String]
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+private actor CloudUploadResumeStore {
+    static let shared = CloudUploadResumeStore()
+
+    private let defaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+    private let maxStoredSessionIdentifiers = 24
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    private init() {
+        encoder.dateEncodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .iso8601
+    }
+
+    func begin(
+        jobID: String,
+        sourceURL: URL,
+        uploadID: String,
+        chunkSizeBytes: Int,
+        partCount: Int,
+        totalFileSizeBytes: Int64
+    ) -> [CloudMultipartCompletedPart] {
+        var manifest = loadManifest()
+        if manifest?.jobID != jobID || manifest?.uploadID != uploadID {
+            manifest = CloudUploadResumeManifest(
+                jobID: jobID,
+                sourceFilePath: sourceURL.path,
+                uploadID: uploadID,
+                chunkSizeBytes: chunkSizeBytes,
+                partCount: partCount,
+                totalFileSizeBytes: totalFileSizeBytes,
+                completedParts: [],
+                activeSessionIdentifiers: [],
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        }
+
+        manifest?.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_started",
+            metadata: "partCount=\(partCount) completed=\(manifest?.completedParts.count ?? 0)"
+        )
+        return manifest?.completedParts.sorted { $0.partNumber < $1.partNumber } ?? []
+    }
+
+    func recordSession(jobID: String, uploadID: String, sessionIdentifier: String) {
+        guard var manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
+        var identifiers = manifest.activeSessionIdentifiers.filter { $0 != sessionIdentifier }
+        identifiers.append(sessionIdentifier)
+        manifest.activeSessionIdentifiers = Array(identifiers.suffix(maxStoredSessionIdentifiers))
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_session_recorded",
+            metadata: "sessionCount=\(manifest.activeSessionIdentifiers.count)"
+        )
+    }
+
+    func recordCompletedPart(jobID: String, uploadID: String, partNumber: Int, etag: String) -> [CloudMultipartCompletedPart] {
+        guard var manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else {
+            return [CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)]
+        }
+
+        var parts = manifest.completedParts.filter { $0.partNumber != partNumber }
+        parts.append(CloudMultipartCompletedPart(partNumber: partNumber, etag: etag))
+        manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_part_completed",
+            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+        return manifest.completedParts
+    }
+
+    func clear(jobID: String, uploadID: String) {
+        guard let manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
+        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_cleared",
+            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+    }
+
+    private func loadMatchingManifest(jobID: String, uploadID: String) -> CloudUploadResumeManifest? {
+        guard let manifest = loadManifest(),
+              manifest.jobID == jobID,
+              manifest.uploadID == uploadID else {
+            return nil
+        }
+        return manifest
+    }
+
+    private func loadManifest() -> CloudUploadResumeManifest? {
+        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return nil }
+        return try? decoder.decode(CloudUploadResumeManifest.self, from: data)
+    }
+
+    private func saveManifest(_ manifest: CloudUploadResumeManifest?) {
+        guard let manifest,
+              let data = try? encoder.encode(manifest) else {
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 }
 
