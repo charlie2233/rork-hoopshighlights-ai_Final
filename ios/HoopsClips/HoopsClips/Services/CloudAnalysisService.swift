@@ -1664,7 +1664,28 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
                 metadata: "source=app_delegate taskCount=\(tasks.count)"
             )
             if tasks.isEmpty {
-                CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+                CloudUploadBackgroundSessionRegistry.shared.recheckEmptySessionBeforeFinishing(
+                    identifier: identifier,
+                    session: session
+                )
+            }
+        }
+    }
+
+    private func recheckEmptySessionBeforeFinishing(identifier: String, session: URLSession) {
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "reattached_session_empty_recheck_scheduled",
+            metadata: "source=app_delegate delayMs=750"
+        )
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.75) {
+            session.getAllTasks { tasks in
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "reattached_session_empty_rechecked",
+                    metadata: "source=app_delegate taskCount=\(tasks.count)"
+                )
+                if tasks.isEmpty {
+                    CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+                }
             }
         }
     }
