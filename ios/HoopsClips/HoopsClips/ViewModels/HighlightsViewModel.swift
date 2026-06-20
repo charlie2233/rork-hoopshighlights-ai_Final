@@ -426,6 +426,9 @@ final class HighlightsViewModel {
         activeAnalysisTask?.cancel()
         activeAnalysisTask = nil
         pendingCloudAnalysisJob = nil
+        Task { [cloudAnalysisService] in
+            await cloudAnalysisService.cancelPendingBackgroundUpload(reason: "user_cancelled")
+        }
 
         if isVideoImportInProgress {
             clearVideoImportProgress()

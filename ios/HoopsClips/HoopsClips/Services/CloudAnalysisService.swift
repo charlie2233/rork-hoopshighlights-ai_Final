@@ -39,6 +39,33 @@ struct CloudAnalysisService {
         await CloudUploadResumeStore.shared.pendingManifest() != nil
     }
 
+    func cancelPendingBackgroundUpload(reason: String) async {
+        guard let manifest = await CloudUploadResumeStore.shared.pendingManifest() else {
+            return
+        }
+
+        let sessionIdentifiers = manifest.activeSessionIdentifiers
+        for identifier in sessionIdentifiers {
+            let session = URLSession(
+                configuration: uploadSessionConfiguration(backgroundIdentifier: identifier)
+            )
+            session.getAllTasks { tasks in
+                tasks.forEach { $0.cancel() }
+                session.invalidateAndCancel()
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "background_upload_session_cancelled",
+                    metadata: "taskCount=\(tasks.count)"
+                )
+            }
+        }
+
+        await CloudUploadResumeStore.shared.clearAnyManifest(reason: reason)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "background_upload_cancel_cleanup",
+            metadata: "reason=\(reason) sessions=\(sessionIdentifiers.count)"
+        )
+    }
+
     static func pendingBackgroundUploadManifestSummary() -> String {
         guard let manifest = CloudUploadResumeStore.loadPersistedManifestSnapshot() else {
             return "none"
@@ -733,13 +760,15 @@ struct CloudAnalysisService {
         )
         let uploadPartCount = job.resumableUpload?.partCount ?? 1
         let usesChunkedUpload = uploadPartCount > 1
+        let sourceUploadID = Self.singleSourceUploadID(jobID: job.jobId)
+        let sourceSessionIdentifier = Self.backgroundUploadSessionIdentifier(jobID: job.jobId)
         if !usesChunkedUpload {
             let fileSizeBytes = (try? fileInfo(for: url).fileSizeBytes) ?? 1
             _ = await CloudUploadResumeStore.shared.begin(
                 jobID: job.jobId,
                 installID: installID,
                 sourceURL: url.standardizedFileURL,
-                uploadID: Self.singleSourceUploadID(jobID: job.jobId),
+                uploadID: sourceUploadID,
                 sourceObjectKey: job.sourceObjectKey,
                 resultObjectKey: job.resultObjectKey,
                 pollAfterSeconds: job.pollAfterSeconds,
@@ -747,6 +776,11 @@ struct CloudAnalysisService {
                 chunkSizeBytes: Int(max(fileSizeBytes, 1)),
                 partCount: 1,
                 totalFileSizeBytes: max(fileSizeBytes, 1)
+            )
+            await CloudUploadResumeStore.shared.recordSession(
+                jobID: job.jobId,
+                uploadID: sourceUploadID,
+                sessionIdentifier: sourceSessionIdentifier
             )
         }
         LaunchTelemetry.shared.recordBackgroundUploadProof(
