@@ -1964,6 +1964,12 @@ struct VideoPlayerView: View {
         [
             "source=HoopClips Player upload card",
             "build=\(safeUploadProofValue(Bundle.main.infoDictionary?[\"CFBundleVersion\"] as? String))",
+            "environment=\(safeUploadProofValue(AppConstants.environmentName))",
+            "cloudLaunchMode=\(safeUploadProofValue(AppConstants.cloudLaunchMode.rawValue))",
+            "cloudAnalysisEnabled=\(AppConstants.cloudAnalysisEnabled)",
+            "cloudAnalysisBaseURLConfigured=\(!AppConstants.cloudAnalysisBaseURL.isEmpty)",
+            "cloudEditBaseURLConfigured=\(!AppConstants.cloudEditBaseURL.isEmpty)",
+            "clientChunkedUploadCompatible=true",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
             "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
