@@ -77,11 +77,16 @@ struct CloudAnalysisService {
         elapsedSeconds: TimeInterval,
         uploadedBytes: Int64? = nil,
         totalBytes: Int64? = nil,
+        transferContext: String? = nil,
         stalled: Bool = false
     ) -> String {
         let boundedFraction = min(max(fraction, 0), 1)
         let percent = Int((boundedFraction * 100).rounded(.down))
         var parts = ["\(stage) \(percent)%"]
+
+        if let transferContext, !transferContext.isEmpty {
+            parts.append(transferContext)
+        }
 
         if let uploadedBytes, let totalBytes, totalBytes > 0 {
             parts.append(formatUploadByteProgress(uploadedBytes: uploadedBytes, totalBytes: totalBytes))
@@ -516,7 +521,7 @@ struct CloudAnalysisService {
         let progressStart = manifest.purpose == .teamScan ? 0.14 : 0.15
         let progressEnd = manifest.purpose == .teamScan ? 0.20 : 0.28
         let tracker = CloudUploadProgressTracker()
-        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void = { snapshot, stalled in
+        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void = { snapshot, stalled, transferContext in
             let boundedFraction = min(max(snapshot.fraction, 0), 1)
             let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
             Task { @MainActor in
@@ -528,6 +533,7 @@ struct CloudAnalysisService {
                         elapsedSeconds: snapshot.elapsedSeconds,
                         uploadedBytes: snapshot.uploadedBytes,
                         totalBytes: snapshot.totalBytes,
+                        transferContext: transferContext,
                         stalled: stalled
                     )
                 )
@@ -545,7 +551,7 @@ struct CloudAnalysisService {
             }
             await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
             let snapshot = await tracker.snapshot()
-            reportUploadProgress(snapshot, false)
+            reportUploadProgress(snapshot, false, "source upload saved")
         } else {
             try await resumeUploadManifest(
                 manifest,
@@ -659,7 +665,7 @@ struct CloudAnalysisService {
         }
 
         let tracker = CloudUploadProgressTracker()
-        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void = { snapshot, stalled in
+        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void = { snapshot, stalled, transferContext in
             let fraction = snapshot.fraction
             let boundedFraction = min(max(fraction, 0), 1)
             let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
@@ -670,6 +676,7 @@ struct CloudAnalysisService {
                     elapsedSeconds: snapshot.elapsedSeconds,
                     uploadedBytes: snapshot.uploadedBytes,
                     totalBytes: snapshot.totalBytes,
+                    transferContext: transferContext,
                     stalled: stalled
                 )
                 progress(progressValue, message)
@@ -680,13 +687,13 @@ struct CloudAnalysisService {
                 Task {
                     await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
                     let snapshot = await tracker.snapshot()
-                    reportUploadProgress(snapshot, false)
+                    reportUploadProgress(snapshot, false, nil)
                 }
             },
             onWaitingForConnectivity: {
                 Task {
                     let snapshot = await tracker.snapshot()
-                    reportUploadProgress(snapshot, true)
+                    reportUploadProgress(snapshot, true, nil)
                     LaunchTelemetry.shared.recordBackgroundUploadProof(
                         "upload_waiting_for_connectivity",
                         metadata: "kind=source"
@@ -704,7 +711,7 @@ struct CloudAnalysisService {
 
                 let snapshot = await tracker.snapshot()
                 let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
-                reportUploadProgress(snapshot, stalled)
+                reportUploadProgress(snapshot, stalled, nil)
                 if snapshot.secondsSinceProgress >= 180,
                    snapshot.fraction < 0.99,
                    await tracker.markStallProofSentIfNeeded() {
@@ -803,7 +810,7 @@ struct CloudAnalysisService {
         purpose: CloudUploadResumePurpose,
         totalFileSizeBytes: Int64,
         tracker: CloudUploadProgressTracker,
-        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws {
         let fileHandle = try FileHandle(forReadingFrom: url)
         defer {
@@ -833,7 +840,7 @@ struct CloudAnalysisService {
             if completedPartNumbers.contains(partNumber) {
                 await tracker.update(uploadedBytes: min(Int64(offset) + Int64(safeChunkSize), totalBytes), totalBytes: totalBytes)
                 let snapshot = await tracker.snapshot()
-                reportUploadProgress(snapshot, false)
+                reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(resumableUpload.partCount) saved")
                 continue
             }
             try fileHandle.seek(toOffset: offset)
@@ -854,6 +861,7 @@ struct CloudAnalysisService {
                 alreadyUploadedBytes: min(Int64(offset), totalBytes),
                 totalBytes: totalBytes,
                 uploadID: resumableUpload.uploadId,
+                partCount: resumableUpload.partCount,
                 tracker: tracker,
                 reportUploadProgress: reportUploadProgress
             )
@@ -879,7 +887,7 @@ struct CloudAnalysisService {
         )
         await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
-        reportUploadProgress(finalSnapshot, false)
+        reportUploadProgress(finalSnapshot, false, "chunks complete")
     }
 
     private func createMultipartPart(
@@ -914,7 +922,7 @@ struct CloudAnalysisService {
         sourceURL: URL,
         baseURL: URL,
         tracker: CloudUploadProgressTracker,
-        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws {
         let fileHandle = try FileHandle(forReadingFrom: sourceURL)
         defer {
@@ -933,7 +941,7 @@ struct CloudAnalysisService {
                     totalBytes: manifest.totalFileSizeBytes
                 )
                 let snapshot = await tracker.snapshot()
-                reportUploadProgress(snapshot, false)
+                reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(manifest.partCount) saved")
                 continue
             }
 
@@ -955,6 +963,7 @@ struct CloudAnalysisService {
                 alreadyUploadedBytes: min(Int64(offset), manifest.totalFileSizeBytes),
                 totalBytes: manifest.totalFileSizeBytes,
                 uploadID: manifest.uploadID,
+                partCount: manifest.partCount,
                 tracker: tracker,
                 reportUploadProgress: reportUploadProgress
             )
@@ -986,8 +995,9 @@ struct CloudAnalysisService {
         alreadyUploadedBytes: Int64,
         totalBytes: Int64,
         uploadID: String,
+        partCount: Int,
         tracker: CloudUploadProgressTracker,
-        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws -> String {
         guard let uploadURL = URL(string: partTarget.uploadUrl) else {
             throw CloudAnalysisError.invalidResponse
@@ -996,6 +1006,7 @@ struct CloudAnalysisService {
         var lastError: Error?
         for attempt in 0..<3 {
             do {
+                let transferContext = "chunk \(partTarget.partNumber)/\(partCount) try \(attempt + 1)"
                 var request = URLRequest(url: uploadURL)
                 request.httpMethod = partTarget.uploadMethod
                 for (header, value) in partTarget.uploadHeaders {
@@ -1007,16 +1018,16 @@ struct CloudAnalysisService {
                         Task {
                             await tracker.update(uploadedBytes: alreadyUploadedBytes + sentBytes, totalBytes: totalBytes)
                             let snapshot = await tracker.snapshot()
-                            reportUploadProgress(snapshot, false)
+                            reportUploadProgress(snapshot, false, transferContext)
                         }
                     },
                     onWaitingForConnectivity: {
                         Task {
                             let snapshot = await tracker.snapshot()
-                            reportUploadProgress(snapshot, true)
+                            reportUploadProgress(snapshot, true, transferContext)
                             LaunchTelemetry.shared.recordBackgroundUploadProof(
                                 "upload_waiting_for_connectivity",
-                                metadata: "kind=chunk partNumber=\(partTarget.partNumber)"
+                                metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1)"
                             )
                         }
                     }
@@ -1046,7 +1057,7 @@ struct CloudAnalysisService {
                 )
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "chunk_session_started",
-                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) attempt=\(attempt + 1)"
+                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1)"
                 )
                 defer {
                     uploadSession.finishTasksAndInvalidate()
@@ -1061,7 +1072,7 @@ struct CloudAnalysisService {
                 }
                 await tracker.update(uploadedBytes: alreadyUploadedBytes + Int64(chunk.count), totalBytes: totalBytes)
                 let snapshot = await tracker.snapshot()
-                reportUploadProgress(snapshot, false)
+                reportUploadProgress(snapshot, false, transferContext)
                 return etag
             } catch {
                 lastError = error
