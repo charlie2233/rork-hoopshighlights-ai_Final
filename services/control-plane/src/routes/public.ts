@@ -75,6 +75,7 @@ function handleCapabilities(
     maxDurationSeconds: runtime.maxDurationSeconds,
     resumableUploadThresholdBytes: RESUMABLE_UPLOAD_THRESHOLD_BYTES,
     supportsResumableUpload: true,
+    recommendedUploadPreference: "resumable",
     signedUploadTtlSeconds: runtime.signedUploadTtlSeconds,
     defaultPollAfterSeconds: runtime.defaultPollAfterSeconds,
     analysisMode: "cloud"

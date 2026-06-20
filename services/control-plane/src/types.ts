@@ -37,6 +37,7 @@ export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
   maxDurationSeconds: number;
   resumableUploadThresholdBytes: number;
   supportsResumableUpload: boolean;
+  recommendedUploadPreference: "resumable";
   signedUploadTtlSeconds: number;
   defaultPollAfterSeconds: number;
   analysisMode: "cloud";

@@ -32,7 +32,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 - Maximum cloud analysis duration: 75 minutes.
 - Import still requires enough local scratch space for the file-backed transfer.
 - Deployed Worker capability probe: `GET /v1/analysis/capabilities`.
-- Capability proof should confirm `maxFileSizeBytes`, `maxDurationSeconds`, `supportsResumableUpload`, and `resumableUploadThresholdBytes`.
+- Capability proof should confirm `maxFileSizeBytes`, `maxDurationSeconds`, `supportsResumableUpload`, `recommendedUploadPreference`, and `resumableUploadThresholdBytes`.
 - If a file exceeds deployed Worker policy, presign should return `file_too_large`.
 - If duration exceeds deployed Worker policy, presign should return `unsupported_duration`.
 

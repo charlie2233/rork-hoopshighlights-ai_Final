@@ -390,6 +390,7 @@ struct CloudAnalysisService {
             "maxFileSizeMB=\(maxFileSizeMB)",
             "maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down)))",
             "supportsResumableUpload=\(capabilities.supportsResumableUpload)",
+            "recommendedUploadPreference=\(safeUploadPlanComponent(capabilities.recommendedUploadPreference ?? "unknown"))",
             "resumableThresholdMB=\(thresholdMB)",
             "signedUploadTtlSeconds=\(max(capabilities.signedUploadTtlSeconds, 0))",
             "defaultPollAfterSeconds=\(max(capabilities.defaultPollAfterSeconds, 0))",
@@ -399,7 +400,7 @@ struct CloudAnalysisService {
         UserDefaults.standard.set(summary, forKey: cloudUploadDeployedCapabilitySummaryDefaultsKey)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "server_upload_capabilities_received",
-            metadata: "maxFileSizeMB=\(maxFileSizeMB) maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down))) resumable=\(capabilities.supportsResumableUpload) thresholdMB=\(thresholdMB)"
+            metadata: "maxFileSizeMB=\(maxFileSizeMB) maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down))) resumable=\(capabilities.supportsResumableUpload) recommended=\(safeUploadPlanComponent(capabilities.recommendedUploadPreference ?? "unknown")) thresholdMB=\(thresholdMB)"
         )
     }
 

@@ -156,6 +156,7 @@ nonisolated struct CloudAnalysisCapabilitiesResponse: Codable, Sendable {
     let maxDurationSeconds: Double
     let resumableUploadThresholdBytes: Int64
     let supportsResumableUpload: Bool
+    let recommendedUploadPreference: String?
     let signedUploadTtlSeconds: Int
     let defaultPollAfterSeconds: Int
     let analysisMode: String
