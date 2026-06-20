@@ -470,7 +470,7 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
         case .invalidResponse:
             return "The analysis server returned an invalid response."
         case .uploadFailed:
-            return "The video upload did not complete."
+            return "The video upload did not complete. Stay on Wi-Fi and retry; background uploads can resume when the server provides a resumable upload plan."
         case .timedOut:
             return "Cloud analysis is taking longer than expected. Reopen the project from History and try again, or choose a shorter video."
         case .quotaExceeded(let remaining):
@@ -478,8 +478,17 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
                 return "Cloud analysis quota exceeded. Remaining today: \(remaining)."
             }
             return "Cloud analysis quota exceeded."
-        case .backend(_, let message):
-            return message
+        case .backend(let code, let message):
+            switch code.lowercased() {
+            case "file_too_large":
+                return "This video is over the cloud upload limit for this environment. Try a smaller export, or raise the backend upload limit before retrying."
+            case "unsupported_duration", "video_too_long", "duration_too_long":
+                return "This video is longer than the cloud analysis limit for this environment. Trim it or raise the backend duration limit before retrying."
+            case "empty_upload":
+                return "The server received an empty upload. Re-import the video from Photos or Files, stay on Wi-Fi, and retry."
+            default:
+                return message
+            }
         case .network(let description):
             return description
         }
