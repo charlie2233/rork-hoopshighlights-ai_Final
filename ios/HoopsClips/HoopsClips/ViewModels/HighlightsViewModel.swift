@@ -514,7 +514,7 @@ final class HighlightsViewModel {
         defer { endBackgroundAnalysisTask() }
         analysisMode = .cloud
         isCloudFallbackOffered = false
-        analysisService.beginExternalAnalysis(status: "Resuming background upload", progress: 0.14)
+        analysisService.beginExternalAnalysis(status: "Resuming saved background upload", progress: 0.14)
         LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.started", metadata: "mode=cloud")
 
         do {

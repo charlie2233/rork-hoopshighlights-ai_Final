@@ -41,8 +41,12 @@ nonisolated enum CloudAnalysisProgressCopy {
     ) -> String {
         let status = statusMessage.lowercased()
 
+        if status.contains("resuming") && status.contains("upload") {
+            return "Reconnecting to the saved background upload. HoopClips will skip chunks that already finished."
+        }
+
         if status.contains("upload") {
-            return "Uploading is the long part. HoopClips now uses iOS background transfer, so you can switch apps and reopen for live progress."
+            return "Background upload is active. You can switch apps; HoopClips will keep the transfer resumable and reopen with live progress."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -92,8 +96,12 @@ nonisolated enum CloudAnalysisProgressCopy {
         guard analysisMode == .cloud else { return nil }
 
         let status = statusMessage.lowercased()
+        if status.contains("resuming") && status.contains("upload") {
+            return "Resuming saved background upload. Completed chunks are preserved."
+        }
+
         if status.contains("upload") {
-            return "Upload is using iOS background transfer. You can switch apps; reopen HoopClips to refresh live progress."
+            return "Background upload active. Safe to switch apps; reopen HoopClips to refresh progress."
         }
 
         if status.contains("queued")

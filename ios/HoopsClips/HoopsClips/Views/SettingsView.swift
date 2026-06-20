@@ -645,6 +645,7 @@ struct SettingsView: View {
             "analysisStatus=\(proofTextValue(viewModel.analysisService.statusMessage))",
             "backgroundUploadMode=ios_background_urlsession",
             "backgroundUploadChunkedCompatible=true",
+            "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "cloudTeamScanInProgress=\(viewModel.isCloudTeamScanInProgress)",
             "cloudTeamScanStatus=\(proofTextValue(viewModel.cloudTeamScanStatusMessage))",
