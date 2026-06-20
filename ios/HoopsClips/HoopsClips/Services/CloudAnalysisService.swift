@@ -998,6 +998,7 @@ struct CloudAnalysisService {
             uploadSession.finishTasksAndInvalidate()
         }
 
+        do {
         guard let uploadURL = URL(string: job.uploadUrl),
               uploadURL.scheme?.isEmpty == false else {
             throw CloudAnalysisError.invalidResponse
@@ -1043,6 +1044,25 @@ struct CloudAnalysisService {
             uploadID: sourceUploadID,
             sessionIdentifier: sourceSessionIdentifier
         )
+        } catch {
+            await CloudUploadResumeStore.shared.clearActiveSession(
+                jobID: job.jobId,
+                uploadID: sourceUploadID,
+                sessionIdentifier: sourceSessionIdentifier
+            )
+            let failedSnapshot = await tracker.snapshot()
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: failedSnapshot,
+                transferContext: "source upload failed",
+                stalled: true
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "source_upload_failed",
+                metadata: "reason=\(Self.uploadRetryReason(for: error))"
+            )
+            throw error
+        }
     }
 
     private func uploadVideoInChunks(
