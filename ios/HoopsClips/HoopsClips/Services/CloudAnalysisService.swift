@@ -807,16 +807,6 @@ struct CloudAnalysisService {
         progressEnd: Double,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws {
-        guard let uploadURL = URL(string: job.uploadUrl) else {
-            throw CloudAnalysisError.invalidResponse
-        }
-
-        var request = URLRequest(url: uploadURL)
-        request.httpMethod = job.uploadMethod
-        for (header, value) in job.uploadHeaders {
-            request.setValue(value, forHTTPHeaderField: header)
-        }
-
         let tracker = CloudUploadProgressTracker()
         let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void = { snapshot, stalled, transferContext in
             let fraction = snapshot.fraction
@@ -889,49 +879,24 @@ struct CloudAnalysisService {
                 }
             }
         }
-        let uploadSession = URLSession(
-            configuration: uploadSessionConfiguration(
-                backgroundIdentifier: Self.backgroundUploadSessionIdentifier(jobID: job.jobId)
-            ),
-            delegate: delegate,
-            delegateQueue: nil
-        )
         let uploadPartCount = job.resumableUpload?.partCount ?? 1
-        let usesChunkedUpload = uploadPartCount > 1
         Self.recordServerUploadPlan(job)
-        let sourceUploadID = Self.singleSourceUploadID(jobID: job.jobId)
-        let sourceSessionIdentifier = Self.backgroundUploadSessionIdentifier(jobID: job.jobId)
-        if !usesChunkedUpload {
-            let fileSizeBytes = (try? fileInfo(for: url).fileSizeBytes) ?? 1
-            _ = await CloudUploadResumeStore.shared.begin(
-                jobID: job.jobId,
-                installID: installID,
-                sourceURL: url.standardizedFileURL,
-                uploadID: sourceUploadID,
-                sourceObjectKey: job.sourceObjectKey,
-                resultObjectKey: job.resultObjectKey,
-                pollAfterSeconds: job.pollAfterSeconds,
-                purpose: purpose,
-                chunkSizeBytes: Int(max(fileSizeBytes, 1)),
-                partCount: 1,
-                totalFileSizeBytes: max(fileSizeBytes, 1)
-            )
-            await CloudUploadResumeStore.shared.recordSession(
-                jobID: job.jobId,
-                uploadID: sourceUploadID,
-                sessionIdentifier: sourceSessionIdentifier
-            )
-        }
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
-            "source_session_started",
-            metadata: "kind=source chunked=\(usesChunkedUpload) partCount=\(uploadPartCount)"
-        )
         defer {
             uploadMonitorTask.cancel()
-            uploadSession.finishTasksAndInvalidate()
         }
 
         if let resumableUpload = job.resumableUpload, resumableUpload.partCount > 1 {
+            let initialSnapshot = await tracker.snapshot()
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: initialSnapshot,
+                transferContext: "chunked upload starting",
+                stalled: false
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "chunked_upload_selected",
+                metadata: "partCount=\(resumableUpload.partCount) chunkSizeBytes=\(resumableUpload.chunkSizeBytes)"
+            )
             try await uploadVideoInChunks(
                 job: job,
                 resumableUpload: resumableUpload,
@@ -944,6 +909,59 @@ struct CloudAnalysisService {
                 reportUploadProgress: reportUploadProgress
             )
             return
+        }
+
+        let sourceUploadID = Self.singleSourceUploadID(jobID: job.jobId)
+        let sourceSessionIdentifier = Self.backgroundUploadSessionIdentifier(jobID: job.jobId)
+        let fileSizeBytes = (try? fileInfo(for: url).fileSizeBytes) ?? 1
+        _ = await CloudUploadResumeStore.shared.begin(
+            jobID: job.jobId,
+            installID: installID,
+            sourceURL: url.standardizedFileURL,
+            uploadID: sourceUploadID,
+            sourceObjectKey: job.sourceObjectKey,
+            resultObjectKey: job.resultObjectKey,
+            pollAfterSeconds: job.pollAfterSeconds,
+            purpose: purpose,
+            chunkSizeBytes: Int(max(fileSizeBytes, 1)),
+            partCount: 1,
+            totalFileSizeBytes: max(fileSizeBytes, 1)
+        )
+        await CloudUploadResumeStore.shared.recordSession(
+            jobID: job.jobId,
+            uploadID: sourceUploadID,
+            sessionIdentifier: sourceSessionIdentifier
+        )
+        let initialSnapshot = await tracker.snapshot()
+        Self.recordLatestUploadProgressSummary(
+            stage: stage,
+            snapshot: initialSnapshot,
+            transferContext: "source upload starting",
+            stalled: false
+        )
+        let uploadSession = URLSession(
+            configuration: uploadSessionConfiguration(
+                backgroundIdentifier: sourceSessionIdentifier
+            ),
+            delegate: delegate,
+            delegateQueue: nil
+        )
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "source_session_started",
+            metadata: "kind=source chunked=false partCount=\(uploadPartCount)"
+        )
+        defer {
+            uploadSession.finishTasksAndInvalidate()
+        }
+
+        guard let uploadURL = URL(string: job.uploadUrl),
+              uploadURL.scheme?.isEmpty == false else {
+            throw CloudAnalysisError.invalidResponse
+        }
+        var request = URLRequest(url: uploadURL)
+        request.httpMethod = job.uploadMethod
+        for (header, value) in job.uploadHeaders {
+            request.setValue(value, forHTTPHeaderField: header)
         }
 
         let response = try await delegate.upload(request: request, fromFile: url, using: uploadSession)
@@ -970,14 +988,12 @@ struct CloudAnalysisService {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
         }
-        if !usesChunkedUpload {
-            _ = await CloudUploadResumeStore.shared.recordCompletedPart(
-                jobID: job.jobId,
-                uploadID: Self.singleSourceUploadID(jobID: job.jobId),
-                partNumber: 1,
-                etag: "source-upload-complete"
-            )
-        }
+        _ = await CloudUploadResumeStore.shared.recordCompletedPart(
+            jobID: job.jobId,
+            uploadID: Self.singleSourceUploadID(jobID: job.jobId),
+            partNumber: 1,
+            etag: "source-upload-complete"
+        )
     }
 
     private func uploadVideoInChunks(
