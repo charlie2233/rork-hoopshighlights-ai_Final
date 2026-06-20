@@ -445,7 +445,15 @@ struct VideoPlayerView: View {
         }
 
         do {
+            await MainActor.run {
+                importStatusMessage = "Checking cloud upload limits"
+                viewModel.updateVideoImportProgress(importStatusMessage)
+            }
             let capabilities = await cloudCapabilitiesForImport(source: source)
+            await MainActor.run {
+                importStatusMessage = capabilities == nil ? "Checking video details" : "Cloud upload limits loaded"
+                viewModel.updateVideoImportProgress(importStatusMessage)
+            }
             let summary = try await VideoImportPolicy.preflight(url: url, capabilities: capabilities)
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "video_import.preflight_passed",

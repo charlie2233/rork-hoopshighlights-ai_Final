@@ -41,29 +41,30 @@ Current client-side import limits are intentionally aligned with the staging bac
 
 1. Install a fresh debug build.
 2. Import the large source video.
-3. Start cloud analysis.
-4. Confirm the Player upload card appears.
-5. Confirm the upload card shows a compact upload metric row when progress is available:
+3. Confirm import briefly shows cloud upload limit checking before details/copying.
+4. Start cloud analysis.
+5. Confirm the Player upload card appears.
+6. Confirm the upload card shows a compact upload metric row when progress is available:
    - transferred MB/GB
    - speed
    - ETA
-6. If the server uses multipart upload, confirm the upload card shows a chunk progress row such as `Chunk 2 of 8`.
-7. Confirm the upload card shows at least one of:
+7. If the server uses multipart upload, confirm the upload card shows a chunk progress row such as `Chunk 2 of 8`.
+8. Confirm the upload card shows at least one of:
    - `Safe to switch apps`
    - `Background upload`
    - `Resumable upload`
    - `Recovered upload`
-8. Tap `Copy upload proof` while uploading.
-9. Switch away from HoopClips for at least 30 seconds.
-10. Return to HoopClips.
-11. If upload is still active, confirm progress/status is not lost.
-12. If the app relaunches or reconnects to a saved transfer, confirm it shows the recovered-upload proof prompt.
-13. Tap `Copy upload proof` again.
-14. Cancel the upload.
-15. Relaunch HoopClips.
-16. Confirm canceled upload does not recover as a stale pending upload.
-17. If upload fails instead, confirm the failed-upload proof prompt appears and tap `Send proof`.
-18. If HoopClips opens idle with a saved available upload, confirm the `Resume saved upload` card appears and resumes progress.
+9. Tap `Copy upload proof` while uploading.
+10. Switch away from HoopClips for at least 30 seconds.
+11. Return to HoopClips.
+12. If upload is still active, confirm progress/status is not lost.
+13. If the app relaunches or reconnects to a saved transfer, confirm it shows the recovered-upload proof prompt.
+14. Tap `Copy upload proof` again.
+15. Cancel the upload.
+16. Relaunch HoopClips.
+17. Confirm canceled upload does not recover as a stale pending upload.
+18. If upload fails instead, confirm the failed-upload proof prompt appears and tap `Send proof`.
+19. If HoopClips opens idle with a saved available upload, confirm the `Resume saved upload` card appears and resumes progress.
 
 ## Real iPhone TestFlight smoke checklist
 
