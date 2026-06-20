@@ -43,6 +43,17 @@ struct CloudAnalysisService {
 
     func cancelPendingBackgroundUpload(reason: String) async {
         guard let manifest = await CloudUploadResumeStore.shared.pendingManifest() else {
+            Self.recordCancelledUploadProofState(
+                reason: reason,
+                sessions: 0,
+                completedParts: 0,
+                partCount: 0,
+                hadManifest: false
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "background_upload_cancel_cleanup",
+                metadata: "reason=\(reason) sessions=0 hadManifest=false"
+            )
             return
         }
 
@@ -62,9 +73,16 @@ struct CloudAnalysisService {
         }
 
         await CloudUploadResumeStore.shared.clearAnyManifest(reason: reason)
+        Self.recordCancelledUploadProofState(
+            reason: reason,
+            sessions: sessionIdentifiers.count,
+            completedParts: manifest.completedParts.count,
+            partCount: manifest.partCount,
+            hadManifest: true
+        )
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "background_upload_cancel_cleanup",
-            metadata: "reason=\(reason) sessions=\(sessionIdentifiers.count)"
+            metadata: "reason=\(reason) sessions=\(sessionIdentifiers.count) hadManifest=true"
         )
     }
 
@@ -242,6 +260,36 @@ struct CloudAnalysisService {
 
         fields.append("privacy=no_urls_no_object_keys_no_local_file_paths")
         UserDefaults.standard.set(fields.joined(separator: " "), forKey: cloudUploadProgressSummaryDefaultsKey)
+    }
+
+    private static func recordCancelledUploadProofState(
+        reason: String,
+        sessions: Int,
+        completedParts: Int,
+        partCount: Int,
+        hadManifest: Bool
+    ) {
+        let generatedAt = ISO8601DateFormatter().string(from: Date())
+        let safeReason = safeUploadPlanComponent(reason)
+        let progressSummary = [
+            "at=\(generatedAt)",
+            "stage=cancelled",
+            "reason=\(safeReason)",
+            "hadManifest=\(hadManifest)",
+            "sessions=\(max(sessions, 0))",
+            "completed=\(max(completedParts, 0))/\(max(partCount, 0))",
+            "privacy=no_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: " ")
+        let serverPlanSummary = [
+            "cleared=true",
+            "at=\(generatedAt)",
+            "reason=\(safeReason)",
+            "hadManifest=\(hadManifest)",
+            "privacy=no_urls_no_object_keys_no_upload_ids"
+        ].joined(separator: " ")
+
+        UserDefaults.standard.set(progressSummary, forKey: cloudUploadProgressSummaryDefaultsKey)
+        UserDefaults.standard.set(serverPlanSummary, forKey: cloudUploadServerPlanDefaultsKey)
     }
 
     private static func recordServerUploadPlan(_ job: CreateCloudAnalysisJobResponse) {
