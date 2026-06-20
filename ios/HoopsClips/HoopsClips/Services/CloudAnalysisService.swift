@@ -2016,11 +2016,12 @@ private actor CloudUploadResumeStore {
         var parts = manifest.completedParts.filter { $0.partNumber != sessionPart.partNumber }
         parts.append(CloudMultipartCompletedPart(partNumber: sessionPart.partNumber, etag: etag))
         manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
+        manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
         manifest.updatedAt = Date()
         saveManifest(manifest)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_relaunch_part_completed",
-            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
         )
     }
 
@@ -2035,11 +2036,12 @@ private actor CloudUploadResumeStore {
         var parts = manifest.completedParts.filter { $0.partNumber != 1 }
         parts.append(CloudMultipartCompletedPart(partNumber: 1, etag: "source-upload-complete"))
         manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
+        manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
         manifest.updatedAt = Date()
         saveManifest(manifest)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_relaunch_source_completed",
-            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
         )
     }
 
