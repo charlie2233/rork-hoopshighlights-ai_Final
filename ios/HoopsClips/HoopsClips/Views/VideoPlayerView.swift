@@ -1910,6 +1910,9 @@ struct VideoPlayerView: View {
     private var analysisBackgroundUploadBadgeText: String? {
         let status = viewModel.analysisService.statusMessage.lowercased()
         guard status.contains("upload") else { return nil }
+        if status.contains("recover") {
+            return "Recovered upload"
+        }
         if status.contains("resum") || status.contains("saved") {
             return "Resumable upload"
         }

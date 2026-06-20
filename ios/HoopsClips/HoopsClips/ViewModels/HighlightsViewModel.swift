@@ -514,8 +514,8 @@ final class HighlightsViewModel {
         defer { endBackgroundAnalysisTask() }
         analysisMode = .cloud
         isCloudFallbackOffered = false
-        analysisService.beginExternalAnalysis(status: "Resuming saved background upload", progress: 0.14)
-        LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.started", metadata: "mode=cloud")
+        analysisService.beginExternalAnalysis(status: "Recovered saved background upload", progress: 0.14)
+        LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.recovered", metadata: "mode=cloud")
 
         do {
             guard let outcome = try await cloudAnalysisService.resumePendingBackgroundUploadIfNeeded(
@@ -535,7 +535,7 @@ final class HighlightsViewModel {
             case .pendingUpload:
                 analysisService.updateExternalAnalysis(
                     progress: max(analysisService.progress, 0.14),
-                    status: "Background upload still running"
+                    status: "Recovered background upload still running"
                 )
                 LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.pending", metadata: "mode=cloud")
             case .analysis(let result):
