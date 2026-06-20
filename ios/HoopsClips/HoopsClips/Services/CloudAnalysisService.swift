@@ -1,6 +1,8 @@
 import Foundation
 import UniformTypeIdentifiers
 
+private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case analysis(CloudAnalysisResult)
     case teamScan(PreparedCloudAnalysisJob)
@@ -33,6 +35,22 @@ struct CloudAnalysisService {
 
     func hasPendingBackgroundUpload() async -> Bool {
         await CloudUploadResumeStore.shared.pendingManifest() != nil
+    }
+
+    static func pendingBackgroundUploadManifestSummary() -> String {
+        guard let manifest = CloudUploadResumeStore.loadPersistedManifestSnapshot() else {
+            return "none"
+        }
+
+        let sourceAvailability = FileManager.default.fileExists(atPath: manifest.sourceFilePath) ? "available" : "missing"
+        return [
+            "pending=true",
+            "purpose=\(manifest.purpose.rawValue)",
+            "completed=\(manifest.completedParts.count)/\(manifest.partCount)",
+            "sessions=\(manifest.activeSessionIdentifiers.count)",
+            "source=\(sourceAvailability)",
+            "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
+        ].joined(separator: " ")
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -1295,14 +1313,11 @@ private struct CloudUploadResumeManifest: Codable, Sendable {
 private actor CloudUploadResumeStore {
     static let shared = CloudUploadResumeStore()
 
-    private let defaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
     private let maxStoredSessionIdentifiers = 24
     private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
 
     private init() {
         encoder.dateEncodingStrategy = .iso8601
-        decoder.dateDecodingStrategy = .iso8601
     }
 
     func begin(
@@ -1384,7 +1399,7 @@ private actor CloudUploadResumeStore {
 
     func clear(jobID: String, uploadID: String) {
         guard let manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
@@ -1401,17 +1416,23 @@ private actor CloudUploadResumeStore {
     }
 
     private func loadManifest() -> CloudUploadResumeManifest? {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return nil }
+        Self.loadPersistedManifestSnapshot()
+    }
+
+    static func loadPersistedManifestSnapshot() -> CloudUploadResumeManifest? {
+        guard let data = UserDefaults.standard.data(forKey: cloudUploadResumeManifestDefaultsKey) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(CloudUploadResumeManifest.self, from: data)
     }
 
     private func saveManifest(_ manifest: CloudUploadResumeManifest?) {
         guard let manifest,
               let data = try? encoder.encode(manifest) else {
-            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
             return
         }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        UserDefaults.standard.set(data, forKey: cloudUploadResumeManifestDefaultsKey)
     }
 }
 

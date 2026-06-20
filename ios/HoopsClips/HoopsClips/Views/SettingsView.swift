@@ -621,6 +621,7 @@ struct SettingsView: View {
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
         let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
+        let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
@@ -646,6 +647,7 @@ struct SettingsView: View {
             "backgroundUploadMode=ios_background_urlsession",
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
+            "pendingBackgroundUploadManifest=\(pendingBackgroundUploadManifest)",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "cloudTeamScanInProgress=\(viewModel.isCloudTeamScanInProgress)",
             "cloudTeamScanStatus=\(proofTextValue(viewModel.cloudTeamScanStatusMessage))",
