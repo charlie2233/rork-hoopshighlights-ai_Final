@@ -1,6 +1,16 @@
 import Foundation
 import UniformTypeIdentifiers
 
+nonisolated enum CloudUploadResumeOutcome: Sendable {
+    case analysis(CloudAnalysisResult)
+    case teamScan(PreparedCloudAnalysisJob)
+}
+
+private enum CloudUploadResumePurpose: String, Codable, Sendable {
+    case analysis
+    case teamScan
+}
+
 struct CloudAnalysisService {
     typealias HandoffHandler = @MainActor @Sendable (_ jobID: String, _ sourceObjectKey: String?) -> Void
 
@@ -19,6 +29,10 @@ struct CloudAnalysisService {
         self.decoder.dateDecodingStrategy = .iso8601
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601
+    }
+
+    func hasPendingBackgroundUpload() async -> Bool {
+        await CloudUploadResumeStore.shared.pendingManifest() != nil
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -324,6 +338,7 @@ struct CloudAnalysisService {
             from: url,
             baseURL: baseURL,
             installID: installID,
+            purpose: .analysis,
             stage: uploadStage,
             progressStart: 0.15,
             progressEnd: 0.27,
@@ -377,6 +392,7 @@ struct CloudAnalysisService {
             from: url,
             baseURL: baseURL,
             installID: installID,
+            purpose: .teamScan,
             stage: uploadStage,
             progressStart: 0.14,
             progressEnd: 0.19,
@@ -442,6 +458,95 @@ struct CloudAnalysisService {
         )
     }
 
+    func resumePendingBackgroundUploadIfNeeded(
+        installID: String,
+        teamSelection: HighlightTeamSelection? = nil,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws -> CloudUploadResumeOutcome? {
+        guard let manifest = await CloudUploadResumeStore.shared.pendingManifest() else {
+            return nil
+        }
+        guard manifest.installID == installID else {
+            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_install_mismatch")
+            return nil
+        }
+        guard let baseURL = configuredBaseURL() else {
+            throw CloudAnalysisError.notConfigured
+        }
+
+        let sourceURL = URL(fileURLWithPath: manifest.sourceFilePath)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
+            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_missing")
+            return nil
+        }
+
+        let stage = manifest.purpose == .teamScan ? "Resuming team scan upload" : "Resuming cloud upload"
+        let progressStart = manifest.purpose == .teamScan ? 0.14 : 0.15
+        let progressEnd = manifest.purpose == .teamScan ? 0.20 : 0.28
+        let tracker = CloudUploadProgressTracker()
+        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void = { snapshot, stalled in
+            let boundedFraction = min(max(snapshot.fraction, 0), 1)
+            let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
+            Task { @MainActor in
+                progress(
+                    progressValue,
+                    Self.uploadProgressMessage(
+                        stage: stage,
+                        fraction: boundedFraction,
+                        elapsedSeconds: snapshot.elapsedSeconds,
+                        uploadedBytes: snapshot.uploadedBytes,
+                        totalBytes: snapshot.totalBytes,
+                        stalled: stalled
+                    )
+                )
+            }
+        }
+
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_foreground_resume_started",
+            metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+        try await resumeUploadManifest(
+            manifest,
+            sourceURL: sourceURL,
+            baseURL: baseURL,
+            tracker: tracker,
+            reportUploadProgress: reportUploadProgress
+        )
+
+        switch manifest.purpose {
+        case .analysis:
+            progress(0.28, "Starting cloud clip search")
+            _ = try await startJob(baseURL: baseURL, jobID: manifest.jobID, installID: installID, teamSelection: teamSelection)
+            let result = try await pollJob(
+                baseURL: baseURL,
+                jobID: manifest.jobID,
+                sourceObjectKey: manifest.sourceObjectKey,
+                initialPollAfterSeconds: manifest.pollAfterSeconds,
+                progress: progress
+            )
+            return .analysis(result)
+        case .teamScan:
+            progress(0.20, "Scanning jersey colors")
+            let scan = try await scanJobTeams(baseURL: baseURL, jobID: manifest.jobID, installID: installID)
+            progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
+            let job = CreateCloudAnalysisJobResponse(
+                jobId: manifest.jobID,
+                uploadUrl: "",
+                uploadMethod: "PUT",
+                uploadHeaders: [:],
+                expiresAt: Date(),
+                pollAfterSeconds: manifest.pollAfterSeconds,
+                quotaRemainingToday: 0,
+                analysisMode: "cloud",
+                sourceObjectKey: manifest.sourceObjectKey,
+                resultObjectKey: manifest.resultObjectKey
+            )
+            return .teamScan(PreparedCloudAnalysisJob(sourceURL: sourceURL.standardizedFileURL, job: job, detectedTeams: scan.detectedTeams))
+        }
+    }
+
     private func configuredBaseURL() -> URL? {
         guard AppConstants.cloudAnalysisEnabled else { return nil }
         guard !AppConstants.cloudAnalysisBaseURL.isEmpty else { return nil }
@@ -493,6 +598,7 @@ struct CloudAnalysisService {
         from url: URL,
         baseURL: URL,
         installID: String,
+        purpose: CloudUploadResumePurpose,
         stage: String,
         progressStart: Double,
         progressEnd: Double,
@@ -580,6 +686,7 @@ struct CloudAnalysisService {
                 from: url,
                 baseURL: baseURL,
                 installID: installID,
+                purpose: purpose,
                 totalFileSizeBytes: FileManager.default.fileExists(atPath: url.path) ? (try fileInfo(for: url).fileSizeBytes) : 0,
                 tracker: tracker,
                 reportUploadProgress: reportUploadProgress
@@ -613,6 +720,7 @@ struct CloudAnalysisService {
         from url: URL,
         baseURL: URL,
         installID: String,
+        purpose: CloudUploadResumePurpose,
         totalFileSizeBytes: Int64,
         tracker: CloudUploadProgressTracker,
         reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
@@ -626,8 +734,13 @@ struct CloudAnalysisService {
         let totalBytes = max(totalFileSizeBytes, 0)
         var uploadedParts = await CloudUploadResumeStore.shared.begin(
             jobID: job.jobId,
+            installID: installID,
             sourceURL: url.standardizedFileURL,
             uploadID: resumableUpload.uploadId,
+            sourceObjectKey: job.sourceObjectKey,
+            resultObjectKey: job.resultObjectKey,
+            pollAfterSeconds: job.pollAfterSeconds,
+            purpose: purpose,
             chunkSizeBytes: safeChunkSize,
             partCount: resumableUpload.partCount,
             totalFileSizeBytes: totalBytes
@@ -715,6 +828,78 @@ struct CloudAnalysisService {
             response: response,
             successType: CloudMultipartPartResponse.self
         )
+    }
+
+    private func resumeUploadManifest(
+        _ manifest: CloudUploadResumeManifest,
+        sourceURL: URL,
+        baseURL: URL,
+        tracker: CloudUploadProgressTracker,
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
+    ) async throws {
+        let fileHandle = try FileHandle(forReadingFrom: sourceURL)
+        defer {
+            try? fileHandle.close()
+        }
+
+        var uploadedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
+        var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
+
+        for partNumber in 1...manifest.partCount {
+            try Task.checkCancellation()
+            let offset = UInt64(partNumber - 1) * UInt64(manifest.chunkSizeBytes)
+            if completedPartNumbers.contains(partNumber) {
+                await tracker.update(
+                    uploadedBytes: min(Int64(offset) + Int64(manifest.chunkSizeBytes), manifest.totalFileSizeBytes),
+                    totalBytes: manifest.totalFileSizeBytes
+                )
+                let snapshot = await tracker.snapshot()
+                reportUploadProgress(snapshot, false)
+                continue
+            }
+
+            try fileHandle.seek(toOffset: offset)
+            guard let chunk = try fileHandle.read(upToCount: manifest.chunkSizeBytes), !chunk.isEmpty else {
+                break
+            }
+
+            let partTarget = try await createMultipartPart(
+                baseURL: baseURL,
+                jobID: manifest.jobID,
+                installID: manifest.installID,
+                uploadID: manifest.uploadID,
+                partNumber: partNumber
+            )
+            let etag = try await uploadMultipartChunk(
+                partTarget,
+                chunk: chunk,
+                alreadyUploadedBytes: min(Int64(offset), manifest.totalFileSizeBytes),
+                totalBytes: manifest.totalFileSizeBytes,
+                uploadID: manifest.uploadID,
+                tracker: tracker,
+                reportUploadProgress: reportUploadProgress
+            )
+            uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                jobID: manifest.jobID,
+                uploadID: manifest.uploadID,
+                partNumber: partNumber,
+                etag: etag
+            )
+            completedPartNumbers.insert(partNumber)
+        }
+
+        guard uploadedParts.count == manifest.partCount else {
+            throw CloudAnalysisError.uploadFailed
+        }
+
+        try await completeMultipartUpload(
+            baseURL: baseURL,
+            jobID: manifest.jobID,
+            installID: manifest.installID,
+            uploadID: manifest.uploadID,
+            parts: uploadedParts
+        )
+        await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
     }
 
     private func uploadMultipartChunk(
@@ -1091,8 +1276,13 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
 
 private struct CloudUploadResumeManifest: Codable, Sendable {
     var jobID: String
+    var installID: String
     var sourceFilePath: String
     var uploadID: String
+    var sourceObjectKey: String?
+    var resultObjectKey: String?
+    var pollAfterSeconds: Int
+    var purpose: CloudUploadResumePurpose
     var chunkSizeBytes: Int
     var partCount: Int
     var totalFileSizeBytes: Int64
@@ -1117,8 +1307,13 @@ private actor CloudUploadResumeStore {
 
     func begin(
         jobID: String,
+        installID: String,
         sourceURL: URL,
         uploadID: String,
+        sourceObjectKey: String?,
+        resultObjectKey: String?,
+        pollAfterSeconds: Int,
+        purpose: CloudUploadResumePurpose,
         chunkSizeBytes: Int,
         partCount: Int,
         totalFileSizeBytes: Int64
@@ -1127,8 +1322,13 @@ private actor CloudUploadResumeStore {
         if manifest?.jobID != jobID || manifest?.uploadID != uploadID {
             manifest = CloudUploadResumeManifest(
                 jobID: jobID,
+                installID: installID,
                 sourceFilePath: sourceURL.path,
                 uploadID: uploadID,
+                sourceObjectKey: sourceObjectKey,
+                resultObjectKey: resultObjectKey,
+                pollAfterSeconds: pollAfterSeconds,
+                purpose: purpose,
                 chunkSizeBytes: chunkSizeBytes,
                 partCount: partCount,
                 totalFileSizeBytes: totalFileSizeBytes,
@@ -1146,6 +1346,10 @@ private actor CloudUploadResumeStore {
             metadata: "partCount=\(partCount) completed=\(manifest?.completedParts.count ?? 0)"
         )
         return manifest?.completedParts.sorted { $0.partNumber < $1.partNumber } ?? []
+    }
+
+    func pendingManifest() -> CloudUploadResumeManifest? {
+        loadManifest()
     }
 
     func recordSession(jobID: String, uploadID: String, sessionIdentifier: String) {

@@ -459,7 +459,15 @@ final class HighlightsViewModel {
         guard AppConstants.cloudAnalysisEnabled,
               !analysisService.isAnalyzing,
               analysisService.clips.isEmpty,
-              lastAnalyzedAt == nil,
+              lastAnalyzedAt == nil else {
+            return
+        }
+
+        if await resumePendingBackgroundUploadIfNeeded() {
+            return
+        }
+
+        guard
               let jobID = cloudAnalysisJobID,
               let sourceObjectKey = cloudEditSourceObjectKey else {
             return
@@ -493,6 +501,67 @@ final class HighlightsViewModel {
             handleInFlightCloudAnalysisResumeFailure(error)
         } catch {
             handleInFlightCloudAnalysisResumeFailure(CloudAnalysisError.network(error.localizedDescription))
+        }
+    }
+
+    private func resumePendingBackgroundUploadIfNeeded() async -> Bool {
+        guard await cloudAnalysisService.hasPendingBackgroundUpload() else {
+            return false
+        }
+
+        await AnalysisNotificationService.shared.prepareForAnalysis()
+        beginBackgroundAnalysisTask()
+        defer { endBackgroundAnalysisTask() }
+        analysisMode = .cloud
+        isCloudFallbackOffered = false
+        analysisService.beginExternalAnalysis(status: "Resuming background upload", progress: 0.14)
+        LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.started", metadata: "mode=cloud")
+
+        do {
+            guard let outcome = try await cloudAnalysisService.resumePendingBackgroundUploadIfNeeded(
+                installID: installID,
+                teamSelection: settings.highlightTeamSelection
+            ) { [weak service = analysisService] progress, status in
+                service?.updateExternalAnalysis(progress: progress, status: status)
+            } else {
+                analysisService.finishExternalAnalysis(with: "No background upload to resume")
+                return false
+            }
+
+            switch outcome {
+            case .analysis(let result):
+                applyCompletedCloudAnalysisResult(result, usedFallback: false)
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "upload.resume.analysis_completed",
+                    metadata: "mode=cloud clips=\(analysisService.clips.count)"
+                )
+            case .teamScan(let preparedJob):
+                pendingCloudAnalysisJob = preparedJob
+                cloudDetectedTeams = preparedJob.detectedTeams
+                resetStaleHighlightTeamSelection(against: preparedJob.detectedTeams)
+                hasConfirmedHighlightTeamSelection = preparedJob.detectedTeams.isEmpty
+                cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
+                    ? "No clear jersey colors found yet"
+                    : "Choose a team before analysis"
+                analysisService.finishExternalAnalysis(with: cloudTeamScanStatusMessage ?? "Team choices ready")
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "upload.resume.team_scan_completed",
+                    metadata: "teams=\(preparedJob.detectedTeams.count)"
+                )
+            }
+            return true
+        } catch let error where error.isTaskCancellation {
+            analysisService.finishExternalAnalysis(with: "Background upload paused")
+            LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.cancelled", metadata: "mode=cloud")
+            return true
+        } catch let error as CloudAnalysisError {
+            analysisService.finishExternalAnalysis(with: error.localizedDescription)
+            LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.failed", metadata: "reason=\(error.localizedDescription)")
+            return true
+        } catch {
+            analysisService.finishExternalAnalysis(with: error.localizedDescription)
+            LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.failed", metadata: "reason=\(error.localizedDescription)")
+            return true
         }
     }
 
