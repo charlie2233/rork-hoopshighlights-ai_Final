@@ -32,6 +32,16 @@ export interface CreateCloudAnalysisJobRequest {
   uploadPreference?: "single" | "resumable" | null;
 }
 
+export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
+  maxFileSizeBytes: number;
+  maxDurationSeconds: number;
+  resumableUploadThresholdBytes: number;
+  supportsResumableUpload: boolean;
+  signedUploadTtlSeconds: number;
+  defaultPollAfterSeconds: number;
+  analysisMode: "cloud";
+}
+
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
   uploadUrl: string;

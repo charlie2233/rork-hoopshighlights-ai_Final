@@ -31,6 +31,8 @@ Current client-side import limits are intentionally aligned with the staging bac
 - Maximum cloud upload size: 2 GB.
 - Maximum cloud analysis duration: 75 minutes.
 - Import still requires enough local scratch space for the file-backed transfer.
+- Deployed Worker capability probe: `GET /v1/analysis/capabilities`.
+- Capability proof should confirm `maxFileSizeBytes`, `maxDurationSeconds`, `supportsResumableUpload`, and `resumableUploadThresholdBytes`.
 
 ## Simulator smoke checklist
 

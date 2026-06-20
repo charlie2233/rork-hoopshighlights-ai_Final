@@ -1,5 +1,6 @@
 import type { Env } from "../env";
 import type {
+  CloudAnalysisCapabilitiesResponse,
   CloudAnalysisJobResponse,
   CreateCloudAnalysisJobRequest,
   CreateCloudAnalysisJobResponse,
@@ -50,6 +51,27 @@ import { teamIdentityMatches } from "../team-identity";
 const DEFAULT_FREE_DAILY_QUOTA = 3;
 const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 64 * 1024 * 1024;
 
+function handleCapabilities(
+  requestId: string,
+  runtime: ReturnType<typeof resolveRuntimeConfig>
+): Response {
+  const response: CloudAnalysisCapabilitiesResponse = {
+    requestId,
+    schemaVersion: runtime.schemaVersion,
+    confidence: null,
+    modelVersion: null,
+    failureReason: null,
+    maxFileSizeBytes: runtime.maxFileSizeBytes,
+    maxDurationSeconds: runtime.maxDurationSeconds,
+    resumableUploadThresholdBytes: RESUMABLE_UPLOAD_THRESHOLD_BYTES,
+    supportsResumableUpload: true,
+    signedUploadTtlSeconds: runtime.signedUploadTtlSeconds,
+    defaultPollAfterSeconds: runtime.defaultPollAfterSeconds,
+    analysisMode: "cloud"
+  };
+  return jsonResponse(response, { status: 200 }, requestId);
+}
+
 export async function routePublicRequest(
   request: Request,
   env: Env,
@@ -63,6 +85,10 @@ export async function routePublicRequest(
 
   if (request.method === "GET" && route === "/editing/version") {
     return getEditingVersion(env, requestId);
+  }
+
+  if (request.method === "GET" && route === "/capabilities") {
+    return handleCapabilities(requestId, runtime);
   }
 
   if (request.method === "POST" && (route === "/uploads/presign" || isLegacyPresign)) {
