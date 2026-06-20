@@ -1632,15 +1632,33 @@ struct VideoPlayerView: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 analysisProgressTitleLabel
+                if let analysisBackgroundUploadBadgeText {
+                    analysisBackgroundUploadBadge(analysisBackgroundUploadBadgeText)
+                }
                 Spacer(minLength: 8)
                 analysisProgressPercentText
             }
 
             VStack(alignment: .center, spacing: 6) {
                 analysisProgressTitleLabel
+                if let analysisBackgroundUploadBadgeText {
+                    analysisBackgroundUploadBadge(analysisBackgroundUploadBadgeText)
+                }
                 analysisProgressPercentText
             }
         }
+    }
+
+    private func analysisBackgroundUploadBadge(_ text: String) -> some View {
+        Label(text, systemImage: "arrow.up.circle.fill")
+            .font(.caption2.weight(.heavy))
+            .foregroundStyle(Color.cyan)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.cyan.opacity(0.13), in: .capsule)
+            .accessibilityIdentifier("analysis.backgroundUploadBadge")
     }
 
     private var analysisProgressTitleLabel: some View {
@@ -1889,12 +1907,27 @@ struct VideoPlayerView: View {
         )
     }
 
+    private var analysisBackgroundUploadBadgeText: String? {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        guard status.contains("upload") else { return nil }
+        if status.contains("resum") || status.contains("saved") {
+            return "Resumable upload"
+        }
+        if status.contains("running") || status.contains("background") {
+            return "Background upload"
+        }
+        return "Safe to switch apps"
+    }
+
     private var analysisProgressAccessibilityValue: String {
         var parts = [
             "\(Int(viewModel.analysisService.progress * 100)) percent.",
             viewModel.analysisService.statusMessage,
             analysisProgressDetailText
         ]
+        if let analysisBackgroundUploadBadgeText {
+            parts.append(analysisBackgroundUploadBadgeText)
+        }
         if let analysisApproximateRemainingText {
             parts.append(analysisApproximateRemainingText)
         }
