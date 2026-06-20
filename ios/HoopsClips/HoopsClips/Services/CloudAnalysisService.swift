@@ -581,7 +581,7 @@ struct CloudAnalysisService {
             return
         }
 
-        let (_, response) = try await uploadSession.upload(for: request, fromFile: url)
+        let response = try await delegate.upload(request: request, fromFile: url, using: uploadSession)
         let finalSnapshot = await tracker.snapshot()
         await MainActor.run {
             progress(
@@ -737,7 +737,7 @@ struct CloudAnalysisService {
                     uploadSession.finishTasksAndInvalidate()
                 }
 
-                let (_, response) = try await uploadSession.upload(for: request, fromFile: chunkFileURL)
+                let response = try await delegate.upload(request: request, fromFile: chunkFileURL, using: uploadSession)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw CloudAnalysisError.uploadFailed
                 }
@@ -1053,12 +1053,28 @@ private actor CloudUploadProgressTracker {
     }
 }
 
-private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URLResponse, Error>?
 
     init(onProgress: @escaping @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void) {
         self.onProgress = onProgress
         super.init()
+    }
+
+    func upload(request: URLRequest, fromFile fileURL: URL, using session: URLSession) async throws -> URLResponse {
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = session.uploadTask(with: request, fromFile: fileURL)
+                lock.lock()
+                self.continuation = continuation
+                lock.unlock()
+                task.resume()
+            }
+        }, onCancel: {
+            session.invalidateAndCancel()
+        })
     }
 
     func urlSession(
@@ -1075,5 +1091,27 @@ private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegat
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         guard let identifier = session.configuration.identifier else { return }
         CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        lock.lock()
+        let continuation = continuation
+        self.continuation = nil
+        lock.unlock()
+
+        guard let continuation else { return }
+        if let error {
+            continuation.resume(throwing: error)
+            return
+        }
+        guard let response = task.response else {
+            continuation.resume(throwing: CloudAnalysisError.invalidResponse)
+            return
+        }
+        continuation.resume(returning: response)
     }
 }
