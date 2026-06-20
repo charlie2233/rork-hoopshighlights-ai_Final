@@ -35,6 +35,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 - Capability proof should confirm `maxFileSizeBytes`, `maxDurationSeconds`, `supportsResumableUpload`, `recommendedUploadPreference`, and `resumableUploadThresholdBytes`.
 - iOS capability fetch is bounded; if the Worker is slow, proof should show `server_upload_capabilities_unavailable` with `reason=timeout` and continue with client defaults.
 - Deploy smoke helper: `python3 scripts/analysis_capabilities_smoke.py --worker-url <public-worker-url>`.
+- Optional structured policy smoke: `python3 scripts/analysis_capabilities_smoke.py --worker-url <public-worker-url> --check-policy-errors`.
 - If a file exceeds deployed Worker policy, presign should return `file_too_large`.
 - If duration exceeds deployed Worker policy, presign should return `unsupported_duration`.
 
