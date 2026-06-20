@@ -35,6 +35,9 @@ struct VideoPlayerView: View {
     @State private var lastAnalysisAnnouncementPercent = -1
     @State private var showingCancelUploadConfirmation = false
     @State private var didCopyUploadProof = false
+    @State private var isSendingUploadProof = false
+    @State private var didSendUploadProof = false
+    @State private var uploadProofSendFailed = false
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
@@ -1606,22 +1609,17 @@ struct VideoPlayerView: View {
             }
 
             if analysisBackgroundUploadBadgeText != nil {
-                Button {
-                    copyBackgroundUploadProof()
-                } label: {
-                    Label(didCopyUploadProof ? "Upload proof copied" : "Copy upload proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.cyan)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
-                        }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        backgroundUploadProofCopyButton
+                        backgroundUploadProofSendButton
+                    }
+
+                    VStack(spacing: 8) {
+                        backgroundUploadProofCopyButton
+                        backgroundUploadProofSendButton
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("analysis.copyBackgroundUploadProofButton")
             }
 
             Button {
@@ -1987,6 +1985,71 @@ struct VideoPlayerView: View {
         return String(compact.prefix(180))
     }
 
+    private var backgroundUploadProofCopyButton: some View {
+        Button {
+            copyBackgroundUploadProof()
+        } label: {
+            Label(didCopyUploadProof ? "Copied" : "Copy proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.cyan)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("analysis.copyBackgroundUploadProofButton")
+    }
+
+    private var backgroundUploadProofSendButton: some View {
+        Button {
+            sendBackgroundUploadProof()
+        } label: {
+            Label(uploadProofSendButtonTitle, systemImage: uploadProofSendButtonIcon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(uploadProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background((uploadProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen).opacity(0.11), in: .rect(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke((uploadProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen).opacity(0.24), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(isSendingUploadProof)
+        .accessibilityIdentifier("analysis.sendBackgroundUploadProofButton")
+    }
+
+    private var uploadProofSendButtonTitle: String {
+        if isSendingUploadProof {
+            return "Sending..."
+        }
+        if didSendUploadProof {
+            return "Sent"
+        }
+        if uploadProofSendFailed {
+            return "Queued retry"
+        }
+        return "Send proof"
+    }
+
+    private var uploadProofSendButtonIcon: String {
+        if isSendingUploadProof {
+            return "paperplane"
+        }
+        if didSendUploadProof {
+            return "checkmark.circle.fill"
+        }
+        if uploadProofSendFailed {
+            return "arrow.clockwise.circle.fill"
+        }
+        return "paperplane.fill"
+    }
+
     private func copyBackgroundUploadProof() {
         UIPasteboard.general.string = backgroundUploadProofText
         didCopyUploadProof = true
@@ -1997,6 +2060,28 @@ struct VideoPlayerView: View {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
             didCopyUploadProof = false
+        }
+    }
+
+    private func sendBackgroundUploadProof() {
+        guard !isSendingUploadProof else { return }
+        isSendingUploadProof = true
+        didSendUploadProof = false
+        uploadProofSendFailed = false
+        let proof = backgroundUploadProofText
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "upload.proof.send_requested",
+            metadata: "progress=\(Int(viewModel.analysisService.progress * 100))"
+        )
+
+        Task { @MainActor in
+            let sent = await LaunchTelemetry.shared.sendManualUploadProof(proof)
+            isSendingUploadProof = false
+            didSendUploadProof = sent
+            uploadProofSendFailed = !sent
+            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+            didSendUploadProof = false
+            uploadProofSendFailed = false
         }
     }
 

@@ -295,6 +295,71 @@ final class LaunchTelemetry {
         }
     }
 
+    @discardableResult
+    func sendManualUploadProof(_ proofText: String) async -> Bool {
+        let snapshot = currentStabilitySnapshot()
+        let queuedAt = Date()
+        let diagnosis = CrashDiagnosis(
+            title: "Manual background upload smoke proof",
+            likelyCause: "A tester manually sent background upload proof from the Player upload card.",
+            suggestedFix: "Review upload progress, latest background upload proof, resume manifest summary, and cloud routing flags to confirm whether the upload survived app switching or needs retry/resume work."
+        )
+        let payload = CrashBreadcrumbReport(
+            subject: "HoopClips upload smoke proof",
+            recipientEmail: Self.crashReportRecipientEmail,
+            replyToEmail: Self.crashReportRecipientEmail,
+            source: "HoopClips iOS Player upload card",
+            message: "Manual background upload proof sent from Player.",
+            proofText: proofText,
+            appVersion: Self.bundleShortVersion,
+            buildVersion: Self.bundleBuildVersion,
+            previousAppVersion: snapshot.appVersion,
+            previousBuildVersion: snapshot.buildVersion,
+            environmentName: runtimeConfig.environmentName,
+            cloudLaunchMode: runtimeConfig.cloudLaunchMode.rawValue,
+            sessionID: snapshot.sessionID,
+            lifecycleState: Self.redactedAIEditFailureReason(snapshot.lifecycleState),
+            screen: Self.redactedAIEditFailureReason(snapshot.screen),
+            lastCheckpoint: Self.redactedAIEditFailureReason(snapshot.lastCheckpoint),
+            lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
+            latestAIEditProof: latestAIEditProofSummary,
+            latestUnexpectedExit: latestUnexpectedExitSummary,
+            diagnosisTitle: diagnosis.title,
+            likelyCause: diagnosis.likelyCause,
+            suggestedFix: diagnosis.suggestedFix,
+            memoryWarningCount: max(0, snapshot.memoryWarningCount),
+            launchedAt: Self.isoString(snapshot.launchedAt),
+            lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
+            queuedAt: Self.isoString(queuedAt),
+            privacyNote: "No secrets, presigned URLs, object keys, or local file URLs are included."
+        )
+
+        UserDefaults.standard.set(
+            "upload-proof queued at \(Self.isoString(queuedAt)) endpoint=formspree",
+            forKey: latestCrashReportDeliveryKey
+        )
+        logger.notice("Manual Formspree upload proof requested from Player.")
+
+        do {
+            try await Self.postCrashBreadcrumbReport(payload)
+            UserDefaults.standard.set(
+                "upload-proof sent at \(Self.isoString(Date())) endpoint=formspree",
+                forKey: latestCrashReportDeliveryKey
+            )
+            logger.notice("Manual Formspree upload proof sent.")
+            return true
+        } catch {
+            let safeError = Self.redactedAIEditFailureReason(error.localizedDescription)
+            UserDefaults.standard.set(
+                "upload-proof failed at \(Self.isoString(Date())) endpoint=formspree error=\(safeError)",
+                forKey: latestCrashReportDeliveryKey
+            )
+            logger.error("Manual Formspree upload proof failed: \(safeError, privacy: .public)")
+            queueCrashReportForRetry(payload, reason: safeError)
+            return false
+        }
+    }
+
     private func recordLatestAIEditProof(
         eventName: String,
         editJobID: String?,
