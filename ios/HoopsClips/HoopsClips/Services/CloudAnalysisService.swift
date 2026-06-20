@@ -1679,26 +1679,46 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 metadata: "source=urlsession_delegate error=\(error.localizedDescription)"
             )
         } else {
-            if let http = task.response as? HTTPURLResponse {
-                if identifier.contains(".part-"),
-                   let etag = Self.headerValue("ETag", from: http) {
-                    Task {
-                        await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
-                            sessionIdentifier: identifier,
-                            etag: etag
-                        )
-                    }
-                } else if identifier.hasSuffix(".source") {
-                    Task {
-                        await CloudUploadResumeStore.shared.recordRelaunchedSourceUploadCompleted(
-                            sessionIdentifier: identifier
-                        )
-                    }
+            guard let http = task.response as? HTTPURLResponse else {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "relaunch_task_no_http_response",
+                    metadata: "source=urlsession_delegate"
+                )
+                return
+            }
+
+            guard (200..<300).contains(http.statusCode) else {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "relaunch_task_http_failed",
+                    metadata: "source=urlsession_delegate status=\(http.statusCode)"
+                )
+                return
+            }
+
+            if identifier.contains(".part-") {
+                guard let etag = Self.headerValue("ETag", from: http), !etag.isEmpty else {
+                    LaunchTelemetry.shared.recordBackgroundUploadProof(
+                        "relaunch_task_missing_etag",
+                        metadata: "source=urlsession_delegate status=\(http.statusCode)"
+                    )
+                    return
+                }
+                Task {
+                    await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
+                        sessionIdentifier: identifier,
+                        etag: etag
+                    )
+                }
+            } else if identifier.hasSuffix(".source") {
+                Task {
+                    await CloudUploadResumeStore.shared.recordRelaunchedSourceUploadCompleted(
+                        sessionIdentifier: identifier
+                    )
                 }
             }
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "relaunch_task_completed",
-                metadata: "source=urlsession_delegate"
+                metadata: "source=urlsession_delegate status=\(http.statusCode)"
             )
         }
     }
