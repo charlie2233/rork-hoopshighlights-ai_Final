@@ -111,6 +111,26 @@ struct CloudAnalysisService {
         UserDefaults.standard.string(forKey: cloudUploadProgressSummaryDefaultsKey) ?? "none"
     }
 
+    static func recordRelaunchedUploadProgressSummary(
+        event: String,
+        statusCode: Int? = nil,
+        reason: String? = nil
+    ) {
+        var fields = [
+            "at=\(ISO8601DateFormatter().string(from: Date()))",
+            "stage=relaunched_upload",
+            "event=\(safeUploadPlanComponent(event))"
+        ]
+        if let statusCode {
+            fields.append("status=\(statusCode)")
+        }
+        if let reason {
+            fields.append("reason=\(safeUploadPlanComponent(reason))")
+        }
+        fields.append("privacy=no_urls_no_object_keys_no_local_file_paths")
+        UserDefaults.standard.set(fields.joined(separator: " "), forKey: cloudUploadProgressSummaryDefaultsKey)
+    }
+
     static func latestServerUploadCapabilitySummary() -> String {
         UserDefaults.standard.string(forKey: cloudUploadCapabilitySummaryDefaultsKey) ?? "none"
     }
@@ -1701,12 +1721,21 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
         didCompleteWithError error: Error?
     ) {
         if let error {
+            let reason = Self.safeRelaunchErrorReason(error)
+            CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                event: "relaunch_task_failed",
+                reason: reason
+            )
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "relaunch_task_failed",
-                metadata: "source=urlsession_delegate reason=\(Self.safeRelaunchErrorReason(error))"
+                metadata: "source=urlsession_delegate reason=\(reason)"
             )
         } else {
             guard let http = task.response as? HTTPURLResponse else {
+                CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                    event: "relaunch_task_no_http_response",
+                    reason: "no_http_response"
+                )
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "relaunch_task_no_http_response",
                     metadata: "source=urlsession_delegate"
@@ -1715,6 +1744,11 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
             }
 
             guard (200..<300).contains(http.statusCode) else {
+                CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                    event: "relaunch_task_http_failed",
+                    statusCode: http.statusCode,
+                    reason: "http_failed"
+                )
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "relaunch_task_http_failed",
                     metadata: "source=urlsession_delegate status=\(http.statusCode)"
@@ -1724,6 +1758,11 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
 
             if identifier.contains(".part-") {
                 guard let etag = Self.headerValue("ETag", from: http), !etag.isEmpty else {
+                    CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                        event: "relaunch_task_missing_etag",
+                        statusCode: http.statusCode,
+                        reason: "missing_etag"
+                    )
                     LaunchTelemetry.shared.recordBackgroundUploadProof(
                         "relaunch_task_missing_etag",
                         metadata: "source=urlsession_delegate status=\(http.statusCode)"
@@ -1747,6 +1786,10 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                     self.endPersistenceIfNeeded()
                 }
             }
+            CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                event: "relaunch_task_completed",
+                statusCode: http.statusCode
+            )
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "relaunch_task_completed",
                 metadata: "source=urlsession_delegate status=\(http.statusCode)"
