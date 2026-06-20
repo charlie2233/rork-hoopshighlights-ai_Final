@@ -1110,11 +1110,47 @@ struct CloudAnalysisService {
                 return etag
             } catch {
                 lastError = error
+                let retrying = attempt < 2
+                let retryReason = Self.uploadRetryReason(for: error)
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "chunk_upload_attempt_failed",
+                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1) retrying=\(retrying) reason=\(retryReason)"
+                )
+                let snapshot = await tracker.snapshot()
+                reportUploadProgress(
+                    snapshot,
+                    true,
+                    retrying
+                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attempt + 1)"
+                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attempt + 1)"
+                )
                 try await Task.sleep(nanoseconds: 700_000_000)
             }
         }
 
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "chunk_upload_failed",
+            metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempts=3 reason=\(Self.uploadRetryReason(for: lastError))"
+        )
         throw lastError ?? CloudAnalysisError.uploadFailed
+    }
+
+    private static func uploadRetryReason(for error: Error?) -> String {
+        guard let error else {
+            return "unknown"
+        }
+        if error.isTaskCancellation {
+            return "cancelled"
+        }
+        if let urlError = error as? URLError {
+            return "url_error_\(urlError.code.rawValue)"
+        }
+        if error is CloudAnalysisError {
+            return "cloud_analysis_error"
+        }
+        return String(describing: type(of: error))
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
     }
 
     private func completeMultipartUpload(
