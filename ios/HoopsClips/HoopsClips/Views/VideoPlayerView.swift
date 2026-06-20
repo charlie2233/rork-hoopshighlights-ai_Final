@@ -1593,6 +1593,25 @@ struct VideoPlayerView: View {
                     .accessibilityIdentifier("analysis.approximateRemainingTime")
             }
 
+            if let analysisUploadMetricText {
+                Label(analysisUploadMetricText, systemImage: "speedometer")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.cyan)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.cyan.opacity(0.22), lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("analysis.uploadMetricSummary")
+            }
+
             if let analysisBackgroundReminderText {
                 Label(analysisBackgroundReminderText, systemImage: "cloud.fill")
                     .font(.caption2.weight(.semibold))
@@ -1925,6 +1944,47 @@ struct VideoPlayerView: View {
         )
     }
 
+    private var analysisUploadMetricText: String? {
+        let statusMessage = viewModel.analysisService.statusMessage
+        let lowercasedStatus = statusMessage.lowercased()
+        guard lowercasedStatus.contains("upload") else { return nil }
+
+        let segments = statusMessage
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let byteProgress = segments.first { segment in
+            segment.contains("/")
+                && (segment.contains("MB") || segment.contains("GB") || segment.contains("KB"))
+        }
+        let speed = segments.first { $0.contains("/s") }
+        let eta = segments.first { segment in
+            let lowercasedSegment = segment.lowercased()
+            return lowercasedSegment.hasPrefix("about ") && lowercasedSegment.contains(" left")
+        }
+
+        var parts: [String] = []
+        if let byteProgress {
+            parts.append(byteProgress)
+        }
+        if let speed {
+            parts.append("Speed \(speed)")
+        }
+        if let eta {
+            let etaValue = eta
+                .replacingOccurrences(of: "about ", with: "", options: [.caseInsensitive])
+                .replacingOccurrences(of: " left", with: "", options: [.caseInsensitive])
+            parts.append("ETA \(etaValue)")
+        }
+        if parts.isEmpty, lowercasedStatus.contains("paused or slow connection") {
+            parts.append("Waiting for connection")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
+    }
+
     private var analysisBackgroundUploadBadgeText: String? {
         let status = viewModel.analysisService.statusMessage.lowercased()
         guard status.contains("upload") else { return nil }
@@ -1951,6 +2011,9 @@ struct VideoPlayerView: View {
         }
         if let analysisApproximateRemainingText {
             parts.append(analysisApproximateRemainingText)
+        }
+        if let analysisUploadMetricText {
+            parts.append(analysisUploadMetricText)
         }
         if let analysisBackgroundReminderText {
             parts.append(analysisBackgroundReminderText)

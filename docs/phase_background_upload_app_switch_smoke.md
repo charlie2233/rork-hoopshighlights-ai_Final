@@ -38,20 +38,24 @@ Current client-side import limits are intentionally aligned with the staging bac
 2. Import the large source video.
 3. Start cloud analysis.
 4. Confirm the Player upload card appears.
-5. Confirm the upload card shows at least one of:
+5. Confirm the upload card shows a compact upload metric row when progress is available:
+   - transferred MB/GB
+   - speed
+   - ETA
+6. Confirm the upload card shows at least one of:
    - `Safe to switch apps`
    - `Background upload`
    - `Resumable upload`
    - `Recovered upload`
-6. Tap `Copy upload proof` while uploading.
-7. Switch away from HoopClips for at least 30 seconds.
-8. Return to HoopClips.
-9. If upload is still active, confirm progress/status is not lost.
-10. If the app relaunches, confirm it shows recovered upload state or continues cloud analysis.
-11. Tap `Copy upload proof` again.
-12. Cancel the upload.
-13. Relaunch HoopClips.
-14. Confirm canceled upload does not recover as a stale pending upload.
+7. Tap `Copy upload proof` while uploading.
+8. Switch away from HoopClips for at least 30 seconds.
+9. Return to HoopClips.
+10. If upload is still active, confirm progress/status is not lost.
+11. If the app relaunches, confirm it shows recovered upload state or continues cloud analysis.
+12. Tap `Copy upload proof` again.
+13. Cancel the upload.
+14. Relaunch HoopClips.
+15. Confirm canceled upload does not recover as a stale pending upload.
 
 ## Real iPhone TestFlight smoke checklist
 
