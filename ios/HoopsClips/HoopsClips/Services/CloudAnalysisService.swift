@@ -784,6 +784,28 @@ struct CloudAnalysisService {
             "resume_manifest_foreground_resume_started",
             metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
+        if !manifest.activeSessionIdentifiers.isEmpty,
+           manifest.completedParts.count < manifest.partCount {
+            let completedBytes = Self.completedUploadBytes(
+                completedParts: manifest.completedParts,
+                chunkSizeBytes: manifest.chunkSizeBytes,
+                totalFileSizeBytes: manifest.totalFileSizeBytes
+            )
+            await tracker.update(uploadedBytes: completedBytes, totalBytes: manifest.totalFileSizeBytes)
+            let snapshot = await tracker.snapshot()
+            reportUploadProgress(snapshot, true, "background upload still running")
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: snapshot,
+                transferContext: "background upload still running",
+                stalled: true
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_active_sessions_pending",
+                metadata: "activeSessions=\(manifest.activeSessionIdentifiers.count) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+            )
+            return .pendingUpload
+        }
         if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
             guard !manifest.completedParts.isEmpty else {
                 LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_still_uploading")
@@ -1107,6 +1129,21 @@ struct CloudAnalysisService {
             )
             throw error
         }
+    }
+
+    private static func completedUploadBytes(
+        completedParts: [CloudMultipartCompletedPart],
+        chunkSizeBytes: Int,
+        totalFileSizeBytes: Int64
+    ) -> Int64 {
+        let safeChunkSize = max(Int64(chunkSizeBytes), 1)
+        let safeTotal = max(totalFileSizeBytes, 0)
+        let completedBytes = completedParts.reduce(Int64(0)) { partial, part in
+            let partStart = max(Int64(part.partNumber - 1), 0) * safeChunkSize
+            let partEnd = min(Int64(max(part.partNumber, 0)) * safeChunkSize, safeTotal)
+            return partial + max(partEnd - partStart, 0)
+        }
+        return min(completedBytes, safeTotal)
     }
 
     private func uploadVideoInChunks(
