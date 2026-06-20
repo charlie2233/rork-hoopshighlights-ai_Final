@@ -77,6 +77,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 13. Cancel once and confirm a later relaunch does not recover the canceled upload.
 14. If upload fails instead of completing, confirm the failed-upload proof prompt appears and send proof before retrying.
 15. If a recovered background upload completes, confirm the local notification says the background upload finished.
+16. If no notification appears, copy proof and check for `analysis_notification_blocked` or `analysis_notification_schedule_failed`.
 
 ## Proof fields to capture
 
@@ -128,6 +129,10 @@ Helpful proof events:
 - `background_upload_cancel_cleanup`
 - `upload_proof_manual_send_queued`
 - `upload_proof_manual_send_succeeded`
+- `analysis_notification_permission_denied`
+- `analysis_notification_blocked`
+- `analysis_notification_scheduled`
+- `analysis_notification_schedule_failed`
 
 ## Pass criteria
 

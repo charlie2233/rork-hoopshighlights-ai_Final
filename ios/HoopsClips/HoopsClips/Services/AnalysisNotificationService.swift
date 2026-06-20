@@ -24,7 +24,13 @@ final class AnalysisNotificationService: NSObject {
         let settings = await center.notificationSettings()
 
         guard settings.authorizationStatus == .notDetermined else { return }
-        _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        if !granted {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "analysis_notification_permission_denied",
+                metadata: "source=prepare_for_analysis"
+            )
+        }
     }
 
     func notifyAnalysisCompleted(
@@ -36,7 +42,13 @@ final class AnalysisNotificationService: NSObject {
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
             let status = settings.authorizationStatus
-            guard status == .authorized || status == .provisional || status == .ephemeral else { return }
+            guard status == .authorized || status == .provisional || status == .ephemeral else {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "analysis_notification_blocked",
+                    metadata: "context=\(context.rawValue) status=\(Self.authorizationProofStatus(status))"
+                )
+                return
+            }
 
             let content = UNMutableNotificationContent()
             content.title = clipsCount > 0 ? "Review ready" : "Analysis finished"
@@ -72,7 +84,35 @@ final class AnalysisNotificationService: NSObject {
                 content: content,
                 trigger: nil
             )
-            try? await center.add(request)
+            do {
+                try await center.add(request)
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "analysis_notification_scheduled",
+                    metadata: "context=\(context.rawValue) clips=\(clipsCount)"
+                )
+            } catch {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "analysis_notification_schedule_failed",
+                    metadata: "context=\(context.rawValue) reason=schedule_error"
+                )
+            }
+        }
+    }
+
+    private static func authorizationProofStatus(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined:
+            return "not_determined"
+        case .denied:
+            return "denied"
+        case .authorized:
+            return "authorized"
+        case .provisional:
+            return "provisional"
+        case .ephemeral:
+            return "ephemeral"
+        @unknown default:
+            return "unknown"
         }
     }
 }
