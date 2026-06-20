@@ -1961,7 +1961,9 @@ struct VideoPlayerView: View {
     private var backgroundUploadProofText: String {
         [
             "source=HoopClips Player upload card",
+            "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
             "build=\(safeUploadProofValue(Bundle.main.infoDictionary?[\"CFBundleVersion\"] as? String))",
+            "scenePhase=\(uploadProofScenePhase)",
             "environment=\(safeUploadProofValue(AppConstants.environmentName))",
             "cloudLaunchMode=\(safeUploadProofValue(AppConstants.cloudLaunchMode.rawValue))",
             "cloudAnalysisEnabled=\(AppConstants.cloudAnalysisEnabled)",
@@ -1976,6 +1978,19 @@ struct VideoPlayerView: View {
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
+    }
+
+    private var uploadProofScenePhase: String {
+        switch scenePhase {
+        case .active:
+            return "active"
+        case .inactive:
+            return "inactive"
+        case .background:
+            return "background"
+        @unknown default:
+            return "unknown"
+        }
     }
 
     private func safeUploadProofValue(_ value: String?) -> String {
