@@ -34,6 +34,7 @@ struct VideoPlayerView: View {
     @State private var importRecoveryOffersHistory = false
     @State private var lastAnalysisAnnouncementPercent = -1
     @State private var showingCancelUploadConfirmation = false
+    @State private var didCopyUploadProof = false
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
@@ -1604,6 +1605,25 @@ struct VideoPlayerView: View {
                     .accessibilityIdentifier("analysis.cloudBackgroundReminder")
             }
 
+            if analysisBackgroundUploadBadgeText != nil {
+                Button {
+                    copyBackgroundUploadProof()
+                } label: {
+                    Label(didCopyUploadProof ? "Upload proof copied" : "Copy upload proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.cyan)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("analysis.copyBackgroundUploadProofButton")
+            }
+
             Button {
                 requestCancelUploadConfirmation()
             } label: {
@@ -1938,6 +1958,40 @@ struct VideoPlayerView: View {
             parts.append(analysisBackgroundReminderText)
         }
         return parts.joined(separator: " ")
+    }
+
+    private var backgroundUploadProofText: String {
+        [
+            "source=HoopClips Player upload card",
+            "build=\(safeUploadProofValue(Bundle.main.infoDictionary?[\"CFBundleVersion\"] as? String))",
+            "progress=\(Int(viewModel.analysisService.progress * 100))%",
+            "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
+            "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
+            "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
+            "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: "\n")
+    }
+
+    private func safeUploadProofValue(_ value: String?) -> String {
+        let compact = (value ?? "none")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else { return "none" }
+        return String(compact.prefix(180))
+    }
+
+    private func copyBackgroundUploadProof() {
+        UIPasteboard.general.string = backgroundUploadProofText
+        didCopyUploadProof = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "upload.proof.copied",
+            metadata: "progress=\(Int(viewModel.analysisService.progress * 100))"
+        )
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+            didCopyUploadProof = false
+        }
     }
 
     private var requiresProForCurrentVideo: Bool {
