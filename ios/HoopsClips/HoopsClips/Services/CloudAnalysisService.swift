@@ -485,7 +485,15 @@ struct CloudAnalysisService {
             return nil
         }
         guard manifest.installID == installID else {
+            await CloudUploadResumeStore.shared.clearAnyManifest(reason: "install_mismatch")
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_install_mismatch")
+            return nil
+        }
+        guard manifest.partCount > 0,
+              manifest.chunkSizeBytes > 0,
+              manifest.totalFileSizeBytes > 0 else {
+            await CloudUploadResumeStore.shared.clearAnyManifest(reason: "invalid_manifest")
+            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_invalid")
             return nil
         }
         guard let baseURL = configuredBaseURL() else {
@@ -1403,6 +1411,15 @@ private actor CloudUploadResumeStore {
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+    }
+
+    func clearAnyManifest(reason: String) {
+        guard let manifest = loadManifest() else { return }
+        UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_cleared",
+            metadata: "reason=\(reason) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
     }
 
