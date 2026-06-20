@@ -529,6 +529,12 @@ final class HighlightsViewModel {
             }
 
             switch outcome {
+            case .pendingUpload:
+                analysisService.updateExternalAnalysis(
+                    progress: max(analysisService.progress, 0.14),
+                    status: "Background upload still running"
+                )
+                LaunchTelemetry.shared.recordStabilityCheckpoint("upload.resume.pending", metadata: "mode=cloud")
             case .analysis(let result):
                 applyCompletedCloudAnalysisResult(result, usedFallback: false)
                 LaunchTelemetry.shared.recordStabilityCheckpoint(

@@ -5,6 +5,7 @@ private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resum
 private let cloudUploadSingleSourcePrefix = "single-source-"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
+    case pendingUpload
     case analysis(CloudAnalysisResult)
     case teamScan(PreparedCloudAnalysisJob)
 }
@@ -539,7 +540,7 @@ struct CloudAnalysisService {
         if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
             guard !manifest.completedParts.isEmpty else {
                 LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_still_uploading")
-                return nil
+                return .pendingUpload
             }
             await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
             let snapshot = await tracker.snapshot()
