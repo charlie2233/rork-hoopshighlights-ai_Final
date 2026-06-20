@@ -2302,7 +2302,7 @@ private struct CloudVideoConsentSheet: View {
 }
 
 enum VideoImportPolicy {
-    static let maxCloudUploadBytes: Int64 = 500 * 1024 * 1024
+    static let maxCloudUploadBytes: Int64 = 2 * 1024 * 1024 * 1024
     static let maxCloudDurationSeconds: Double = AppConstants.cloudAnalysisMaxDuration
     static let requiredScratchBytes: Int64 = 256 * 1024 * 1024
 
@@ -2573,9 +2573,9 @@ enum VideoImportPreflightError: LocalizedError, Equatable {
         case .noVideoTrack:
             return "That file does not contain a readable video track. Choose a different basketball video."
         case .fileTooLarge(let actualBytes, let maxBytes):
-            return "This video is \(VideoImportPolicy.formattedBytes(actualBytes)). HoopClips cloud analysis accepts up to \(VideoImportPolicy.formattedBytes(maxBytes)). Choose a shorter clip or export a smaller copy before importing."
+            return "This video is \(VideoImportPolicy.formattedBytes(actualBytes)). HoopClips background cloud upload accepts up to \(VideoImportPolicy.formattedBytes(maxBytes)). Use Wi-Fi and power for big games, or export a smaller copy if it is over the limit."
         case .videoTooLong(let actualSeconds, let maxSeconds):
-            return "This video is \(Clip.formatTime(actualSeconds)). HoopClips cloud analysis accepts videos up to \(Clip.formatTime(maxSeconds)). Choose a shorter game file before importing."
+            return "This video is \(Clip.formatTime(actualSeconds)). HoopClips cloud analysis accepts full-game uploads up to \(Clip.formatTime(maxSeconds)). Use Wi-Fi and power for long games, or trim it if it is over the limit."
         case .notEnoughStorage(let availableBytes, let requiredBytes):
             return "This import needs about \(VideoImportPolicy.formattedBytes(requiredBytes)) free on this iPhone. You have about \(VideoImportPolicy.formattedBytes(availableBytes)) available."
         }

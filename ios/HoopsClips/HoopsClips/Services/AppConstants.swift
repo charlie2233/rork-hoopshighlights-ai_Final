@@ -4,7 +4,7 @@ enum AppConstants {
     static let cloudAnalysisVersion = "v1"
     static let cloudAnalysisDailyQuota = 3
     static let nonProMaxAnalysisDuration: Double = 15 * 60
-    static let cloudAnalysisMaxDuration: Double = 30 * 60
+    static let cloudAnalysisMaxDuration: Double = 75 * 60
 
     static var runtimeConfig: AppRuntimeConfig {
         AppRuntimeConfig.shared

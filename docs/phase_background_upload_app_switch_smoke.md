@@ -23,8 +23,14 @@ Use a real long basketball source video large enough to trigger a meaningful upl
 
 Recommended:
 
-- Troy vs El Dorado source video from Downloads.
+- Troy vs El Dorado source video from Downloads, as long as it is no more than 75 minutes and 2 GB.
 - Any 10+ minute local MP4 if the Troy source is unavailable.
+
+Current client-side import limits are intentionally aligned with the staging backend defaults:
+
+- Maximum cloud upload size: 2 GB.
+- Maximum cloud analysis duration: 75 minutes.
+- Import still requires enough local scratch space for the file-backed transfer.
 
 ## Simulator smoke checklist
 
