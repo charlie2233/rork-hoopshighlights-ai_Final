@@ -2503,7 +2503,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         }
         DispatchQueue.main.async {
             completionHandler()
-            LaunchTelemetry.shared.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
+            Self.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
         }
     }
 
