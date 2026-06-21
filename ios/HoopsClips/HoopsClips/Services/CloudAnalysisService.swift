@@ -2414,21 +2414,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
     }
 
     func inspectTaskCount(for identifier: String) async -> Int {
-        let session: URLSession
-
-        lock.lock()
-        if let existingSession = relaunchSessions[identifier] {
-            session = existingSession
-        } else {
-            let delegate = CloudUploadBackgroundRelaunchDelegate(identifier: identifier)
-            let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
-            configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: true)
-            session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-            relaunchDelegates[identifier] = delegate
-            relaunchSessions[identifier] = session
-        }
-        lock.unlock()
-
+        let session = sessionForInspection(identifier: identifier)
         let tasks = await Self.allTasks(in: session)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "reattached_session_foreground_checked",
@@ -2438,6 +2424,23 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
             finishEvents(for: identifier)
         }
         return tasks.count
+    }
+
+    private func sessionForInspection(identifier: String) -> URLSession {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let existingSession = relaunchSessions[identifier] {
+            return existingSession
+        }
+
+        let delegate = CloudUploadBackgroundRelaunchDelegate(identifier: identifier)
+        let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
+        configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: true)
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        relaunchDelegates[identifier] = delegate
+        relaunchSessions[identifier] = session
+        return session
     }
 
     private static func allTasks(in session: URLSession) async -> [URLSessionTask] {
