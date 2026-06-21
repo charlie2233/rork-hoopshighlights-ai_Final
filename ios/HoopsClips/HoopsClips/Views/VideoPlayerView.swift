@@ -700,6 +700,30 @@ struct VideoPlayerView: View {
     }
 
     private func startAnalysisFromButton() {
+        guard !viewModel.isVideoImportInProgress else {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.start.blocked",
+                metadata: "reason=importing"
+            )
+            HoopsAccessibility.announce("Import is still finishing. Analysis will be ready after the video loads.")
+            return
+        }
+        guard viewModel.isVideoLoaded, viewModel.videoURL != nil else {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.start.blocked",
+                metadata: "reason=no_video"
+            )
+            HoopsAccessibility.announce("Import a video before starting AI analysis.")
+            return
+        }
+        guard !viewModel.analysisService.isAnalyzing else {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.start.blocked",
+                metadata: "reason=already_analyzing progress=\(viewModel.analysisService.progress)"
+            )
+            HoopsAccessibility.announce("AI analysis is already running.")
+            return
+        }
         guard !requiresProForCurrentVideo else {
             showingDurationLimitAlert = true
             return
