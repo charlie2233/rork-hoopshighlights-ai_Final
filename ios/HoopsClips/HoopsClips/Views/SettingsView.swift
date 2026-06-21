@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var expandedFAQIDs: Set<String> = []
     @State private var buildSummaryCopied = false
     @State private var testFlightChecklistCopied = false
+    @State private var phoneSmokeResult: PhoneSmokeResultStatus = .notRun
     @State private var smokeProofCopied = false
     @State private var uploadStateProofCopied = false
     @State private var isSendingSmokeProof = false
@@ -510,6 +511,7 @@ struct SettingsView: View {
         DisclosureGroup(isExpanded: $showingSmokeProofTools) {
             VStack(alignment: .leading, spacing: 12) {
                 settingsBackgroundUploadStatusRow
+                phoneSmokeResultPicker
                 copyUploadStateProofButton
                 copyBuildSummaryButton
                 copyTestFlightSmokeChecklistButton
@@ -577,6 +579,63 @@ struct SettingsView: View {
                 .stroke(AppTheme.courtBlue.opacity(0.20), lineWidth: 1)
         }
         .accessibilityIdentifier("settings.smokeProof.toolsDrawer")
+    }
+
+    private var phoneSmokeResultPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Phone smoke result", systemImage: "iphone.gen3")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(AppTheme.courtBlue)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    phoneSmokeResultButtons
+                }
+                VStack(spacing: 8) {
+                    phoneSmokeResultButtons
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(AppTheme.courtBlue.opacity(0.08), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.courtBlue.opacity(0.18), lineWidth: 1)
+        }
+        .accessibilityIdentifier("settings.smokeProof.phoneSmokeResult")
+    }
+
+    @ViewBuilder
+    private var phoneSmokeResultButtons: some View {
+        ForEach(PhoneSmokeResultStatus.allCases) { status in
+            Button {
+                phoneSmokeResult = status
+            } label: {
+                Label(status.title, systemImage: status.icon)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 9)
+                    .foregroundStyle(phoneSmokeResult == status ? .black : .white.opacity(0.88))
+                    .background(phoneSmokeResult == status ? phoneSmokeResultTint(status) : AppTheme.surfaceBg.opacity(0.72), in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.smokeProof.phoneSmokeResult.\(status.rawValue)")
+        }
+    }
+
+    private func phoneSmokeResultTint(_ status: PhoneSmokeResultStatus) -> Color {
+        switch status {
+        case .notRun:
+            return AppTheme.subtleText
+        case .passed:
+            return AppTheme.successGreen
+        case .issue:
+            return AppTheme.warningYellow
+        }
     }
 
     private var copyBuildSummaryButton: some View {
@@ -1056,6 +1115,7 @@ struct SettingsView: View {
             build: appBuildNumber,
             environment: AppConstants.environmentName,
             cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue,
+            phoneSmokeResult: phoneSmokeResult.rawValue,
             videoLoaded: viewModel.isVideoLoaded,
             videoDurationSeconds: Int(viewModel.videoDuration.rounded()),
             importInProgress: viewModel.isVideoImportInProgress,
@@ -1078,7 +1138,8 @@ struct SettingsView: View {
             appVersion: appVersionString,
             build: appBuildNumber,
             environment: AppConstants.environmentName,
-            cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue
+            cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue,
+            phoneSmokeResult: phoneSmokeResult.rawValue
         )
     }
 

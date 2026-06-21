@@ -1219,6 +1219,7 @@ struct HoopsClipsTests {
             build: "44",
             environment: "internal_staging",
             cloudLaunchMode: "internal_only",
+            phoneSmokeResult: PhoneSmokeResultStatus.issue.rawValue,
             videoLoaded: true,
             videoDurationSeconds: 210,
             importInProgress: false,
@@ -1236,6 +1237,7 @@ struct HoopsClipsTests {
 
         #expect(summary.contains("HoopClips Build Summary"))
         #expect(summary.contains("build=44"))
+        #expect(summary.contains("phoneSmokeResult=issue"))
         #expect(summary.contains("analysisProgressPercent=100"))
         #expect(summary.contains("analysisStatus=redacted"))
         #expect(summary.contains("privacy=no secrets"))
@@ -1250,11 +1252,13 @@ struct HoopsClipsTests {
             appVersion: "1.0.0",
             build: "45",
             environment: "internal_staging",
-            cloudLaunchMode: "internal_only"
+            cloudLaunchMode: "internal_only",
+            phoneSmokeResult: PhoneSmokeResultStatus.passed.rawValue
         )
 
         #expect(checklist.contains("HoopClips TestFlight Smoke Checklist"))
         #expect(checklist.contains("build=45"))
+        #expect(checklist.contains("phoneSmokeResult=passed"))
         #expect(checklist.contains("Import a long basketball video"))
         #expect(checklist.contains("Uploading -> Analyzing -> Review ready"))
         #expect(checklist.contains("Switch apps during upload"))
@@ -1265,6 +1269,12 @@ struct HoopsClipsTests {
         #expect(!checklist.localizedCaseInsensitiveContains("https://"))
         #expect(!checklist.localizedCaseInsensitiveContains("uploads/"))
         #expect(!checklist.localizedCaseInsensitiveContains("x-amz"))
+    }
+
+    @Test func testPhoneSmokeResultCopyLabelsAreShort() {
+        #expect(PhoneSmokeResultStatus.allCases.map(\.title) == ["Not run", "Passed", "Issue"])
+        #expect(PhoneSmokeResultStatus.allCases.allSatisfy { $0.title.count <= 8 })
+        #expect(PhoneSmokeResultStatus.allCases.allSatisfy { !$0.icon.isEmpty })
     }
 
     @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
