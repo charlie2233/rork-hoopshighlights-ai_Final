@@ -420,10 +420,10 @@ struct ReviewView: View {
                 reviewCarouselClipSummary(clip)
                 reviewDecisionButtons(clip: clip)
                 reviewFeedbackTags(clip)
-                reviewCarouselEvidenceChips(clip)
 
                 if expandedClipID == clip.id {
                     VStack(alignment: .leading, spacing: 12) {
+                        reviewCarouselEvidenceChips(clip)
                         clipScoreBreakdown(clip: clip, includeDivider: false)
                         clipEvidenceRows(clip: clip, maxRows: 3)
                     }
@@ -575,9 +575,9 @@ struct ReviewView: View {
                         .accessibilityHint("Loops the current clip while you choose Keep or Nah.")
                 } else {
                     ContentUnavailableView {
-                        Label("Preview Unavailable", systemImage: "video.slash.fill")
+                        Label("Preview not ready", systemImage: "video.slash.fill")
                     } description: {
-                        Text("The source video is not available, but you can still keep or nah this clip.")
+                        Text("You can still choose KEEP or NAH.")
                     }
                     .foregroundStyle(.white)
                     .background(AppTheme.cardBg)
@@ -686,7 +686,7 @@ struct ReviewView: View {
                     expandedClipID = expandedClipID == clip.id ? nil : clip.id
                 }
             } label: {
-                Label(expandedClipID == clip.id ? "Hide why" : "Why this clip?", systemImage: "checkmark.seal.fill")
+                Label(expandedClipID == clip.id ? "Hide details" : "Why this clip?", systemImage: "checkmark.seal.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.neonPurple)
                     .padding(.horizontal, 10)
@@ -719,7 +719,7 @@ struct ReviewView: View {
                     .font(.caption2.weight(.heavy))
                     .accessibilityHidden(true)
 
-                Text("Issue?")
+                Text("Quick tags")
                     .font(.caption.weight(.heavy))
 
                 Spacer(minLength: 0)
@@ -817,48 +817,31 @@ struct ReviewView: View {
     }
 
     private func reviewCarouselEvidenceChips(_ clip: Clip) -> some View {
-        DisclosureGroup(
-            isExpanded: Binding(
-                get: { expandedClipID == clip.id },
-                set: { isExpanded in
-                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                        expandedClipID = isExpanded ? clip.id : nil
-                    }
-                }
+        LazyVGrid(columns: reviewCarouselChipColumns, alignment: .leading, spacing: 8) {
+            RorkMetricChip(
+                icon: "chart.bar.fill",
+                value: "\(Int(clip.combinedScore * 100))%",
+                label: "Score",
+                tint: AppTheme.neonPurple
             )
-        ) {
-            LazyVGrid(columns: reviewCarouselChipColumns, alignment: .leading, spacing: 8) {
-                RorkMetricChip(
-                    icon: "chart.bar.fill",
-                    value: "\(Int(clip.combinedScore * 100))%",
-                    label: "Score",
-                    tint: AppTheme.neonPurple
-                )
-                RorkMetricChip(
-                    icon: "scope",
-                    value: "\(Int(clip.confidence * 100))%",
-                    label: "Confidence",
-                    tint: actionColor(for: clip.action)
-                )
-                RorkMetricChip(
-                    icon: "timer",
-                    value: clip.formattedDuration,
-                    label: "Length",
-                    tint: AppTheme.warningYellow
-                )
-                RorkMetricChip(
-                    icon: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "checkmark.seal.fill",
-                    value: clipNeedsTeamReview(clip) ? "Check" : "Ready",
-                    label: "Review",
-                    tint: clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.successGreen
-                )
-            }
-            .padding(.top, 8)
-        } label: {
-            Label("Why?", systemImage: "checkmark.seal.fill")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(AppTheme.neonPurple)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            RorkMetricChip(
+                icon: "scope",
+                value: "\(Int(clip.confidence * 100))%",
+                label: "Confidence",
+                tint: actionColor(for: clip.action)
+            )
+            RorkMetricChip(
+                icon: "timer",
+                value: clip.formattedDuration,
+                label: "Length",
+                tint: AppTheme.warningYellow
+            )
+            RorkMetricChip(
+                icon: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "checkmark.seal.fill",
+                value: clipNeedsTeamReview(clip) ? "Check" : "Ready",
+                label: "Review",
+                tint: clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.successGreen
+            )
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
@@ -867,7 +850,7 @@ struct ReviewView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(AppTheme.neonPurple.opacity(0.20), lineWidth: 1)
         )
-        .accessibilityIdentifier("review.carousel.whyDrawer")
+        .accessibilityIdentifier("review.carousel.whyChips")
     }
 
     private func settleFocusedClipIfNeeded() {
