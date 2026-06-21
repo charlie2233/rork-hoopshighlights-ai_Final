@@ -2403,10 +2403,10 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         relaunchDelegates[identifier] = delegate
         relaunchSessions[identifier] = session
         lock.unlock()
-        LaunchTelemetry.shared.recordBackgroundUploadProof("events_received", metadata: "source=app_delegate reattached=true")
+        Self.recordBackgroundUploadProof("events_received", metadata: "source=app_delegate reattached=true")
 
         session.getAllTasks { tasks in
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "reattached_session_checked",
                 metadata: "source=app_delegate taskCount=\(tasks.count)"
             )
@@ -2422,7 +2422,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
     func inspectTaskCount(for identifier: String) async -> Int {
         let session = sessionForInspection(identifier: identifier)
         let tasks = await Self.allTasks(in: session)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "reattached_session_foreground_checked",
             metadata: "source=foreground_resume taskCount=\(tasks.count)"
         )
@@ -2458,13 +2458,13 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
     }
 
     private func recheckEmptySessionBeforeFinishing(identifier: String, session: URLSession) {
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "reattached_session_empty_recheck_scheduled",
             metadata: "source=app_delegate delayMs=750"
         )
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.75) {
             session.getAllTasks { tasks in
-                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                Self.recordBackgroundUploadProof(
                     "reattached_session_empty_rechecked",
                     metadata: "source=app_delegate taskCount=\(tasks.count)"
                 )
@@ -2482,7 +2482,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         relaunchDelegates.removeValue(forKey: identifier)
         lock.unlock()
 
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "events_finish_requested",
             metadata: [
                 "source=urlsession_delegate",
@@ -2495,7 +2495,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         session?.finishTasksAndInvalidate()
 
         guard let completionHandler else {
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "events_finished_without_completion_handler",
                 metadata: "source=urlsession_delegate privacy=no_raw_session_ids_no_urls_no_object_keys"
             )
@@ -2504,6 +2504,12 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         DispatchQueue.main.async {
             completionHandler()
             LaunchTelemetry.shared.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
+        }
+    }
+
+    private static func recordBackgroundUploadProof(_ event: String, metadata: String? = nil) {
+        Task { @MainActor in
+            LaunchTelemetry.shared.recordBackgroundUploadProof(event, metadata: metadata)
         }
     }
 }
