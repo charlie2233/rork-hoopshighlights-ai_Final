@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var feedbackBanner: FeedbackBanner?
     @State private var expandedFAQIDs: Set<String> = []
     @State private var buildSummaryCopied = false
+    @State private var testFlightChecklistCopied = false
     @State private var smokeProofCopied = false
     @State private var uploadStateProofCopied = false
     @State private var isSendingSmokeProof = false
@@ -511,6 +512,7 @@ struct SettingsView: View {
                 settingsBackgroundUploadStatusRow
                 copyUploadStateProofButton
                 copyBuildSummaryButton
+                copyTestFlightSmokeChecklistButton
 
                 Button {
                     copySmokeProof()
@@ -598,6 +600,29 @@ struct SettingsView: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings.smokeProof.copyBuildSummaryButton")
         .accessibilityHint("Copies a short sanitized build and runtime summary for TestFlight smoke notes.")
+    }
+
+    private var copyTestFlightSmokeChecklistButton: some View {
+        Button {
+            copyTestFlightSmokeChecklist()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: testFlightChecklistCopied ? "checkmark.circle.fill" : "checklist.checked")
+                Text(testFlightChecklistCopied ? "Checklist copied" : "Copy TestFlight checklist")
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(testFlightChecklistCopied ? .black : .white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(
+                testFlightChecklistCopied ? AppTheme.successGreen : AppTheme.neonPurple.opacity(0.70),
+                in: .rect(cornerRadius: 15)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.smokeProof.copyTestFlightChecklistButton")
+        .accessibilityHint("Copies a short phone smoke checklist for the current TestFlight build.")
     }
 
     private var settingsBackgroundUploadStatusRow: some View {
@@ -1047,6 +1072,16 @@ struct SettingsView: View {
         )
     }
 
+    private var testFlightSmokeChecklistText: String {
+        TestFlightSmokeChecklistCopy.checklist(
+            generatedAt: ISO8601DateFormatter().string(from: Date()),
+            appVersion: appVersionString,
+            build: appBuildNumber,
+            environment: AppConstants.environmentName,
+            cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue
+        )
+    }
+
     private var uploadStateProofText: String {
         let generatedAt = ISO8601DateFormatter().string(from: Date())
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
@@ -1136,6 +1171,16 @@ struct SettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             buildSummaryCopied = false
+        }
+    }
+
+    private func copyTestFlightSmokeChecklist() {
+        UIPasteboard.general.string = testFlightSmokeChecklistText
+        testFlightChecklistCopied = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.testflight_checklist_copied", metadata: "build=\(appBuildNumber)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            testFlightChecklistCopied = false
         }
     }
 

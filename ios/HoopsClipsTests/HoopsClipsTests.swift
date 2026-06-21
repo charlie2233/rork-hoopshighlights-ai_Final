@@ -1244,6 +1244,29 @@ struct HoopsClipsTests {
         #expect(!summary.localizedCaseInsensitiveContains("x-amz"))
     }
 
+    @Test func testTestFlightSmokeChecklistCoversCurrentPhoneFlow() {
+        let checklist = TestFlightSmokeChecklistCopy.checklist(
+            generatedAt: "2026-06-20T12:00:00Z",
+            appVersion: "1.0.0",
+            build: "45",
+            environment: "internal_staging",
+            cloudLaunchMode: "internal_only"
+        )
+
+        #expect(checklist.contains("HoopClips TestFlight Smoke Checklist"))
+        #expect(checklist.contains("build=45"))
+        #expect(checklist.contains("Import a long basketball video"))
+        #expect(checklist.contains("Uploading -> Analyzing -> Review ready"))
+        #expect(checklist.contains("Switch apps during upload"))
+        #expect(checklist.contains("Keep/Nah clips"))
+        #expect(checklist.contains("Make reel in AI Edit"))
+        #expect(checklist.contains("Share/open"))
+        #expect(checklist.contains("privacy=no secrets"))
+        #expect(!checklist.localizedCaseInsensitiveContains("https://"))
+        #expect(!checklist.localizedCaseInsensitiveContains("uploads/"))
+        #expect(!checklist.localizedCaseInsensitiveContains("x-amz"))
+    }
+
     @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-\(UUID().uuidString).mp4")
         try Data("fake video".utf8).write(to: tempURL)
