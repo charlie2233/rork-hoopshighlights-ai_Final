@@ -29,6 +29,7 @@ The architecture stays cloud-first:
 - Saved project titles are cleaner and less random-looking.
 - Review, History, Settings, Export, and AI Edit copy has been simplified in several places.
 - Review top stack has been reduced: status cards collapsed, progress folded into the status strip, filters hidden when not useful, advanced filters moved behind More, and the AI Edit entry is now one compact row.
+- AI Edit prompt chips now prioritize common edit intents without adding more choices: Hype, Solo, Team, Defense, Recruit, Recap, and Long.
 - Solo/personal highlight flow is clearer and does not force team scan language.
 - Team scan fallback copy explains that HoopClips will use all teams when teams are unclear.
 
@@ -36,6 +37,7 @@ The architecture stays cloud-first:
 
 - Latest `main` needs Swift build validation after recent upload/network changes.
 - Recent Review SwiftUI declutter needs simulator confirmation before more Review layout work.
+- Recent AI Edit prompt/copy updates need simulator confirmation before more AI Edit UI work.
 - AI Analysis crash report needs simulator reproduction on current code.
 - Background upload needs real iPhone app-switch proof with a long video.
 - No-black-outro render needs cloud render smoke proof.
@@ -49,7 +51,7 @@ The architecture stays cloud-first:
 2. AI Analysis crash reproduction and fix if current code still crashes.
 3. Player audio/mute fix and clear audio-unavailable state.
 4. Review-page validation pass: confirm the compact Review screen builds, scrolls, swipes, scrubs, keeps/nahs, undo works, and empty/analyzing states are correct.
-5. Export-page simplification pass: avoid duplicate progress/status details.
+5. Export and AI Edit validation pass: confirm compact status/progress copy, prompt-chip order, revision copy, and preview/share flow.
 6. Background upload proof pass on real iPhone.
 7. Cloud render smoke for no-black-outro output.
 8. Bump build and upload TestFlight.
@@ -118,6 +120,7 @@ Still needed:
 - Cloud render smoke for bright outro.
 - Verify mute/audio behavior in rendered preview and player preview.
 - Confirm Export status card/details are not duplicating progress.
+- Confirm AI Edit quick prompts are ordered as Hype, Solo, Team, Defense, Recruit, Recap, Long and do not crowd the screen.
 
 ## History and persistence
 

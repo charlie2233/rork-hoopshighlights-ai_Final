@@ -32,6 +32,7 @@ Already built or heavily progressed:
 - Cloud analysis and cloud AI Edit control surfaces.
 - Review, Export, AI Edit, History, Settings, rookie guide, telemetry, and proof copy surfaces.
 - Review declutter is in progress: compact status strip, folded progress, fewer visible filters, and compact AI Edit entry are implemented on current `main`.
+- AI Edit quick prompts now cover the common user intents without adding more chips: Hype, Solo, Team, Defense, Recruit, Recap, and Long.
 - Background/resumable upload proof tooling and app-switch proof handoff.
 - Free/Pro copy, template packs, AI Edit prompt parsing, and revision flows.
 - Real proof tooling for TestFlight/backend/phone evidence.
@@ -39,6 +40,7 @@ Already built or heavily progressed:
 Still blocking launch quality:
 
 - Current `main` build/simulator proof after recent SwiftUI Review edits.
+- Current `main` build/simulator proof after AI Edit prompt/copy changes.
 - Simulator repro/proof for the reported AI Analysis crash.
 - Current TestFlight build proof.
 - Real iPhone smoke proof.
@@ -151,6 +153,7 @@ Tasks:
   - recruiting
   - longer 4:30 reel
   - NBA recap style
+- Keep the current prompt-chip set small and ordered around common intent: Hype, Solo, Team, Defense, Recruit, Recap, Long.
 - Keep technical controls secondary.
 - Show a short "Smart setup from note" preview.
 - Keep backend validation strict.
@@ -269,6 +272,7 @@ Simulator/code proof:
 - Confirm the compact Review status strip does not clip at larger Dynamic Type.
 - Confirm filters stay hidden when only one useful filter exists and `More` only appears for extra useful filters.
 - Confirm mute/audio-unavailable chips behave consistently in Player, Review, Export, and History previews.
+- Confirm AI Edit quick prompts appear in the intended order: Hype, Solo, Team, Defense, Recruit, Recap, Long.
 
 Phone/TestFlight proof:
 
