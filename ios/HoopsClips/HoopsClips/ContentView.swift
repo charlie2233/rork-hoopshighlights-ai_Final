@@ -270,7 +270,9 @@ struct ContentView: View {
                         message: pipelineStatusMessage,
                         detailMessage: pipelineDetailMessage,
                         stage: pipelineStage,
+                        canResumeUpload: canResumePipelineUpload,
                         didCopyProof: didCopyPipelineUploadProof,
+                        onResumeUpload: resumePipelineUpload,
                         onCopyProof: copyPipelineUploadProof,
                         onCancel: requestPipelineCancelConfirmation
                     )
@@ -628,6 +630,13 @@ struct ContentView: View {
         guard pipelineStage == .uploading else { return nil }
         return uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
             ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
+    }
+
+    private var canResumePipelineUpload: Bool {
+        guard pipelineStage == .uploading else { return false }
+        let manifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        return manifest.contains("pending=true")
+            && manifest.contains("nextAction=resume_upload")
     }
 
     private func uploadProgressPipelineDetail(from summary: String) -> String? {
@@ -1075,6 +1084,14 @@ struct ContentView: View {
 
     private func requestPipelineCancelConfirmation() {
         showingPipelineCancelConfirmation = true
+    }
+
+    private func resumePipelineUpload() {
+        viewModel.resumePendingBackgroundUploadFromPlayer()
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "pipeline_upload_resume.requested",
+            metadata: "progress=\(analysisProgressPercent)"
+        )
     }
 
     private func copyPipelineUploadProof() {
@@ -1740,7 +1757,9 @@ private struct GlobalImportProgressBanner: View {
     let message: String
     let detailMessage: String?
     let stage: AnalysisPipelineStage
+    let canResumeUpload: Bool
     let didCopyProof: Bool
+    let onResumeUpload: () -> Void
     let onCopyProof: () -> Void
     let onCancel: () -> Void
 
@@ -1765,6 +1784,9 @@ private struct GlobalImportProgressBanner: View {
 
                 Spacer(minLength: 0)
 
+                if canResumeUpload {
+                    resumeButton
+                }
                 copyProofButton
                 cancelButton
             }
@@ -1809,6 +1831,21 @@ private struct GlobalImportProgressBanner: View {
     private var shortMessage: String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Importing video..." : trimmed
+    }
+
+    private var resumeButton: some View {
+        Button(action: onResumeUpload) {
+            Label("Resume", systemImage: "arrow.clockwise.icloud.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(stage.tint.opacity(0.26), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Resume upload")
+        .accessibilityIdentifier("analysis.pipeline.resumeUploadButton")
     }
 
     private var copyProofButton: some View {
