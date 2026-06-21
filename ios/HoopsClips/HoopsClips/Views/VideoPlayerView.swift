@@ -5,6 +5,13 @@ import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
+enum PreviewAudioCopy {
+    static let noSourceAudio = "No source audio"
+    static let noClipAudio = "No clip audio"
+    static let noHistoryPreviewAudio = "No preview audio"
+    static let noReelAudio = "No reel audio"
+}
+
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
     var onOpenHistory: () -> Void = {}
@@ -1135,7 +1142,7 @@ struct VideoPlayerView: View {
                         .accessibilityLabel(previewAudioMuted ? "Unmute source preview" : "Mute source preview")
 
                         if sourcePreviewHasAudioTrack == false && !previewAudioMuted {
-                            Text("No source audio")
+                            Text(PreviewAudioCopy.noSourceAudio)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 9)

@@ -843,7 +843,7 @@ private struct HistoryProjectDetailView: View {
                         .accessibilityLabel(previewAudioMuted ? "Unmute history preview" : "Mute history preview")
 
                         if previewHasAudioTrack == false && !previewAudioMuted {
-                            Text("No preview audio")
+                            Text(PreviewAudioCopy.noHistoryPreviewAudio)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 9)

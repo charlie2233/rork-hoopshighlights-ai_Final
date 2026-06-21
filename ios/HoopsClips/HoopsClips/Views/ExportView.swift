@@ -1214,7 +1214,7 @@ struct ExportView: View {
             .accessibilityLabel(previewAudioMuted ? "Unmute export preview" : "Mute export preview")
 
             if exportPreviewHasAudioTrack == false && !previewAudioMuted {
-                Text("No reel audio")
+                Text(PreviewAudioCopy.noReelAudio)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 9)

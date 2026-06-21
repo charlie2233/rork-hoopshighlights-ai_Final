@@ -622,7 +622,7 @@ struct ReviewView: View {
                                 .background(AppTheme.neonPurple.opacity(0.52), in: Circle())
 
                             if clipPreviewHasAudioTrack == false && !previewAudioMuted {
-                                Text("No clip audio")
+                                Text(PreviewAudioCopy.noClipAudio)
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 9)
@@ -2410,7 +2410,7 @@ struct ReviewView: View {
                                     .accessibilityLabel(previewAudioMuted ? "Unmute clip preview" : "Mute clip preview")
 
                                     if clipPreviewHasAudioTrack == false && !previewAudioMuted {
-                                        Text("No clip audio")
+                                        Text(PreviewAudioCopy.noClipAudio)
                                             .font(.caption2.weight(.semibold))
                                             .foregroundStyle(.white)
                                             .padding(.horizontal, 9)
