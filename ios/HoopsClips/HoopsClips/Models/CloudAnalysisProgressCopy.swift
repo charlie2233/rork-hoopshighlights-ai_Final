@@ -235,6 +235,31 @@ nonisolated enum CloudAnalysisProgressCopy {
         return parts.joined(separator: " · ")
     }
 
+    static func uploadResumeProgressSummary(from summary: String) -> String? {
+        var values: [String: String] = [:]
+        for token in summary.split(separator: " ") {
+            let parts = token.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            values[String(parts[0])] = String(parts[1])
+        }
+
+        if let progress = Int(values["progressPercent"] ?? "") {
+            let boundedProgress = min(max(progress, 0), 100)
+            guard boundedProgress > 0 else { return nil }
+            return "\(boundedProgress)% saved"
+        }
+
+        guard let completedBytes = Int64(values["completedBytes"] ?? ""),
+              let totalBytes = Int64(values["totalBytes"] ?? ""),
+              totalBytes > 0 else {
+            return nil
+        }
+
+        let percent = min(100, max(0, Int((Double(completedBytes) / Double(totalBytes) * 100).rounded())))
+        guard percent > 0 else { return nil }
+        return "\(percent)% saved"
+    }
+
     private static func uploadRetryProgressSummary(from statusMessage: String) -> String? {
         let lowercasedStatus = statusMessage.lowercased()
         guard lowercasedStatus.contains("retry") else { return nil }
