@@ -1241,6 +1241,7 @@ struct ContentView: View {
             "latestUploadSourceOptimization=\(safePipelineProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
             "pendingBackgroundUploadManifest=\(safePipelineProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "backgroundUploadRuntimePolicy=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
+            "multipartUploadPolicy=\(safePipelineProofValue(CloudAnalysisService.multipartUploadPolicySummary()))",
             "backgroundUploadCompletionProof=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
             "latestBackgroundUploadProof=\(safePipelineProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"))",
             "privacy=no_urls_no_object_keys_no_local_file_paths"
