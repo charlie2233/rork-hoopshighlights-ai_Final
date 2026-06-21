@@ -726,6 +726,8 @@ private struct HistoryProjectDetailView: View {
     @State private var showingShareSheet = false
     @State private var shareErrorMessage: String?
     @State private var showingShareError = false
+    @State private var showProjectDetails = false
+    @State private var showActivity = false
 
     var body: some View {
         NavigationStack {
@@ -734,10 +736,10 @@ private struct HistoryProjectDetailView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
-                        headerCard
-                        playbackCard
                         actionsCard
-                        timelineCard
+                        playbackCard
+                        projectDetailsDisclosure
+                        activityDisclosure
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -797,6 +799,44 @@ private struct HistoryProjectDetailView: View {
         } message: {
             Text(shareErrorMessage ?? HistoryProjectActionCopy.shareMissingMessage)
         }
+    }
+
+    private var projectDetailsDisclosure: some View {
+        DisclosureGroup(isExpanded: $showProjectDetails) {
+            headerCard
+                .padding(.top, 8)
+        } label: {
+            Label("Project details", systemImage: "info.circle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.white)
+        }
+        .tint(AppTheme.courtBlue)
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.70), in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.courtBlue.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityIdentifier("history.detail.projectDetailsToggle")
+    }
+
+    private var activityDisclosure: some View {
+        DisclosureGroup(isExpanded: $showActivity) {
+            timelineCard
+                .padding(.top, 8)
+        } label: {
+            Label("Activity", systemImage: "list.bullet.rectangle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.white)
+        }
+        .tint(AppTheme.rimOrange)
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.70), in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.rimOrange.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityIdentifier("history.detail.activityToggle")
     }
 
     private var headerCard: some View {
@@ -984,21 +1024,6 @@ private struct HistoryProjectDetailView: View {
             .accessibilityIdentifier("history.detail.resumeProject")
 
             Button {
-                startPreview(url: sourceURL, title: "Source Video")
-            } label: {
-                actionLabel(
-                    title: "Watch Source",
-                    subtitle: sourceURL == nil ? HistoryProjectActionCopy.sourceMissingSubtitle : "",
-                    icon: "video.fill",
-                    tint: AppTheme.warningYellow
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(sourceURL == nil)
-            .opacity(sourceURL == nil ? 0.5 : 1.0)
-            .accessibilityIdentifier("history.detail.watchSource")
-
-            Button {
                 startPreview(url: latestExportURL, title: "Saved Reel")
             } label: {
                 actionLabel(
@@ -1027,6 +1052,21 @@ private struct HistoryProjectDetailView: View {
             .disabled(latestExportURL == nil)
             .opacity(latestExportURL == nil ? 0.5 : 1.0)
             .accessibilityIdentifier("history.project.shareLatestExport")
+
+            Button {
+                startPreview(url: sourceURL, title: "Source Video")
+            } label: {
+                actionLabel(
+                    title: "Watch Source",
+                    subtitle: sourceURL == nil ? HistoryProjectActionCopy.sourceMissingSubtitle : "",
+                    icon: "video.fill",
+                    tint: AppTheme.warningYellow
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(sourceURL == nil)
+            .opacity(sourceURL == nil ? 0.5 : 1.0)
+            .accessibilityIdentifier("history.detail.watchSource")
 
             Button(role: .destructive) {
                 showingDeleteConfirmation = true
