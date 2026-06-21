@@ -118,9 +118,6 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
-                            if shouldShowReviewSmokeProofShortcut {
-                                reviewSmokeProofShortcut
-                            }
                             reviewCarousel
                             aiEditEntryCard
                             filterBar
