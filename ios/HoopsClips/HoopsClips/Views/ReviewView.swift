@@ -119,7 +119,9 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
-                            reviewSmokeProofShortcut
+                            if shouldShowReviewSmokeProofShortcut {
+                                reviewSmokeProofShortcut
+                            }
                             reviewCarousel
                             aiEditEntryCard
                             filterBar
@@ -183,19 +185,23 @@ struct ReviewView: View {
         }
     }
 
+    private var shouldShowReviewSmokeProofShortcut: Bool {
+        AppConstants.cloudLaunchMode.rawValue == "internal_only" && !viewModel.clips.isEmpty
+    }
+
     private var reviewSmokeProofShortcut: some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.headline.weight(.bold))
-                .foregroundStyle(AppTheme.successGreen)
+                .foregroundStyle(AppTheme.successGreen.opacity(0.82))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Review ready")
+                Text("Proof")
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text("Testing? Send proof.")
+                Text("Internal test")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.70))
                     .lineLimit(1)
