@@ -6,6 +6,12 @@ nonisolated struct CloudAnalysisSlowUploadHelp: Equatable, Sendable {
     let icon: String
 }
 
+nonisolated struct CloudAnalysisUploadSourceOptimization: Equatable, Sendable {
+    let shouldPreferOptimizedSource: Bool
+    let quickFact: String?
+    let proof: String
+}
+
 nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
 
@@ -248,6 +254,45 @@ nonisolated enum CloudAnalysisProgressCopy {
             title: "Slow upload",
             message: "Wi-Fi + staying near the router helps most. Huge videos use resumable chunks when supported.",
             icon: "tortoise.fill"
+        )
+    }
+
+    static func uploadSourceOptimization(
+        durationSeconds: Double,
+        fileSizeBytes: Int64?,
+        statusMessage: String,
+        latestUploadProgress: String
+    ) -> CloudAnalysisUploadSourceOptimization {
+        let status = "\(statusMessage) \(latestUploadProgress)".lowercased()
+        let isLongSource = durationSeconds.isFinite && durationSeconds >= 30 * 60
+        let isHugeSource = (fileSizeBytes ?? 0) >= 900 * 1_024 * 1_024
+        let isUploadStruggling = status.contains("upload") && isSlowUploadStatus(status)
+        let shouldOptimize = isLongSource || isHugeSource || isUploadStruggling
+
+        let reasons = [
+            isLongSource ? "long_source" : nil,
+            isHugeSource ? "huge_source" : nil,
+            isUploadStruggling ? "slow_upload" : nil
+        ]
+            .compactMap { $0 }
+            .joined(separator: "+")
+        let reason = reasons.isEmpty ? "none" : reasons
+        let sourceSizeMB = fileSizeBytes.map { max(0, Int((Double($0) / 1_048_576.0).rounded())) }
+        let durationMinutes = durationSeconds.isFinite ? max(0, Int((durationSeconds / 60.0).rounded())) : 0
+        let quickFact = shouldOptimize ? "Smaller source suggested" : nil
+        let proof = [
+            "recommended=\(shouldOptimize)",
+            "reason=\(reason)",
+            "durationMinutes=\(durationMinutes)",
+            "sourceSizeMB=\(sourceSizeMB.map(String.init) ?? "unknown")",
+            "optimizedSourceStatus=not_enabled",
+            "currentPath=original_background_chunked_upload"
+        ].joined(separator: " ")
+
+        return CloudAnalysisUploadSourceOptimization(
+            shouldPreferOptimizedSource: shouldOptimize,
+            quickFact: quickFact,
+            proof: proof
         )
     }
 

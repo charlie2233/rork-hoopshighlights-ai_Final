@@ -832,6 +832,36 @@ struct HoopsClipsTests {
         #expect(retrying?.message.contains("No need to restart yet") == true)
     }
 
+    @Test func testCloudAnalysisUploadSourceOptimizationPolicyIsHonest() {
+        let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: 8 * 60,
+            fileSizeBytes: 320 * 1_024 * 1_024,
+            statusMessage: "Uploading source video",
+            latestUploadProgress: "bytes=120/320_MB speed=8.0_MB/s"
+        )
+        #expect(normal.shouldPreferOptimizedSource == false)
+        #expect(normal.quickFact == nil)
+        #expect(normal.proof.contains("recommended=false"))
+        #expect(normal.proof.contains("optimizedSourceStatus=not_enabled"))
+
+        let longSource = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: 57 * 60,
+            fileSizeBytes: 1_400 * 1_024 * 1_024,
+            statusMessage: "Uploading source video · waiting for connectivity",
+            latestUploadProgress: "stalled=true retrying"
+        )
+        #expect(longSource.shouldPreferOptimizedSource)
+        #expect(longSource.quickFact == "Smaller source suggested")
+        #expect(longSource.proof.contains("recommended=true"))
+        #expect(longSource.proof.contains("long_source"))
+        #expect(longSource.proof.contains("huge_source"))
+        #expect(longSource.proof.contains("slow_upload"))
+        #expect(longSource.proof.contains("currentPath=original_background_chunked_upload"))
+        #expect(longSource.proof.contains("optimizedSourceStatus=not_enabled"))
+        #expect(!longSource.proof.localizedCaseInsensitiveContains("https://"))
+        #expect(!longSource.proof.localizedCaseInsensitiveContains("uploads/"))
+    }
+
     @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {
         let fallback = "Cloud analysis failed. Try again."
 

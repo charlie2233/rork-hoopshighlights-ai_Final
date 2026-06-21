@@ -2203,6 +2203,18 @@ struct VideoPlayerView: View {
             )
         }
 
+        if let quickFact = analysisUploadSourceOptimization.quickFact,
+           viewModel.analysisService.statusMessage.localizedCaseInsensitiveContains("upload") {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "source",
+                    icon: "arrow.down.forward.and.arrow.up.backward",
+                    text: quickFact,
+                    tint: AppTheme.warningYellow
+                )
+            )
+        }
+
         if let analysisApproximateRemainingCompactText {
             facts.append(
                 AnalysisProgressFact(
@@ -2611,6 +2623,15 @@ struct VideoPlayerView: View {
         )
     }
 
+    private var analysisUploadSourceOptimization: CloudAnalysisUploadSourceOptimization {
+        CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: viewModel.videoDuration,
+            fileSizeBytes: currentVideoFileSizeBytes,
+            statusMessage: viewModel.analysisService.statusMessage,
+            latestUploadProgress: CloudAnalysisService.latestUploadProgressSummary()
+        )
+    }
+
     private var analysisBackgroundUploadStillRunningText: String? {
         let status = viewModel.analysisService.statusMessage.lowercased()
         let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
@@ -2686,6 +2707,7 @@ struct VideoPlayerView: View {
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "clientChunkedUploadCompatible=true",
             "serverMultipartCompleteIdempotent=true",
+            "uploadSourceOptimizationPolicy=\(safeUploadProofValue(analysisUploadSourceOptimization.proof))",
             "multipartUploadPolicy=\(safeUploadProofValue(CloudAnalysisService.multipartUploadPolicySummary()))",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
             "proofCapturedAt=\(Date().ISO8601Format())",
@@ -2704,6 +2726,19 @@ struct VideoPlayerView: View {
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
+    }
+
+    private var currentVideoFileSizeBytes: Int64? {
+        guard let url = viewModel.videoURL else { return nil }
+        let resourceValues = try? url.resourceValues(forKeys: [.fileSizeKey])
+        if let fileSize = resourceValues?.fileSize, fileSize > 0 {
+            return Int64(fileSize)
+        }
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        if let fileSize = attributes?[.size] as? NSNumber {
+            return fileSize.int64Value
+        }
+        return nil
     }
 
     private var backgroundUploadWakeReceivedFlag: String {
