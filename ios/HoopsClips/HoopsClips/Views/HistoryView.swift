@@ -1150,7 +1150,9 @@ private struct HistoryProjectDetailView: View {
         previewAudioCheckTask = Task { @MainActor in
             let asset = AVURLAsset(url: expectedURL)
             let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty == false
-            guard !Task.isCancelled else { return }
+            let currentPreviewURL = (previewPlayer?.currentItem?.asset as? AVURLAsset)?.url.standardizedFileURL
+            guard !Task.isCancelled,
+                  currentPreviewURL == expectedURL else { return }
             previewHasAudioTrack = hasAudio
         }
     }
