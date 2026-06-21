@@ -63,14 +63,23 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
 
         if status.contains("resuming") && status.contains("upload") {
-            return "Reconnecting to the saved background upload. HoopClips will skip chunks that already finished."
+            if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
+                return "Reconnecting to saved upload: \(chunkProgress). Finished chunks stay saved."
+            }
+            return "Reconnecting to saved upload. Finished chunks stay saved."
         }
 
         if status.contains("upload") && isSlowUploadStatus(status) {
+            if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
+                return "Slow connection, still uploading \(chunkProgress). Switch apps if needed; reopen for fresh progress."
+            }
             return "Connection is slow, but upload is alive. Switch apps if needed; reopen HoopClips to refresh progress."
         }
 
         if status.contains("upload") {
+            if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
+                return "Uploading \(chunkProgress). Safe to switch apps; completed chunks stay saved."
+            }
             return "Background upload active. Huge videos use resumable chunks when supported; switch apps and reopen for live progress."
         }
 
@@ -122,14 +131,23 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         let status = statusMessage.lowercased()
         if status.contains("resuming") && status.contains("upload") {
-            return "Resuming saved background upload. Completed chunks are preserved."
+            if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
+                return "Resuming saved upload: \(chunkProgress). Completed chunks are preserved."
+            }
+            return "Resuming saved upload. Completed chunks are preserved."
         }
 
         if status.contains("upload") && isSlowUploadStatus(status) {
+            if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
+                return "Slow upload, still on \(chunkProgress). Wi-Fi helps most; switching apps is OK."
+            }
             return "Slow upload, still working. Wi-Fi helps most; switching apps is OK because chunks can resume."
         }
 
         if status.contains("upload") {
+            if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
+                return "Background upload active: \(chunkProgress). Safe to switch apps and reopen for live progress."
+            }
             return "Background upload active. Wi-Fi is fastest for huge videos; safe to switch apps and reopen HoopClips for live progress."
         }
 
@@ -171,8 +189,12 @@ nonisolated enum CloudAnalysisProgressCopy {
             let lowercasedSegment = segment.lowercased()
             return lowercasedSegment.hasPrefix("about ") && lowercasedSegment.contains(" left")
         }
+        let chunkProgress = uploadChunkProgressSummary(from: statusMessage)
 
         var parts: [String] = []
+        if let chunkProgress {
+            parts.append(chunkProgress)
+        }
         if let byteProgress {
             parts.append(byteProgress)
         }
@@ -348,8 +370,12 @@ nonisolated enum CloudAnalysisProgressCopy {
             let lowercased = part.lowercased()
             return lowercased.contains("/") && (lowercased.contains(" mb") || lowercased.contains(" gb"))
         }
+        let chunkProgress = uploadChunkProgressSummary(from: statusMessage)
 
         var summaryParts: [String] = []
+        if let chunkProgress {
+            summaryParts.append(chunkProgress)
+        }
         if let eta {
             summaryParts.append("ETA \(eta)")
         }
@@ -364,6 +390,40 @@ nonisolated enum CloudAnalysisProgressCopy {
             return nil
         }
         return summaryParts.joined(separator: " · ")
+    }
+
+    private static func uploadChunkProgressSummary(from statusMessage: String) -> String? {
+        let lowercasedStatus = statusMessage.lowercased()
+        if lowercasedStatus.contains("chunks complete")
+            || lowercasedStatus.contains("resumed chunks complete")
+            || lowercasedStatus.contains("saved chunks assembled") {
+            return "all chunks uploaded"
+        }
+
+        if lowercasedStatus.contains("chunked upload starting") {
+            return "chunked upload starting"
+        }
+
+        guard lowercasedStatus.contains("chunk") else { return nil }
+
+        let pattern = #"\bchunk(?:\s|_|-|=)*(\d{1,3})\s*/\s*(\d{1,3})"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(statusMessage.startIndex..<statusMessage.endIndex, in: statusMessage)
+        guard let match = regex.firstMatch(in: statusMessage, options: [], range: range),
+              match.numberOfRanges >= 3,
+              let currentRange = Range(match.range(at: 1), in: statusMessage),
+              let totalRange = Range(match.range(at: 2), in: statusMessage),
+              let current = Int(statusMessage[currentRange]),
+              let total = Int(statusMessage[totalRange]),
+              current > 0,
+              total > 0,
+              current <= total else {
+            return nil
+        }
+
+        return "chunk \(current)/\(total)"
     }
 
     private static func isSlowUploadStatus(_ status: String) -> Bool {
