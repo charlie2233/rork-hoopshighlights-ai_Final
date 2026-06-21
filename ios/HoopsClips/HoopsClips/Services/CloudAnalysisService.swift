@@ -804,6 +804,7 @@ struct CloudAnalysisService {
             "resume_manifest_foreground_resume_started",
             metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
+        var didInferCompletedSingleSourceUpload = false
         if !manifest.activeSessionIdentifiers.isEmpty,
            manifest.completedParts.count < manifest.partCount {
             let sessionInspection = await inspectBackgroundUploadSessions(manifest.activeSessionIdentifiers)
@@ -847,6 +848,21 @@ struct CloudAnalysisService {
                 "resume_manifest_active_sessions_stale",
                 metadata: "cleared=\(sessionInspection.checkedIdentifiers.count) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
             )
+            if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix),
+               manifest.completedParts.isEmpty,
+               sessionInspection.checkedCount > 0 {
+                manifest.completedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                    jobID: manifest.jobID,
+                    uploadID: manifest.uploadID,
+                    partNumber: 1,
+                    etag: "source-upload-session-finished"
+                )
+                didInferCompletedSingleSourceUpload = true
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "resume_manifest_source_completion_inferred",
+                    metadata: "reason=stale_empty_background_session"
+                )
+            }
         }
         if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
             guard !manifest.completedParts.isEmpty else {
@@ -855,7 +871,13 @@ struct CloudAnalysisService {
             }
             await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
             let snapshot = await tracker.snapshot()
-            reportUploadProgress(snapshot, false, "source upload saved")
+            reportUploadProgress(
+                snapshot,
+                false,
+                didInferCompletedSingleSourceUpload
+                    ? "source upload session finished; checking cloud"
+                    : "source upload saved"
+            )
         } else {
             try await resumeUploadManifest(
                 manifest,
