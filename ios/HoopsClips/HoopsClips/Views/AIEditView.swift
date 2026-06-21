@@ -1094,7 +1094,7 @@ struct AIEditView: View {
 
     private var quickPromptPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(AIEditPromptCopy.quickFocusTitle, systemImage: "lightbulb.fill")
+            Label("Tap a vibe", systemImage: "lightbulb.fill")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.warningYellow)
                 .lineLimit(2)
