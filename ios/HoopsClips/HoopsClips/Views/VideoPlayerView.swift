@@ -2415,6 +2415,7 @@ struct VideoPlayerView: View {
             "clientChunkedUploadCompatible=true",
             "serverMultipartCompleteIdempotent=true",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
+            "proofCapturedAt=\(Date().ISO8601Format())",
             "backgroundUploadCompletionProof=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
             "backgroundUploadSurvivalHint=\((CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("completedwhileaway=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("wakereceived=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("relaunchcompletion=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("inferredsourcecompletion=true")) ? "detected" : "not_detected")",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
