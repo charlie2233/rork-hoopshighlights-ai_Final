@@ -713,12 +713,15 @@ struct HoopsClipsTests {
     }
 
     @Test func testCloudAnalysisBackgroundReminderIsHonestAndVisible() {
-        #expect(
-            CloudAnalysisProgressCopy.backgroundReminder(
-                statusMessage: "Uploading source video",
-                analysisMode: .cloud
-            ) == nil
+        let uploadReminder = CloudAnalysisProgressCopy.backgroundReminder(
+            statusMessage: "Uploading source video",
+            analysisMode: .cloud
         )
+        #expect(uploadReminder?.contains("Background upload active") == true)
+        #expect(uploadReminder?.contains("switch apps") == true)
+        #expect(uploadReminder?.contains("live progress") == true)
+        #expect(uploadReminder?.localizedCaseInsensitiveContains("thinking") == false)
+        #expect(uploadReminder?.localizedCaseInsensitiveContains("ETA") == false)
         #expect(
             CloudAnalysisProgressCopy.backgroundReminder(
                 statusMessage: "Finding candidate clips",
@@ -731,7 +734,7 @@ struct HoopsClipsTests {
             analysisMode: .cloud
         )
         #expect(reminder?.contains("switch apps") == true)
-        #expect(reminder?.contains("cloud analysis job") == true)
+        #expect(reminder?.contains("Cloud job") == true)
         #expect(reminder?.count ?? 0 <= 82)
         #expect(reminder?.localizedCaseInsensitiveContains("thinking") == false)
         #expect(reminder?.localizedCaseInsensitiveContains("ETA") == false)
@@ -741,9 +744,10 @@ struct HoopsClipsTests {
             analysisMode: .cloud,
             teamSelection: .allTeams
         )
-        #expect(uploadDetail.contains("Keep HoopClips open during upload"))
-        #expect(uploadDetail.contains("After handoff"))
-        #expect(uploadDetail.count <= 82)
+        #expect(uploadDetail.contains("Background upload active"))
+        #expect(uploadDetail.contains("resumable chunks"))
+        #expect(uploadDetail.contains("live progress"))
+        #expect(uploadDetail.count <= 120)
 
         let selectedTeamDetail = CloudAnalysisProgressCopy.detail(
             statusMessage: "Finding candidate clips",
@@ -765,6 +769,28 @@ struct HoopsClipsTests {
         #expect(longTeamDetail.contains("..."))
         #expect(!longTeamDetail.contains("Championship"))
         #expect(longTeamDetail.contains("uncertain plays"))
+    }
+
+    @Test func testCloudAnalysisCompactUploadProgressSummaryUsesLiveTransferFacts() {
+        let summary = CloudAnalysisProgressCopy.compactUploadProgressSummary(
+            statusMessage: "Uploading large video to cloud 37% · 196/525 MB · 2.4 MB/s · about 2m 18s left · 1m 4s"
+        )
+
+        #expect(summary == "196/525 MB · Speed 2.4 MB/s · ETA 2m 18s")
+        #expect(summary?.localizedCaseInsensitiveContains("thinking") == false)
+    }
+
+    @Test func testCloudAnalysisCompactUploadProgressSummaryShowsConnectivityWaitOnlyForUpload() {
+        #expect(
+            CloudAnalysisProgressCopy.compactUploadProgressSummary(
+                statusMessage: "Uploading large video to cloud 37% · paused or slow connection, will resume"
+            ) == "Waiting for connection"
+        )
+        #expect(
+            CloudAnalysisProgressCopy.compactUploadProgressSummary(
+                statusMessage: "Finding candidate clips"
+            ) == nil
+        )
     }
 
     @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {

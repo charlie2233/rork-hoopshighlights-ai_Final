@@ -2394,44 +2394,9 @@ struct VideoPlayerView: View {
     }
 
     private var analysisUploadMetricText: String? {
-        let statusMessage = viewModel.analysisService.statusMessage
-        let lowercasedStatus = statusMessage.lowercased()
-        guard lowercasedStatus.contains("upload") else { return nil }
-
-        let segments = statusMessage
-            .components(separatedBy: " · ")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        let byteProgress = segments.first { segment in
-            segment.contains("/")
-                && (segment.contains("MB") || segment.contains("GB") || segment.contains("KB"))
-        }
-        let speed = segments.first { $0.contains("/s") }
-        let eta = segments.first { segment in
-            let lowercasedSegment = segment.lowercased()
-            return lowercasedSegment.hasPrefix("about ") && lowercasedSegment.contains(" left")
-        }
-
-        var parts: [String] = []
-        if let byteProgress {
-            parts.append(byteProgress)
-        }
-        if let speed {
-            parts.append("Speed \(speed)")
-        }
-        if let eta {
-            let etaValue = eta
-                .replacingOccurrences(of: "about ", with: "", options: [.caseInsensitive])
-                .replacingOccurrences(of: " left", with: "", options: [.caseInsensitive])
-            parts.append("ETA \(etaValue)")
-        }
-        if parts.isEmpty, lowercasedStatus.contains("paused or slow connection") {
-            parts.append("Waiting for connection")
-        }
-
-        guard !parts.isEmpty else { return nil }
-        return parts.joined(separator: " · ")
+        CloudAnalysisProgressCopy.compactUploadProgressSummary(
+            statusMessage: viewModel.analysisService.statusMessage
+        )
     }
 
     private var analysisChunkProgressText: String? {

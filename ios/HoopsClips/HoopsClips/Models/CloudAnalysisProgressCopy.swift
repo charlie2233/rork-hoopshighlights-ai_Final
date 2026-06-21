@@ -55,11 +55,11 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if status.contains("upload") && isSlowUploadStatus(status) {
-            return "Connection is slow, but upload is still alive. Keep going, or switch apps and reopen HoopClips to refresh progress."
+            return "Connection is slow, but upload is alive. Switch apps if needed; reopen HoopClips to refresh progress."
         }
 
         if status.contains("upload") {
-            return "Background upload is active. Large videos upload in resumable chunks when the server supports it; you can switch apps and reopen for live progress."
+            return "Background upload active. Huge videos use resumable chunks when supported; switch apps and reopen for live progress."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -118,7 +118,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if status.contains("upload") {
-            return "Background upload active. Wi-Fi is fastest for huge videos; safe to switch apps and reopen HoopClips to refresh ETA and progress."
+            return "Background upload active. Wi-Fi is fastest for huge videos; safe to switch apps and reopen HoopClips for live progress."
         }
 
         if status.contains("queued")
@@ -139,6 +139,48 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         return "Cloud job handed off. You can switch apps; HoopClips will reconnect when opened."
+    }
+
+    static func compactUploadProgressSummary(statusMessage: String) -> String? {
+        let lowercasedStatus = statusMessage.lowercased()
+        guard lowercasedStatus.contains("upload") else { return nil }
+
+        let segments = statusMessage
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let byteProgress = segments.first { segment in
+            segment.contains("/")
+                && (segment.contains("MB") || segment.contains("GB") || segment.contains("KB"))
+        }
+        let speed = segments.first { $0.contains("/s") }
+        let remaining = segments.first { segment in
+            let lowercasedSegment = segment.lowercased()
+            return lowercasedSegment.hasPrefix("about ") && lowercasedSegment.contains(" left")
+        }
+
+        var parts: [String] = []
+        if let byteProgress {
+            parts.append(byteProgress)
+        }
+        if let speed {
+            parts.append("Speed \(speed)")
+        }
+        if let remaining {
+            let remainingValue = remaining
+                .replacingOccurrences(of: "about ", with: "", options: [.caseInsensitive])
+                .replacingOccurrences(of: " left", with: "", options: [.caseInsensitive])
+            if !remainingValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts.append("ETA \(remainingValue)")
+            }
+        }
+        if parts.isEmpty, isSlowUploadStatus(lowercasedStatus) {
+            parts.append("Waiting for connection")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
     }
 
     private static func compactTeamTitle(_ title: String) -> String {
