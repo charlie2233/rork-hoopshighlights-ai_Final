@@ -2549,7 +2549,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 event: "relaunch_task_failed",
                 reason: reason
             )
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "relaunch_task_failed",
                 metadata: "source=urlsession_delegate reason=\(reason)"
             )
@@ -2559,7 +2559,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                     event: "relaunch_task_no_http_response",
                     reason: "no_http_response"
                 )
-                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                Self.recordBackgroundUploadProof(
                     "relaunch_task_no_http_response",
                     metadata: "source=urlsession_delegate"
                 )
@@ -2572,7 +2572,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                     statusCode: http.statusCode,
                     reason: "http_failed"
                 )
-                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                Self.recordBackgroundUploadProof(
                     "relaunch_task_http_failed",
                     metadata: "source=urlsession_delegate status=\(http.statusCode)"
                 )
@@ -2586,7 +2586,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                         statusCode: http.statusCode,
                         reason: "missing_etag"
                     )
-                    LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    Self.recordBackgroundUploadProof(
                         "relaunch_task_missing_etag",
                         metadata: "source=urlsession_delegate status=\(http.statusCode)"
                     )
@@ -2623,7 +2623,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 event: "relaunch_task_completed",
                 statusCode: http.statusCode
             )
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "relaunch_task_completed",
                 metadata: "source=urlsession_delegate status=\(http.statusCode)"
             )
@@ -2640,7 +2640,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
         if shouldFinish {
             CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
         } else {
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "events_waiting_for_manifest_persistence",
                 metadata: "source=urlsession_delegate pending=\(pendingCount)"
             )
@@ -2660,11 +2660,17 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
         lock.unlock()
 
         if shouldFinish {
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "manifest_persistence_finished",
                 metadata: "source=urlsession_delegate"
             )
             CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+        }
+    }
+
+    private static func recordBackgroundUploadProof(_ event: String, metadata: String? = nil) {
+        Task { @MainActor in
+            LaunchTelemetry.shared.recordBackgroundUploadProof(event, metadata: metadata)
         }
     }
 
