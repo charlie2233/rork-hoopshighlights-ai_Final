@@ -120,6 +120,14 @@ struct CloudAnalysisService {
         let partCount = max(manifest.partCount, 0)
         let uploadComplete = partCount > 0 && completedParts >= partCount
         let activeSessions = manifest.activeSessionIdentifiers.count
+        let nextAction: String
+        if activeSessions > 0 {
+            nextAction = "wait_for_background_session"
+        } else if uploadComplete {
+            nextAction = manifest.purpose == .teamScan ? "run_team_scan" : "start_cloud_analysis"
+        } else {
+            nextAction = "resume_upload"
+        }
         return [
             "pending=true",
             "purpose=\(manifest.purpose.rawValue)",
@@ -127,6 +135,7 @@ struct CloudAnalysisService {
             "uploadComplete=\(uploadComplete)",
             "sessions=\(activeSessions)",
             "activeUploadSessions=\(activeSessions > 0)",
+            "nextAction=\(nextAction)",
             "source=\(sourceAvailability)",
             "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
         ].joined(separator: " ")

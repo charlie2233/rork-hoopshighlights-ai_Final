@@ -97,6 +97,7 @@ Required evidence:
   - `backgroundUploadMultipartCompleteIdempotent` or `serverMultipartCompleteIdempotent`
   - `pendingBackgroundUploadManifest`
   - `uploadComplete` inside `pendingBackgroundUploadManifest`
+  - `nextAction` inside `pendingBackgroundUploadManifest`
   - `latestUploadProgress`
   - `latestBackgroundUploadProof`
   - `recentBackgroundUploadProofTrail`
