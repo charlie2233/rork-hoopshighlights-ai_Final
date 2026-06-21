@@ -56,11 +56,11 @@ struct ReviewView: View {
         let decidedKeep: Bool
 
         var title: String {
-            decidedKeep ? "Kept clip" : "Marked nah"
+            decidedKeep ? "Kept" : "Nah"
         }
 
         var message: String {
-            "\(clipLabel) updated. Undo if that was a misclick."
+            "\(clipLabel). Undo if needed."
         }
     }
 
@@ -552,7 +552,7 @@ struct ReviewView: View {
                     .foregroundStyle(.white)
                     .monospacedDigit()
 
-                Text("Swipe right KEEP / left NAH")
+                Text("Swipe: right Keep, left Nah")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -580,7 +580,7 @@ struct ReviewView: View {
                     ContentUnavailableView {
                         Label("Preview not ready", systemImage: "video.slash.fill")
                     } description: {
-                        Text("You can still choose KEEP or NAH.")
+                        Text("Pick Keep or Nah.")
                     }
                     .foregroundStyle(.white)
                     .background(AppTheme.cardBg)
@@ -701,7 +701,7 @@ struct ReviewView: View {
                     expandedClipID = expandedClipID == clip.id ? nil : clip.id
                 }
             } label: {
-                Label(expandedClipID == clip.id ? "Hide details" : "Why this clip?", systemImage: "checkmark.seal.fill")
+                Label(expandedClipID == clip.id ? "Hide" : "Why?", systemImage: "checkmark.seal.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.neonPurple)
                     .padding(.horizontal, 10)
@@ -734,7 +734,7 @@ struct ReviewView: View {
                     .font(.caption2.weight(.heavy))
                     .accessibilityHidden(true)
 
-                Text("Quick tags")
+                Text("Tags")
                     .font(.caption.weight(.heavy))
 
                 Spacer(minLength: 0)
