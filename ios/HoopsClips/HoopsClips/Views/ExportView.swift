@@ -818,7 +818,7 @@ struct ExportView: View {
             if viewModel.exportService.isExporting {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
-                        Label("Making reel", systemImage: "sparkles.tv.fill")
+                        Label(exportRenderTitle, systemImage: exportRenderIconName)
                             .font(.subheadline.weight(.heavy))
                             .foregroundStyle(.white)
                         Spacer(minLength: 0)
@@ -833,7 +833,7 @@ struct ExportView: View {
                         .accessibilityLabel("Export progress")
                         .accessibilityValue(exportProgressPercentText)
 
-                    Text(exportStatusText)
+                    Text(exportRenderHint)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(2)
@@ -842,8 +842,8 @@ struct ExportView: View {
                 .padding(16)
                 .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Exporting highlight reel")
-                .accessibilityValue("\(exportProgressPercentText). \(exportStatusText)")
+                .accessibilityLabel(exportRenderTitle)
+                .accessibilityValue("\(exportProgressPercentText). \(exportRenderHint)")
             } else {
                 let cloudRenderRequired = AppConstants.requiresCloudVideoPipeline
                 Button {
@@ -899,6 +899,42 @@ struct ExportView: View {
     private var exportStatusText: String {
         let status = viewModel.exportService.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         return status.isEmpty ? "Preparing export..." : status
+    }
+
+    private var exportRenderTitle: String {
+        let status = exportStatusText.lowercased()
+        if status.contains("final") || status.contains("save") || status.contains("finish") {
+            return "Finishing reel"
+        }
+        if status.contains("prepar") || viewModel.exportService.exportProgress < 0.08 {
+            return "Preparing reel"
+        }
+        return "Making reel"
+    }
+
+    private var exportRenderIconName: String {
+        switch exportRenderTitle {
+        case "Preparing reel":
+            return "film.stack.fill"
+        case "Finishing reel":
+            return "checkmark.seal.fill"
+        default:
+            return "sparkles.tv.fill"
+        }
+    }
+
+    private var exportRenderHint: String {
+        let status = exportStatusText
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let compactStatus = String(status.prefix(64)).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if compactStatus.isEmpty || compactStatus.localizedCaseInsensitiveContains(exportRenderTitle) {
+            return "Preview opens automatically when your reel is ready."
+        }
+        let statusSentence = compactStatus.hasSuffix(".") ? compactStatus : compactStatus + "."
+        return "\(statusSentence) Preview opens automatically."
     }
 
     private var hasLockedSelections: Bool {
