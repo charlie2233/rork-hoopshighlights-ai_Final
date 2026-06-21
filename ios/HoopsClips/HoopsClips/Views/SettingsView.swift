@@ -630,7 +630,7 @@ struct SettingsView: View {
         let didReattach = combinedProof.contains("reattached_session")
             || combinedProof.contains("events_received")
         let didFinish = combinedProof.contains("events_completed")
-            || combinedProof.contains("events_finish_requested")
+        let didRequestFinish = combinedProof.contains("events_finish_requested")
 
         return [
             backgroundUploadLifecycleStep(
@@ -666,8 +666,8 @@ struct SettingsView: View {
                 waitingIcon: "checkmark.seal",
                 title: "Final callback",
                 doneDetail: "Completion handler path recorded.",
-                waitingDetail: "Waiting for final callback.",
-                tint: AppTheme.successGreen
+                waitingDetail: didRequestFinish ? "Finish requested; waiting for callback." : "Waiting for final callback.",
+                tint: didRequestFinish ? AppTheme.warningYellow : AppTheme.successGreen
             )
         ]
     }
