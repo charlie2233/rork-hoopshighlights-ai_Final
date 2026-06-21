@@ -1972,18 +1972,11 @@ struct VideoPlayerView: View {
     }
 
     private var analysisSmokeProofPrompt: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Review ready. Send smoke proof if testing.", systemImage: "checkmark.seal.fill")
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Proof", systemImage: "checkmark.seal.fill")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(AppTheme.successGreen)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("Includes build, cloud route, upload progress, and clip count. No secrets or file paths.")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.74))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -2880,7 +2873,7 @@ struct VideoPlayerView: View {
             "backgroundUploadCompletionProof=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
             "backgroundUploadSurvivalHint=\((CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("completedwhileaway=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("wakereceived=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("relaunchcompletion=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("inferredsourcecompletion=true")) ? "detected" : "not_detected")",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
-            "progress=\(Int(viewModel.analysisService.progress * 100))%",
+            "progress=\(analysisDisplayPercent)%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
             "analysisMode=\(safeUploadProofValue(String(describing: viewModel.analysisMode)))",
             "reviewReady=\(!viewModel.clips.isEmpty)",
@@ -2992,7 +2985,7 @@ struct VideoPlayerView: View {
             Button {
                 copyBackgroundUploadProof()
             } label: {
-                Label(didCopyUploadProof ? "Copied upload proof" : "Copy upload proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                Label(didCopyUploadProof ? "Copied" : "Copy", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.cyan)
                     .frame(maxWidth: .infinity)
@@ -3039,15 +3032,15 @@ struct VideoPlayerView: View {
 
     private var uploadProofSendButtonTitle: String {
         if isSendingUploadProof {
-            return "Sending..."
+            return "Sending"
         }
         if didSendUploadProof {
             return "Sent"
         }
         if uploadProofSendFailed {
-            return "Queued retry"
+            return "Queued"
         }
-        return "Send proof"
+        return "Send"
     }
 
     private var uploadProofSendButtonIcon: String {
@@ -3070,7 +3063,7 @@ struct VideoPlayerView: View {
         didCopyUploadProof = true
         LaunchTelemetry.shared.recordStabilityCheckpoint(
             "upload.proof.copied",
-            metadata: "progress=\(Int(viewModel.analysisService.progress * 100))"
+            metadata: "progress=\(analysisDisplayPercent)"
         )
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
