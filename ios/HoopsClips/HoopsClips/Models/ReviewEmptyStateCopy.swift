@@ -16,8 +16,8 @@ nonisolated enum ReviewEmptyStateCopy {
         let isWaitingForReviewClips = isVideoImportInProgress || isAnalyzing
         guard isWaitingForReviewClips else {
             return ReviewEmptyStateContent(
-                title: "Review opens after analysis",
-                message: "Go to Player, import a video, then tap Get Highlights. Clips will show here ready to keep or skip.",
+                title: "No clips yet",
+                message: "Back to Player to import or run analysis. Review unlocks when clips are ready.",
                 icon: "film.stack.fill"
             )
         }

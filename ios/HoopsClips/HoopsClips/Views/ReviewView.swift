@@ -357,11 +357,7 @@ struct ReviewView: View {
             if reviewIsWaitingForImportOrAnalysis {
                 reviewActiveWaitingState
             } else {
-                HoopsEmptyStateCard(
-                    title: reviewEmptyStateTitle,
-                    message: reviewEmptyStateMessage,
-                    icon: reviewEmptyStateIcon
-                )
+                reviewUnavailableRecoveryCard
             }
         }
         .padding(.horizontal, 16)
@@ -372,7 +368,7 @@ struct ReviewView: View {
     }
 
     private var reviewActiveWaitingState: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: reviewEmptyStateIcon)
                     .font(.title3.weight(.bold))
@@ -385,10 +381,11 @@ struct ReviewView: View {
                     Text(reviewWaitingTitle)
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(.white)
-                    Text(reviewWaitingFirstSentence(reviewEmptyStateMessage))
+                    Text(reviewWaitingMessage)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .layoutPriority(1)
             }
@@ -413,7 +410,21 @@ struct ReviewView: View {
                 }
             }
 
-            reviewWaitingFactsView
+            if let waitingHint = reviewWaitingHint {
+                Label(waitingHint, systemImage: "iphone.and.arrow.forward")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.neonPurple)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.neonPurple.opacity(0.11), in: .rect(cornerRadius: 13))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13)
+                            .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                    }
+            }
         }
         .padding(18)
         .rorkCard(
@@ -428,12 +439,29 @@ struct ReviewView: View {
 
     private var reviewWaitingTitle: String {
         if viewModel.isVideoImportInProgress {
-            return "Uploading video"
+            return "Uploading, please wait"
         }
         if reviewWaitingProgressValue >= 0.92 {
             return "Review is almost ready"
         }
-        return "Analyzing plays"
+        return "Analyzing, please wait"
+    }
+
+    private var reviewWaitingMessage: String {
+        if viewModel.isVideoImportInProgress {
+            return "HoopClips is sending the video to the cloud. Review will open when clips are ready."
+        }
+        return "HoopClips is finding the best moments. You do not need to rerun anything."
+    }
+
+    private var reviewWaitingHint: String? {
+        if viewModel.isVideoImportInProgress {
+            return "Big videos can take a while. Keep Wi-Fi on; background upload can continue."
+        }
+        if reviewWaitingProgressValue >= 0.92 {
+            return "Hang tight. Review should appear after final clip cleanup."
+        }
+        return "You can switch tabs while this finishes."
     }
 
     private var reviewWaitingProgressValue: Double {
@@ -458,6 +486,55 @@ struct ReviewView: View {
 
     private var reviewEmptyStateIcon: String {
         reviewEmptyStateContent.icon
+    }
+
+    private var reviewUnavailableRecoveryCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: reviewEmptyStateIcon)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .frame(width: 38, height: 38)
+                    .background(AppTheme.warningYellow.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reviewEmptyStateTitle)
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.white)
+                    Text(reviewEmptyStateMessage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .layoutPriority(1)
+            }
+
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion, tabTransitionAnimation) {
+                    selectedTab = 0
+                }
+            } label: {
+                Label("Back to Player", systemImage: "play.rectangle.fill")
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 15))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("review.unavailable.backToPlayer")
+            .accessibilityHint("Returns to Player so you can import or analyze a video.")
+        }
+        .padding(18)
+        .rorkCard(
+            cornerRadius: 22,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.78)),
+            stroke: AppTheme.warningYellow.opacity(0.20),
+            glow: AppTheme.warningYellow,
+            glowOpacity: 0.05
+        )
+        .accessibilityIdentifier("review.unavailableRecoveryCard")
     }
 
     private var reviewEmptyStateContent: ReviewEmptyStateContent {
