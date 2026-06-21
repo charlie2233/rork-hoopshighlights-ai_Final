@@ -1156,32 +1156,32 @@ struct VideoPlayerView: View {
 
     private var analysisStartUnavailableReason: String? {
         if viewModel.isVideoImportInProgress {
-            return "Import is finishing. Analysis unlocks when the video is ready."
+            return "Wait here or switch apps. AI Analysis unlocks when import finishes."
         }
         if !viewModel.isVideoLoaded || viewModel.videoURL == nil {
-            return "Import a video first."
+            return "Tap Import Video above to start."
         }
         if viewModel.analysisService.isAnalyzing {
-            return "Analysis is already running."
+            return "Watch progress here. Review opens when clips are ready."
         }
         if viewModel.isCloudTeamScanInProgress {
-            return "Finding teams first."
+            return "Finding teams. This only takes a moment."
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Pick a team or All teams first."
+            return "Pick a team below, or choose All teams."
         }
         return nil
     }
 
     private var analysisPrimaryButtonTitle: String {
         if viewModel.isVideoImportInProgress {
-            return "Importing video"
+            return "Wait for import"
         }
         if !viewModel.isVideoLoaded || viewModel.videoURL == nil {
-            return "Import video first"
+            return "Import Video first"
         }
         if viewModel.analysisService.isAnalyzing {
-            return "Analysis running"
+            return "Analysis in progress"
         }
         return analysisButtonTitle
     }
