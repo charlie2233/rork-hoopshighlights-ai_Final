@@ -393,7 +393,10 @@ final class VideoExportService {
 internal let exportSlowMotionSourceWindowDuration = 1.5
 internal let exportSlowMotionPlaybackRate = 0.5
 internal let exportSegmentedSlowMotionEnabled = false
-internal let nonProExportOutroDuration = 2.0
+// Cloud Edit owns policy branding/outros. The local AVFoundation fallback should
+// never append an empty slate because that reads as an unwanted black-screen
+// effect after a highlight.
+internal let nonProExportOutroDuration = 0.0
 
 internal func brandedOutroDuration(isProUser: Bool) -> Double {
     isProUser ? 0 : nonProExportOutroDuration
