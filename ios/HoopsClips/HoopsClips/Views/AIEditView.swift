@@ -1102,33 +1102,35 @@ struct AIEditView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("export.aiEdit.quickFocus.title")
 
-            LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
-                ForEach(Self.quickPrompts) { quickPrompt in
-                    Button {
-                        applyQuickPrompt(quickPrompt)
-                    } label: {
-                        Label(quickPrompt.title, systemImage: quickPrompt.icon)
-                            .font(.caption.weight(.semibold))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                            .minimumScaleFactor(0.86)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 42)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .foregroundStyle(.white)
-                            .background(AppTheme.accentPurple.opacity(0.20), in: .rect(cornerRadius: 12))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
-                            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.quickPrompts) { quickPrompt in
+                        Button {
+                            applyQuickPrompt(quickPrompt)
+                        } label: {
+                            Label(quickPrompt.title, systemImage: quickPrompt.icon)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.82)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 9)
+                                .frame(minWidth: dynamicTypeSize.isAccessibilitySize ? 128 : 86)
+                                .foregroundStyle(.white)
+                                .background(AppTheme.accentPurple.opacity(0.20), in: .capsule)
+                                .overlay {
+                                    Capsule()
+                                        .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
+                        .accessibilityLabel("Add edit note: \(quickPrompt.title)")
+                        .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
-                    .accessibilityLabel("Add edit note: \(quickPrompt.title)")
-                    .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
                 }
+                .padding(.vertical, 1)
             }
+            .accessibilityIdentifier("export.aiEdit.quickPrompt.rail")
         }
         .accessibilityElement(children: .contain)
     }
@@ -1223,13 +1225,6 @@ struct AIEditView: View {
                 }
             }
         }
-    }
-
-    private var quickPromptGridColumns: [GridItem] {
-        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 168 : 132
-        return [
-            GridItem(.adaptive(minimum: minimumWidth, maximum: 240), spacing: 8, alignment: .top)
-        ]
     }
 
     private var heroChipGridColumns: [GridItem] {
