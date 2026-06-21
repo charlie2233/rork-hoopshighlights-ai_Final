@@ -1633,6 +1633,37 @@ struct HoopsClipsTests {
         #expect(requestCount == 0)
     }
 
+    @Test @MainActor func testStartAnalysisTaskBlocksMissingVideoWithoutNoClipsCallback() {
+        let viewModel = HighlightsViewModel()
+        var noClipsCallbackCalled = false
+
+        let started = viewModel.startAnalysisTask {
+            noClipsCallbackCalled = true
+        }
+
+        #expect(started == false)
+        #expect(viewModel.analysisStartBlockReason == .noVideo)
+        #expect(viewModel.analysisService.isAnalyzing == false)
+        #expect(noClipsCallbackCalled == false)
+    }
+
+    @Test @MainActor func testStartAnalysisTaskBlocksDuplicateAnalysisWithoutNoClipsCallback() {
+        let viewModel = HighlightsViewModel()
+        viewModel.videoURL = URL(fileURLWithPath: "/tmp/hoopclips-analysis-start-guard.mov")
+        viewModel.isVideoLoaded = true
+        viewModel.analysisService.beginExternalAnalysis(status: "Preparing cloud upload")
+        var noClipsCallbackCalled = false
+
+        let started = viewModel.startAnalysisTask {
+            noClipsCallbackCalled = true
+        }
+
+        #expect(started == false)
+        #expect(viewModel.analysisStartBlockReason == .alreadyAnalyzing)
+        #expect(viewModel.analysisService.isAnalyzing)
+        #expect(noClipsCallbackCalled == false)
+    }
+
     @Test @MainActor func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
         let now = Date(timeIntervalSince1970: 1_777_000_000)
         let project = PersistedProjectRecord(

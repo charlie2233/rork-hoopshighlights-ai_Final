@@ -756,11 +756,14 @@ struct VideoPlayerView: View {
             return
         }
 
-        analysisStarted = true
-        viewModel.startAnalysisTask {
+        let didStartAnalysis = viewModel.startAnalysisTask {
             if viewModel.clips.isEmpty {
                 showingNoClipsAlert = true
             }
+        }
+        analysisStarted = didStartAnalysis
+        if !didStartAnalysis {
+            HoopsAccessibility.announce("AI analysis could not start yet. Check the Player status and try again.")
         }
     }
 

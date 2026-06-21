@@ -10,6 +10,14 @@ nonisolated enum CloudAnalysisFallbackCopy {
     static let cloudRequiredTelemetryReason = "cloud_required_no_local_fallback"
 }
 
+nonisolated enum AnalysisStartBlockReason: String, Sendable {
+    case importing
+    case noVideo = "no_video"
+    case alreadyAnalyzing = "already_analyzing"
+    case teamScan = "team_scan"
+    case teamSelection = "team_selection"
+}
+
 @Observable
 @MainActor
 final class HighlightsViewModel {
@@ -126,6 +134,25 @@ final class HighlightsViewModel {
             && !isVideoImportInProgress
             && !analysisService.isAnalyzing
             && activeAnalysisTask == nil
+    }
+
+    var analysisStartBlockReason: AnalysisStartBlockReason? {
+        if isVideoImportInProgress {
+            return .importing
+        }
+        if !isVideoLoaded || videoURL == nil {
+            return .noVideo
+        }
+        if analysisService.isAnalyzing || activeAnalysisTask != nil {
+            return .alreadyAnalyzing
+        }
+        if isCloudTeamScanInProgress {
+            return .teamScan
+        }
+        if requiresHighlightTeamSelectionConfirmation {
+            return .teamSelection
+        }
+        return nil
     }
 
     var analysisModeDisplayName: String {
@@ -414,8 +441,16 @@ final class HighlightsViewModel {
         }
     }
 
-    func startAnalysisTask(onNoClips: @escaping @MainActor () -> Void) {
-        guard activeAnalysisTask == nil else { return }
+    @discardableResult
+    func startAnalysisTask(onNoClips: @escaping @MainActor () -> Void) -> Bool {
+        if let blockReason = analysisStartBlockReason {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.start_task.blocked",
+                metadata: "reason=\(blockReason.rawValue) videoLoaded=\(isVideoLoaded) importing=\(isVideoImportInProgress) analyzing=\(analysisService.isAnalyzing) progress=\(analysisService.progress)"
+            )
+            return false
+        }
+
         didCancelUploadOrAnalysis = false
 
         activeAnalysisTask = Task { @MainActor [weak self] in
@@ -429,6 +464,7 @@ final class HighlightsViewModel {
                 onNoClips()
             }
         }
+        return true
     }
 
     func cancelActiveUploadOrAnalysis() {
