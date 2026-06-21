@@ -1224,6 +1224,14 @@ struct ContentView: View {
     private var pipelineUploadProofText: String {
         [
             "HoopClips Upload Proof",
+            "generatedAt=\(safePipelineProofValue(ISO8601DateFormatter().string(from: Date())))",
+            "appVersion=\(safePipelineProofValue(pipelineAppVersionString))",
+            "build=\(safePipelineProofValue(pipelineBuildString))",
+            "environment=\(safePipelineProofValue(AppConstants.environmentName))",
+            "cloudLaunchMode=\(safePipelineProofValue(AppConstants.cloudLaunchMode.rawValue))",
+            "projectID=\(safePipelineProofValue(viewModel.currentProjectID?.uuidString ?? "none"))",
+            "analysisJobID=\(safePipelineProofValue(viewModel.cloudAnalysisJobID == nil ? "none" : "available_redacted"))",
+            "sourceObjectKey=\(safePipelineProofValue(viewModel.cloudEditSourceObjectKey == nil ? "none" : "available_redacted"))",
             "pipelineStage=\(safePipelineProofValue(pipelineStage.title))",
             "analysisProgress=\(analysisProgressPercent)%",
             "analysisStatus=\(safePipelineProofValue(pipelineStatusMessage))",
@@ -1237,6 +1245,14 @@ struct ContentView: View {
             "latestBackgroundUploadProof=\(safePipelineProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"))",
             "privacy=no_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
+    }
+
+    private var pipelineAppVersionString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
+    private var pipelineBuildString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     }
 
     private func safePipelineProofValue(_ value: String) -> String {
