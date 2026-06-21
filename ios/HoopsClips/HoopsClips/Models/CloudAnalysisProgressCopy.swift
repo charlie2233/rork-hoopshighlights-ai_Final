@@ -471,6 +471,10 @@ nonisolated enum CloudAnalysisProgressCopy {
 
     static func uploadSourceSavingsFact(from summary: String) -> String? {
         let values = uploadOptimizationSummaryValues(from: summary)
+        if values["reason"] == "preparation_timed_out" {
+            return "Compact prep timed out; uploading original"
+        }
+
         guard values["result"] == "optimized",
               let savedMB = Int(values["savedMB"] ?? ""),
               savedMB > 0 else {

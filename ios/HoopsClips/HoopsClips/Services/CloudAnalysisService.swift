@@ -12,6 +12,7 @@ private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudU
 private let optimizedUploadSourceMaximumAge: TimeInterval = 24 * 60 * 60
 private let compactOptimizedUploadDurationSeconds: Double = 45 * 60
 private let compactOptimizedUploadFileSizeBytes: Int64 = 1_400 * 1_024 * 1_024
+private let optimizedUploadSourceTimeoutSeconds: UInt64 = 4 * 60
 private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
 private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
 private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
@@ -1112,7 +1113,7 @@ struct CloudAnalysisService {
 
         progress(progressValue, progressStage)
         do {
-            let optimizedExport = try await Self.exportOptimizedUploadSource(
+            let optimizedExport = try await Self.exportOptimizedUploadSourceWithTimeout(
                 from: originalURL,
                 duration: duration,
                 fileSizeBytes: originalFileSizeBytes
@@ -1160,6 +1161,25 @@ struct CloudAnalysisService {
                 optimizedFileSizeBytes: optimizedBytes,
                 shouldCleanup: true
             )
+        } catch OptimizedUploadSourceError.timedOut {
+            Self.recordUploadSourceOptimizationSummary(
+                result: "fallback_original",
+                reason: "preparation_timed_out",
+                originalBytes: originalFileSizeBytes,
+                optimizedBytes: nil,
+                profile: "timeout"
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "optimized_upload_source_timeout",
+                metadata: "timeoutSeconds=\(optimizedUploadSourceTimeoutSeconds)"
+            )
+            return PreparedUploadSource(
+                url: originalURL.standardizedFileURL,
+                originalURL: originalURL.standardizedFileURL,
+                originalFileSizeBytes: originalFileSizeBytes,
+                optimizedFileSizeBytes: nil,
+                shouldCleanup: false
+            )
         } catch {
             Self.recordUploadSourceOptimizationSummary(
                 result: "fallback_original",
@@ -1186,6 +1206,32 @@ struct CloudAnalysisService {
 
         init(_ exporter: AVAssetExportSession) {
             self.exporter = exporter
+        }
+    }
+
+    private static func exportOptimizedUploadSourceWithTimeout(
+        from sourceURL: URL,
+        duration: Double,
+        fileSizeBytes: Int64
+    ) async throws -> (url: URL, presetName: String, profile: String) {
+        try await withThrowingTaskGroup(of: (url: URL, presetName: String, profile: String).self) { group in
+            group.addTask {
+                try await exportOptimizedUploadSource(
+                    from: sourceURL,
+                    duration: duration,
+                    fileSizeBytes: fileSizeBytes
+                )
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: optimizedUploadSourceTimeoutSeconds * 1_000_000_000)
+                throw OptimizedUploadSourceError.timedOut
+            }
+
+            guard let result = try await group.next() else {
+                throw CloudAnalysisError.uploadFailed
+            }
+            group.cancelAll()
+            return result
         }
     }
 
@@ -3091,6 +3137,10 @@ private actor CloudUploadResumeStore {
             LaunchTelemetry.shared.recordBackgroundUploadProof(event, metadata: metadata)
         }
     }
+}
+
+private enum OptimizedUploadSourceError: Error {
+    case timedOut
 }
 
 private struct PreparedUploadSource: Sendable {
