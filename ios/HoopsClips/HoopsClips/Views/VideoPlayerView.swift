@@ -2501,7 +2501,7 @@ struct VideoPlayerView: View {
         Button {
             copyBackgroundUploadProof()
         } label: {
-            Label(didCopyUploadProof ? "Copied" : "Copy proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+            Label(didCopyUploadProof ? "Copied upload proof" : "Copy upload proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.cyan)
                 .frame(maxWidth: .infinity)
