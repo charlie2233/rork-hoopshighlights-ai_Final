@@ -2004,18 +2004,28 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 }
                 beginPersistence()
                 Task {
-                    await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
+                    let uploadCompleted = await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
                         sessionIdentifier: identifier,
                         etag: etag
                     )
+                    if uploadCompleted {
+                        await MainActor.run {
+                            AnalysisNotificationService.shared.notifyBackgroundUploadCompleted()
+                        }
+                    }
                     self.endPersistenceIfNeeded()
                 }
             } else if identifier.hasSuffix(".source") {
                 beginPersistence()
                 Task {
-                    await CloudUploadResumeStore.shared.recordRelaunchedSourceUploadCompleted(
+                    let uploadCompleted = await CloudUploadResumeStore.shared.recordRelaunchedSourceUploadCompleted(
                         sessionIdentifier: identifier
                     )
+                    if uploadCompleted {
+                        await MainActor.run {
+                            AnalysisNotificationService.shared.notifyBackgroundUploadCompleted()
+                        }
+                    }
                     self.endPersistenceIfNeeded()
                 }
             }
@@ -2234,12 +2244,12 @@ private actor CloudUploadResumeStore {
         return result.isEmpty ? UUID().uuidString : result
     }
 
-    func recordRelaunchedCompletedPart(sessionIdentifier: String, etag: String) {
+    func recordRelaunchedCompletedPart(sessionIdentifier: String, etag: String) -> Bool {
         guard let sessionPart = Self.parseMultipartSessionIdentifier(sessionIdentifier),
               var manifest = loadManifest(),
               Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: sessionPart.jobID) else {
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_part_ignored")
-            return
+            return false
         }
 
         var parts = manifest.completedParts.filter { $0.partNumber != sessionPart.partNumber }
@@ -2248,18 +2258,27 @@ private actor CloudUploadResumeStore {
         manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
         manifest.updatedAt = Date()
         saveManifest(manifest)
+        let uploadCompleted = manifest.completedParts.count == manifest.partCount
+            && manifest.activeSessionIdentifiers.isEmpty
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_relaunch_part_completed",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
         )
+        if uploadCompleted {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_relaunch_upload_completed",
+                metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount)"
+            )
+        }
+        return uploadCompleted
     }
 
-    func recordRelaunchedSourceUploadCompleted(sessionIdentifier: String) {
+    func recordRelaunchedSourceUploadCompleted(sessionIdentifier: String) -> Bool {
         guard let jobID = Self.parseSourceSessionIdentifier(sessionIdentifier),
               var manifest = loadManifest(),
               Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: jobID) else {
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_source_ignored")
-            return
+            return false
         }
 
         var parts = manifest.completedParts.filter { $0.partNumber != 1 }
@@ -2268,10 +2287,19 @@ private actor CloudUploadResumeStore {
         manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
         manifest.updatedAt = Date()
         saveManifest(manifest)
+        let uploadCompleted = manifest.completedParts.count == manifest.partCount
+            && manifest.activeSessionIdentifiers.isEmpty
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_relaunch_source_completed",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
         )
+        if uploadCompleted {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_relaunch_upload_completed",
+                metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount)"
+            )
+        }
+        return uploadCompleted
     }
 
     func clear(jobID: String, uploadID: String) {

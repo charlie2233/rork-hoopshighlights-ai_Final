@@ -99,6 +99,48 @@ final class AnalysisNotificationService: NSObject {
         }
     }
 
+    func notifyBackgroundUploadCompleted() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            let status = settings.authorizationStatus
+            guard status == .authorized || status == .provisional || status == .ephemeral else {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "background_upload_notification_blocked",
+                    metadata: "status=\(Self.authorizationProofStatus(status))"
+                )
+                return
+            }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Upload finished"
+            content.body = "Open HoopClips to continue analysis and get Review ready."
+            content.sound = .default
+            content.threadIdentifier = "hoopclips-analysis"
+            content.categoryIdentifier = "background-upload-complete"
+            content.userInfo = [
+                "source": "HoopClips",
+                "event": "background_upload_completed",
+                "completionContext": CompletionContext.backgroundUploadResume.rawValue
+            ]
+
+            let request = UNNotificationRequest(
+                identifier: "background-upload-complete-\(UUID().uuidString)",
+                content: content,
+                trigger: nil
+            )
+            do {
+                try await center.add(request)
+                LaunchTelemetry.shared.recordBackgroundUploadProof("background_upload_notification_scheduled")
+            } catch {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "background_upload_notification_schedule_failed",
+                    metadata: "reason=schedule_error"
+                )
+            }
+        }
+    }
+
     private static func authorizationProofStatus(_ status: UNAuthorizationStatus) -> String {
         switch status {
         case .notDetermined:
