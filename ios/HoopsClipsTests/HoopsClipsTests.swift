@@ -842,7 +842,7 @@ struct HoopsClipsTests {
         #expect(normal.shouldPreferOptimizedSource == false)
         #expect(normal.quickFact == nil)
         #expect(normal.proof.contains("recommended=false"))
-        #expect(normal.proof.contains("optimizedSourceStatus=not_enabled"))
+        #expect(normal.proof.contains("optimizedSourceStatus=available"))
 
         let longSource = CloudAnalysisProgressCopy.uploadSourceOptimization(
             durationSeconds: 57 * 60,
@@ -856,8 +856,8 @@ struct HoopsClipsTests {
         #expect(longSource.proof.contains("long_source"))
         #expect(longSource.proof.contains("huge_source"))
         #expect(longSource.proof.contains("slow_upload"))
-        #expect(longSource.proof.contains("currentPath=original_background_chunked_upload"))
-        #expect(longSource.proof.contains("optimizedSourceStatus=not_enabled"))
+        #expect(longSource.proof.contains("currentPath=optimized_when_recommended_else_original_background_chunked_upload"))
+        #expect(longSource.proof.contains("optimizedSourceStatus=available"))
         #expect(!longSource.proof.localizedCaseInsensitiveContains("https://"))
         #expect(!longSource.proof.localizedCaseInsensitiveContains("uploads/"))
     }

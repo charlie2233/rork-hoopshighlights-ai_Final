@@ -285,8 +285,8 @@ nonisolated enum CloudAnalysisProgressCopy {
             "reason=\(reason)",
             "durationMinutes=\(durationMinutes)",
             "sourceSizeMB=\(sourceSizeMB.map(String.init) ?? "unknown")",
-            "optimizedSourceStatus=not_enabled",
-            "currentPath=original_background_chunked_upload"
+            "optimizedSourceStatus=available",
+            "currentPath=optimized_when_recommended_else_original_background_chunked_upload"
         ].joined(separator: " ")
 
         return CloudAnalysisUploadSourceOptimization(

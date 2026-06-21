@@ -2708,6 +2708,7 @@ struct VideoPlayerView: View {
             "clientChunkedUploadCompatible=true",
             "serverMultipartCompleteIdempotent=true",
             "uploadSourceOptimizationPolicy=\(safeUploadProofValue(analysisUploadSourceOptimization.proof))",
+            "latestUploadSourceOptimization=\(safeUploadProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
             "multipartUploadPolicy=\(safeUploadProofValue(CloudAnalysisService.multipartUploadPolicySummary()))",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
             "proofCapturedAt=\(Date().ISO8601Format())",

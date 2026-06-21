@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Network
 import UniformTypeIdentifiers
@@ -8,6 +9,7 @@ private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPla
 private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
 private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
+private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudUpload.sourceOptimizationSummary.v1"
 private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
 private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
 private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
@@ -154,6 +156,10 @@ struct CloudAnalysisService {
 
     static func latestUploadProgressSummary() -> String {
         UserDefaults.standard.string(forKey: cloudUploadProgressSummaryDefaultsKey) ?? "none"
+    }
+
+    static func latestUploadSourceOptimizationSummary() -> String {
+        UserDefaults.standard.string(forKey: cloudUploadSourceOptimizationSummaryDefaultsKey) ?? "none"
     }
 
     static func multipartUploadPolicySummary() -> String {
@@ -662,12 +668,22 @@ struct CloudAnalysisService {
             throw CloudAnalysisError.notConfigured
         }
 
-        let fileInfo = try fileInfo(for: url)
         progress(0.02, "Preparing cloud analysis")
+        let originalFileInfo = try fileInfo(for: url)
+        let uploadSource = await preparedUploadSource(
+            originalURL: url,
+            duration: duration,
+            originalFileSizeBytes: originalFileInfo.fileSizeBytes,
+            progressStage: "Preparing smaller cloud upload",
+            progressValue: 0.04,
+            progress: progress
+        )
+        let uploadURL = uploadSource.url
+        let fileInfo = try fileInfo(for: uploadURL)
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
-                filename: url.lastPathComponent,
+                filename: uploadSource.filename,
                 contentType: fileInfo.contentType,
                 fileSizeBytes: fileInfo.fileSizeBytes,
                 durationSeconds: duration,
@@ -682,7 +698,7 @@ struct CloudAnalysisService {
         progress(0.15, uploadStage)
         try await uploadVideo(
             to: job,
-            from: url,
+            from: uploadURL,
             baseURL: baseURL,
             installID: installID,
             purpose: .analysis,
@@ -696,6 +712,7 @@ struct CloudAnalysisService {
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
         onCloudHandoff?(job.jobId, job.sourceObjectKey)
         await CloudUploadResumeStore.shared.clearJob(jobID: job.jobId, reason: "analysis_started")
+        Self.cleanupOptimizedUploadSourceIfNeeded(uploadSource)
 
         return try await pollJob(
             baseURL: baseURL,
@@ -718,12 +735,22 @@ struct CloudAnalysisService {
             throw CloudAnalysisError.notConfigured
         }
 
-        let fileInfo = try fileInfo(for: url)
         progress(0.02, "Preparing cloud team scan")
+        let originalFileInfo = try fileInfo(for: url)
+        let uploadSource = await preparedUploadSource(
+            originalURL: url,
+            duration: duration,
+            originalFileSizeBytes: originalFileInfo.fileSizeBytes,
+            progressStage: "Preparing smaller team-scan upload",
+            progressValue: 0.04,
+            progress: progress
+        )
+        let uploadURL = uploadSource.url
+        let fileInfo = try fileInfo(for: uploadURL)
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
-                filename: url.lastPathComponent,
+                filename: uploadSource.filename,
                 contentType: fileInfo.contentType,
                 fileSizeBytes: fileInfo.fileSizeBytes,
                 durationSeconds: duration,
@@ -737,7 +764,7 @@ struct CloudAnalysisService {
         progress(0.14, uploadStage)
         try await uploadVideo(
             to: job,
-            from: url,
+            from: uploadURL,
             baseURL: baseURL,
             installID: installID,
             purpose: .teamScan,
@@ -750,6 +777,7 @@ struct CloudAnalysisService {
         progress(0.20, "Scanning jersey colors")
         let scan = try await scanJobTeams(baseURL: baseURL, jobID: job.jobId, installID: installID)
         await CloudUploadResumeStore.shared.clearJob(jobID: job.jobId, reason: "team_scan_started")
+        Self.cleanupOptimizedUploadSourceIfNeeded(uploadSource)
         progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
 
         return PreparedCloudAnalysisJob(
@@ -1030,6 +1058,193 @@ struct CloudAnalysisService {
         let contentType = values.contentType?.preferredMIMEType
             ?? inferredContentType(for: url)
         return (Int64(fileSize), contentType)
+    }
+
+    private func preparedUploadSource(
+        originalURL: URL,
+        duration: Double,
+        originalFileSizeBytes: Int64,
+        progressStage: String,
+        progressValue: Double,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async -> PreparedUploadSource {
+        let policy = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: duration,
+            fileSizeBytes: originalFileSizeBytes,
+            statusMessage: "Preparing upload",
+            latestUploadProgress: Self.latestUploadProgressSummary()
+        )
+        guard policy.shouldPreferOptimizedSource else {
+            Self.recordUploadSourceOptimizationSummary(
+                result: "original",
+                reason: "policy_not_recommended",
+                originalBytes: originalFileSizeBytes,
+                optimizedBytes: nil
+            )
+            return PreparedUploadSource(
+                url: originalURL.standardizedFileURL,
+                originalURL: originalURL.standardizedFileURL,
+                originalFileSizeBytes: originalFileSizeBytes,
+                optimizedFileSizeBytes: nil,
+                shouldCleanup: false
+            )
+        }
+
+        progress(progressValue, progressStage)
+        do {
+            let optimizedURL = try await Self.exportOptimizedUploadSource(from: originalURL)
+            let optimizedBytes = try Self.fileSizeBytes(for: optimizedURL)
+            let savedBytes = max(originalFileSizeBytes - optimizedBytes, 0)
+            let savedFraction = originalFileSizeBytes > 0 ? Double(savedBytes) / Double(originalFileSizeBytes) : 0
+            guard optimizedBytes > 0,
+                  optimizedBytes < originalFileSizeBytes,
+                  savedFraction >= 0.18 else {
+                try? FileManager.default.removeItem(at: optimizedURL)
+                Self.recordUploadSourceOptimizationSummary(
+                    result: "fallback_original",
+                    reason: "insufficient_savings",
+                    originalBytes: originalFileSizeBytes,
+                    optimizedBytes: optimizedBytes
+                )
+                return PreparedUploadSource(
+                    url: originalURL.standardizedFileURL,
+                    originalURL: originalURL.standardizedFileURL,
+                    originalFileSizeBytes: originalFileSizeBytes,
+                    optimizedFileSizeBytes: optimizedBytes,
+                    shouldCleanup: false
+                )
+            }
+
+            Self.prepareFileForBackgroundUpload(optimizedURL, context: "optimized_upload_source")
+            Self.recordUploadSourceOptimizationSummary(
+                result: "optimized",
+                reason: "smaller_source_created",
+                originalBytes: originalFileSizeBytes,
+                optimizedBytes: optimizedBytes
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "optimized_upload_source_created",
+                metadata: "originalMB=\(Self.megabytes(originalFileSizeBytes)) optimizedMB=\(Self.megabytes(optimizedBytes))"
+            )
+            return PreparedUploadSource(
+                url: optimizedURL.standardizedFileURL,
+                originalURL: originalURL.standardizedFileURL,
+                originalFileSizeBytes: originalFileSizeBytes,
+                optimizedFileSizeBytes: optimizedBytes,
+                shouldCleanup: true
+            )
+        } catch {
+            Self.recordUploadSourceOptimizationSummary(
+                result: "fallback_original",
+                reason: "export_failed",
+                originalBytes: originalFileSizeBytes,
+                optimizedBytes: nil
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "optimized_upload_source_failed",
+                metadata: "reason=export_failed"
+            )
+            return PreparedUploadSource(
+                url: originalURL.standardizedFileURL,
+                originalURL: originalURL.standardizedFileURL,
+                originalFileSizeBytes: originalFileSizeBytes,
+                optimizedFileSizeBytes: nil,
+                shouldCleanup: false
+            )
+        }
+    }
+
+    private static func exportOptimizedUploadSource(from sourceURL: URL) async throws -> URL {
+        let asset = AVURLAsset(url: sourceURL)
+        let preset = AVAssetExportSession.exportPresets(compatibleWith: asset)
+            .first { $0 == AVAssetExportPreset1280x720 }
+            ?? AVAssetExportSession.exportPresets(compatibleWith: asset).first { $0 == AVAssetExportPreset960x540 }
+            ?? AVAssetExportSession.exportPresets(compatibleWith: asset).first { $0 == AVAssetExportPresetMediumQuality }
+        guard let preset,
+              let exporter = AVAssetExportSession(asset: asset, presetName: preset) else {
+            throw CloudAnalysisError.invalidVideo
+        }
+
+        let directory = try optimizedUploadSourceDirectory()
+        let outputURL = directory.appending(path: "optimized-upload-\(UUID().uuidString).mp4")
+        try? FileManager.default.removeItem(at: outputURL)
+        exporter.outputURL = outputURL
+        exporter.outputFileType = .mp4
+        exporter.shouldOptimizeForNetworkUse = true
+
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                exporter.exportAsynchronously {
+                    switch exporter.status {
+                    case .completed:
+                        continuation.resume(returning: ())
+                    case .cancelled:
+                        continuation.resume(throwing: CancellationError())
+                    case .failed:
+                        continuation.resume(throwing: exporter.error ?? CloudAnalysisError.uploadFailed)
+                    default:
+                        continuation.resume(throwing: CloudAnalysisError.uploadFailed)
+                    }
+                }
+            }
+        }, onCancel: {
+            exporter.cancelExport()
+        })
+
+        return outputURL
+    }
+
+    private static func optimizedUploadSourceDirectory() throws -> URL {
+        let caches = try FileManager.default.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = caches.appending(path: "HoopClipsOptimizedUploads", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func cleanupOptimizedUploadSourceIfNeeded(_ source: PreparedUploadSource) {
+        guard source.shouldCleanup, source.url != source.originalURL else { return }
+        try? FileManager.default.removeItem(at: source.url)
+    }
+
+    private static func fileSizeBytes(for url: URL) throws -> Int64 {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        if let fileSize = values.fileSize, fileSize > 0 {
+            return Int64(fileSize)
+        }
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let fileSize = attributes[.size] as? NSNumber else {
+            throw CloudAnalysisError.invalidVideo
+        }
+        return fileSize.int64Value
+    }
+
+    private static func recordUploadSourceOptimizationSummary(
+        result: String,
+        reason: String,
+        originalBytes: Int64,
+        optimizedBytes: Int64?
+    ) {
+        let originalMB = megabytes(originalBytes)
+        let optimizedMB = optimizedBytes.map(megabytes) ?? -1
+        let savedMB = optimizedBytes.map { max(megabytes(originalBytes - $0), 0) } ?? 0
+        let summary = [
+            "result=\(safeUploadPlanComponent(result))",
+            "reason=\(safeUploadPlanComponent(reason))",
+            "originalMB=\(originalMB)",
+            optimizedBytes == nil ? "optimizedMB=none" : "optimizedMB=\(optimizedMB)",
+            "savedMB=\(savedMB)",
+            "pathPrivacy=no_local_paths"
+        ].joined(separator: " ")
+        UserDefaults.standard.set(summary, forKey: cloudUploadSourceOptimizationSummaryDefaultsKey)
+    }
+
+    private static func megabytes(_ bytes: Int64) -> Int {
+        max(0, Int((Double(max(bytes, 0)) / 1_048_576.0).rounded()))
     }
 
     private func inferredContentType(for url: URL) -> String {
@@ -2720,6 +2935,18 @@ private actor CloudUploadResumeStore {
             return
         }
         UserDefaults.standard.set(data, forKey: cloudUploadResumeManifestDefaultsKey)
+    }
+}
+
+private struct PreparedUploadSource: Sendable {
+    let url: URL
+    let originalURL: URL
+    let originalFileSizeBytes: Int64
+    let optimizedFileSizeBytes: Int64?
+    let shouldCleanup: Bool
+
+    var filename: String {
+        optimizedFileSizeBytes == nil ? originalURL.lastPathComponent : url.lastPathComponent
     }
 }
 
