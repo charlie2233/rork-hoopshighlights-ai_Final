@@ -456,13 +456,45 @@ struct SettingsView: View {
     }
 
     private var smokeProofCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RorkSectionHeader(
-                title: languageStore.text(.settingsSmokeProofTitle),
-                icon: "doc.on.clipboard.fill",
-                subtitle: languageStore.text(.settingsSmokeProofSubtitle)
-            )
+        VStack(alignment: .leading, spacing: 12) {
+            smokeProofCompactHeader
+            smokeProofToolsDrawer
+        }
+        .padding(16)
+        .rorkCard(
+            cornerRadius: 18,
+            fill: AppTheme.accentCardFill(AppTheme.courtBlue, opacity: 0.12),
+            stroke: AppTheme.courtBlue.opacity(0.20),
+            glow: AppTheme.courtBlue,
+            glowOpacity: 0.05
+        )
+    }
 
+    private var smokeProofCompactHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "doc.on.clipboard.fill")
+                .font(.headline.weight(.heavy))
+                .foregroundStyle(AppTheme.courtBlue)
+                .frame(width: 36, height: 36)
+                .background(AppTheme.courtBlue.opacity(0.14), in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(languageStore.text(.settingsSmokeProofTitle))
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(.white)
+                Text(languageStore.text(.settingsSmokeProofSubtitle))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+            }
+            .layoutPriority(1)
+        }
+    }
+
+    private var smokeProofStatusGrid: some View {
+        VStack(spacing: 10) {
             HStack(spacing: 10) {
                 SettingsPreviewStat(
                     icon: "number.circle.fill",
@@ -498,22 +530,13 @@ struct SettingsView: View {
                 )
                 .settingsPreviewStatCard()
             }
-
-            smokeProofToolsDrawer
         }
-        .padding(16)
-        .rorkCard(
-            cornerRadius: 18,
-            fill: AppTheme.accentCardFill(AppTheme.courtBlue, opacity: 0.12),
-            stroke: AppTheme.courtBlue.opacity(0.20),
-            glow: AppTheme.courtBlue,
-            glowOpacity: 0.05
-        )
     }
 
     private var smokeProofToolsDrawer: some View {
         DisclosureGroup(isExpanded: $showingSmokeProofTools) {
             VStack(alignment: .leading, spacing: 12) {
+                smokeProofStatusGrid
                 settingsBackgroundUploadStatusRow
                 pendingProofRetryStatusRow
                 phoneSmokeResultPicker
@@ -572,7 +595,7 @@ struct SettingsView: View {
             }
             .padding(.top, 10)
         } label: {
-            Label("Share app status", systemImage: "square.and.arrow.up.fill")
+            Label("Test tools", systemImage: "wrench.and.screwdriver.fill")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(AppTheme.courtBlue)
                 .frame(maxWidth: .infinity, alignment: .leading)
