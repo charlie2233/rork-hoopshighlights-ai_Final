@@ -37,6 +37,12 @@ Confirm:
 
 ## Proof to paste into a note
 
+You can generate a safe fill-in template before testing:
+
+```bash
+python3 scripts/create_background_upload_phone_proof_template.py --commit <git-sha> --build <testflight-build> --out /path/to/background-upload-proof.txt
+```
+
 ```text
 appVersion:
 buildVersion:
