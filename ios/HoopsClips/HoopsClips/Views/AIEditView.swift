@@ -68,6 +68,7 @@ struct AIEditView: View {
     @State private var showTimelineDetails = false
     @State private var showAdvancedAIEditDetails = false
     @State private var showAllDurationOptions = false
+    @State private var showMoreQuickPrompts = false
     @State private var activeInstallID: String?
     @State private var foregroundRefreshTask: Task<Void, Never>?
 
@@ -1029,6 +1030,8 @@ struct AIEditView: View {
                 }
                 .accessibilityIdentifier("export.aiEdit.targetFocusSummary")
 
+            quickPromptPicker
+
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $userEditPrompt)
                     .font(.subheadline)
@@ -1080,8 +1083,6 @@ struct AIEditView: View {
                     .accessibilityIdentifier("export.aiEdit.smartSetupSummary")
             }
 
-            quickPromptPicker
-
             if let proIntentWarningText {
                 Label(proIntentWarningText, systemImage: "lock.fill")
                     .font(.caption.weight(.semibold))
@@ -1095,46 +1096,103 @@ struct AIEditView: View {
     }
 
     private var quickPromptPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Tap a vibe", systemImage: "lightbulb.fill")
-                .font(.caption.bold())
-                .foregroundStyle(AppTheme.warningYellow)
-                .lineLimit(2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("export.aiEdit.quickFocus.title")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label("Pick a style", systemImage: "lightbulb.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.quickFocus.title")
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Self.quickPrompts) { quickPrompt in
-                        Button {
-                            applyQuickPrompt(quickPrompt)
-                        } label: {
-                            Label(quickPrompt.title, systemImage: quickPrompt.icon)
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.82)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 9)
-                                .frame(minWidth: dynamicTypeSize.isAccessibilitySize ? 128 : 86)
-                                .foregroundStyle(.white)
-                                .background(AppTheme.accentPurple.opacity(0.20), in: .capsule)
-                                .overlay {
-                                    Capsule()
-                                        .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
-                        .accessibilityLabel("Add edit note: \(quickPrompt.title)")
-                        .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
-                    }
-                }
-                .padding(.vertical, 1)
+                Spacer(minLength: 0)
+
+                Text("one tap")
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
             }
-            .accessibilityIdentifier("export.aiEdit.quickPrompt.rail")
+
+            LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
+                ForEach(AIEditQuickPromptLibrary.primaryOptions) { quickPrompt in
+                    quickPromptCard(quickPrompt, isPrimary: true)
+                }
+            }
+
+            if !AIEditQuickPromptLibrary.secondaryOptions.isEmpty {
+                DisclosureGroup(isExpanded: $showMoreQuickPrompts) {
+                    LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
+                        ForEach(AIEditQuickPromptLibrary.secondaryOptions) { quickPrompt in
+                            quickPromptCard(quickPrompt, isPrimary: false)
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label(showMoreQuickPrompts ? "Hide extra styles" : "More styles", systemImage: showMoreQuickPrompts ? "chevron.up.circle.fill" : "ellipsis.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+                .tint(AppTheme.warningYellow)
+                .accessibilityIdentifier("export.aiEdit.quickPrompt.moreStyles")
+            }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var quickPromptGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 210 : 142, maximum: 260), spacing: 8, alignment: .top)
+        ]
+    }
+
+    private func quickPromptCard(_ quickPrompt: AIEditQuickPrompt, isPrimary: Bool) -> some View {
+        Button {
+            applyQuickPrompt(quickPrompt)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill((isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(0.14))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: quickPrompt.icon)
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(quickPrompt.title)
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.84)
+                    Text(quickPrompt.subtitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 76 : 62, alignment: .topLeading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(AppTheme.accentPurple.opacity(isPrimary ? 0.22 : 0.13), in: .rect(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke((isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(isPrimary ? 0.24 : 0.18), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
+        .accessibilityLabel("Use \(quickPrompt.title) style")
+        .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
     }
 
     private var promptHeader: some View {
