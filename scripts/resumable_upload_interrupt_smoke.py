@@ -137,6 +137,8 @@ def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[
         "chunkSizeBytes": chunk_size,
         "partCount": part_count,
         "completedParts": [first_part],
+        "status": "interrupted_after_first_part",
+        "updatedAt": int(time.time()),
         "privacy": "state_file_contains_job_upload_identifiers_but_no_presigned_urls_or_object_keys",
     }
     args.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -171,9 +173,23 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
     for part_number in range(1, part_count + 1):
         if part_number in completed_numbers:
             continue
-        completed_parts.append(upload_part(base_url, args, source_path, job_id, upload_id, chunk_size, part_number, install_id=install_id))
+        completed_part = upload_part(base_url, args, source_path, job_id, upload_id, chunk_size, part_number, install_id=install_id)
+        completed_parts.append(completed_part)
+        completed_numbers.add(part_number)
+        persist_resume_state(
+            args.state_path,
+            state,
+            completed_parts,
+            status="resuming",
+        )
 
     complete_multipart_upload(base_url, args, job_id, install_id, upload_id, completed_parts)
+    persist_resume_state(
+        args.state_path,
+        state,
+        completed_parts,
+        status="completed",
+    )
     return {
         "status": "pass",
         "mode": "resume",
@@ -183,9 +199,27 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
         "chunkSizeBytes": chunk_size,
         "partCount": part_count,
         "completedParts": len(completed_parts),
+        "stateUpdated": True,
         "interruptionProven": True,
         "privacy": "no_secrets_no_presigned_urls_no_object_keys",
     }
+
+
+def persist_resume_state(
+    state_path: Path,
+    state: dict[str, Any],
+    completed_parts: list[dict[str, Any]],
+    status: str,
+) -> None:
+    updated_state = {
+        **state,
+        "completedParts": sorted(completed_parts, key=lambda part: int(part["partNumber"])),
+        "status": status,
+        "updatedAt": int(time.time()),
+        "privacy": "state_file_contains_job_upload_identifiers_but_no_presigned_urls_or_object_keys",
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(updated_state, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def create_analysis_job(
