@@ -178,8 +178,8 @@ struct ReviewView: View {
 
     private var emptyState: some View {
         HoopsEmptyStateCard(
-            title: "No Clips Yet",
-            message: "Import a video and run analysis. Your best plays will land here ready to keep, skip, and fine-tune.",
+            title: "Review opens after analysis",
+            message: "Go to Player, import a video, then tap AI Analysis. Your best plays will show here ready to keep or skip.",
             icon: "film.stack.fill"
         )
     }
@@ -1505,13 +1505,13 @@ struct ReviewView: View {
     private var emptyStateTitle: String {
         switch filterOption {
         case .all:
-            return "No clips"
+            return "No clips in this view"
         case .priority:
             return "No priority clips"
         case .selectedTeam:
             return "No selected-team clips"
         case .teamUncertain:
-            return "No clips to check"
+            return "No uncertain clips"
         case .defense:
             return "No defensive clips"
         case .blocks:
@@ -1521,7 +1521,7 @@ struct ReviewView: View {
         case .sound:
             return "No sound cues"
         case .needsReview:
-            return "No clips to check"
+            return "Nothing needs review"
         case .kept:
             return "No kept clips"
         case .discarded:
