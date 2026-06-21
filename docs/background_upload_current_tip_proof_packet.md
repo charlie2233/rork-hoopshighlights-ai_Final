@@ -63,6 +63,18 @@ backgroundUploadEvidenceReady: true
 privacyScanPassed: true
 ```
 
+After capturing TestFlight run proof, combine it with the background-upload bundle:
+
+```bash
+python3 scripts/assemble_background_upload_launch_evidence.py --testflight-proof /path/to/testflight-run-proof.json --background-upload-bundle /path/to/background-upload-evidence-bundle.json --require-commit <git-sha> --require-build <testflight-build> --out /path/to/background-upload-launch-evidence.json
+```
+
+Expected final ready shape:
+
+```text
+backgroundUploadLaunchEvidenceReady: true
+```
+
 Safe sample fixtures exist only to rehearse the tooling contract:
 
 ```bash
