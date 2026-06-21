@@ -60,6 +60,14 @@ python3 scripts/redact_background_upload_phone_proof.py /path/to/raw-proof.txt -
 
 Then run the proof checker on the redacted file before using it as evidence.
 
+For a one-step redaction plus verification prep:
+
+```bash
+python3 scripts/prepare_background_upload_phone_proof.py /path/to/raw-proof.txt --out-dir /path/to/proof
+```
+
+Use the generated `.redacted.txt` file in launch evidence commands, not the raw proof file.
+
 ## Step 2: TestFlight proof
 
 Do not trigger a new workflow just for proof. Inspect an existing upload run.
