@@ -1626,14 +1626,18 @@ struct VideoPlayerView: View {
     @ViewBuilder
     private var teamTargetControl: some View {
         if viewModel.isCloudTeamScanInProgress {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .tint(AppTheme.neonPurple)
-                    .controlSize(.small)
-                Text("Finding teams...")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.subtleText)
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(AppTheme.neonPurple)
+                        .controlSize(.small)
+                    Text("Finding teams...")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                    Spacer(minLength: 0)
+                }
+
+                soloAllPlayersFastLaneButton
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -1641,9 +1645,19 @@ struct VideoPlayerView: View {
             .accessibilityIdentifier("analysis.teamTarget.scanning")
         } else if shouldShowTeamChoiceGrid {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Pick team")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.subtleText)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Pick team")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.subtleText)
+                    Spacer(minLength: 0)
+                    Text("Solo? tap first")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+
+                if viewModel.requiresHighlightTeamSelectionConfirmation {
+                    soloAllPlayersFastLaneButton
+                }
 
                 LazyVGrid(columns: teamTargetGridColumns, alignment: .leading, spacing: 8) {
                     ForEach(viewModel.availableHighlightTeamChoices, id: \.selectionKey) { selection in
@@ -1655,6 +1669,52 @@ struct VideoPlayerView: View {
             .background(AppTheme.surfaceBg.opacity(0.58), in: .rect(cornerRadius: 14))
             .accessibilityIdentifier("analysis.teamTarget.section")
         }
+    }
+
+    private var soloAllPlayersFastLaneButton: some View {
+        Button {
+            chooseSoloAllPlayersFastLane()
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.warningYellow.opacity(0.16))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Solo / all players")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Skip team setup. Best for personal highlights.")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                }
+                .layoutPriority(1)
+
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.warningYellow)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("analysis.teamTarget.soloAllPlayersButton")
+        .accessibilityLabel("Solo all players")
+        .accessibilityHint("Skips team setup and uses all teams for personal highlights.")
     }
 
     private var shouldShowTeamChoiceGrid: Bool {
@@ -1748,6 +1808,14 @@ struct VideoPlayerView: View {
         .accessibilityHint(selection.displaySubtitle)
         .accessibilityIdentifier(selection.accessibilityIdentifier)
         .hoopsSelectedState(isConfirmedSelection)
+    }
+
+    private func chooseSoloAllPlayersFastLane() {
+        teamScanTask?.cancel()
+        teamScanTask = nil
+        viewModel.skipTeamScanForAllTeams(reason: "player_solo_all_players_fast_lane")
+        showAnalysisOptions = false
+        HoopsAccessibility.announce("Solo all players ready. Start AI Analysis.")
     }
 
     private var selectedTeamNameField: some View {

@@ -862,6 +862,20 @@ final class HighlightsViewModel {
         )
     }
 
+    func skipTeamScanForAllTeams(reason: String) {
+        cloudDetectedTeams = []
+        settings.highlightTeamSelection = .allTeams
+        hasConfirmedHighlightTeamSelection = true
+        cloudTeamScanErrorMessage = nil
+        cloudTeamScanStatusMessage = "Solo/all players ready. Start AI Analysis."
+        isCloudTeamScanInProgress = false
+        activeCloudTeamScanID = nil
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "team_scan.skipped_for_all_teams",
+            metadata: "reason=\(reason)"
+        )
+    }
+
     func updateVideoImportProgress(_ message: String) {
         isVideoImportInProgress = true
         videoImportStatusMessage = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
