@@ -211,16 +211,14 @@ struct AIEditView: View {
             promptCard
             actionCard
             compactExportSetupCard
-            exportProgressCard
+            if shouldShowExportProgressCard {
+                exportProgressCard
+            }
             if showSetupControls {
                 smartSetupCard
                 stylePicker
                 formatPicker
                 durationPicker
-            }
-            planTierCard
-            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
-                proValueCard
             }
             if shouldShowStatusNoticeCard {
                 statusCard
@@ -228,12 +226,18 @@ struct AIEditView: View {
             if let previewPlayer {
                 previewCard(player: previewPlayer)
             }
-            exportBottomDock
+            if shouldShowExportBottomDock {
+                exportBottomDock
+            }
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
             aiEditDetailsToggle
             if showAdvancedAIEditDetails {
+                planTierCard
+                if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
+                    proValueCard
+                }
                 if shouldShowAIWorkTimeline {
                     aiWorkTimelineCard
                 }
@@ -2207,6 +2211,14 @@ struct AIEditView: View {
 
     private var shouldShowAIWorkTimeline: Bool {
         hasStartedAIEditJob || hasServerWorkTimeline
+    }
+
+    private var shouldShowExportProgressCard: Bool {
+        hasStartedAIEditJob || phase != .planning
+    }
+
+    private var shouldShowExportBottomDock: Bool {
+        downloadResponse != nil
     }
 
     private var shouldShowCloudLocker: Bool {
