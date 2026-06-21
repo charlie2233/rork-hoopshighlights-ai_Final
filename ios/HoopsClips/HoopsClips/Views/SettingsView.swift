@@ -456,7 +456,7 @@ struct SettingsView: View {
             || viewModel.isCloudTeamScanInProgress
             || viewModel.canRetryUploadAfterCancel
             || LaunchTelemetry.shared.latestCrashReportDeliverySummary != nil
-            || hasSettingsUploadProofReady
+            || CloudAnalysisService.pendingBackgroundUploadManifestSummary().contains("pending=true")
     }
 
     private var shouldShowSmokeProofCard: Bool {
@@ -475,7 +475,6 @@ struct SettingsView: View {
     private var smokeProofCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             smokeProofCompactHeader
-            smokeProofCompactStatusStrip
             smokeProofToolsDrawer
         }
         .padding(16)
@@ -721,6 +720,7 @@ struct SettingsView: View {
     private var smokeProofToolsDrawer: some View {
         DisclosureGroup(isExpanded: $showingSmokeProofTools) {
             VStack(alignment: .leading, spacing: 12) {
+                smokeProofCompactStatusStrip
                 smokeProofStatusGrid
                 copyTestFlightSmokeChecklistButton
                 settingsBackgroundUploadStatusRow
