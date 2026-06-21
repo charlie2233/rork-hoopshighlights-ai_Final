@@ -2329,6 +2329,19 @@ struct VideoPlayerView: View {
             )
         }
 
+        if let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(
+            from: CloudAnalysisService.latestUploadSourceOptimizationSummary()
+        ) {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "optimized-source",
+                    icon: "arrow.down.forward.and.arrow.up.backward.circle.fill",
+                    text: savingsFact,
+                    tint: AppTheme.successGreen
+                )
+            )
+        }
+
         if let analysisApproximateRemainingCompactText {
             facts.append(
                 AnalysisProgressFact(

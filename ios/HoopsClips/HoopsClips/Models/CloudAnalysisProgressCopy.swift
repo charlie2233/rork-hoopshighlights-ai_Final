@@ -363,6 +363,37 @@ nonisolated enum CloudAnalysisProgressCopy {
         return "Preparing smaller upload"
     }
 
+    static func uploadSourceSavingsFact(from summary: String) -> String? {
+        let values = uploadOptimizationSummaryValues(from: summary)
+        guard values["result"] == "optimized",
+              let savedMB = Int(values["savedMB"] ?? ""),
+              savedMB > 0 else {
+            return nil
+        }
+
+        if let optimizedMB = Int(values["optimizedMB"] ?? ""),
+           optimizedMB > 0 {
+            return "Saved \(savedMB) MB; uploading \(optimizedMB) MB"
+        }
+
+        if let originalMB = Int(values["originalMB"] ?? ""),
+           originalMB > 0 {
+            return "Saved \(savedMB) MB from \(originalMB) MB source"
+        }
+
+        return "Saved \(savedMB) MB before upload"
+    }
+
+    private static func uploadOptimizationSummaryValues(from summary: String) -> [String: String] {
+        summary
+            .split(whereSeparator: \.isWhitespace)
+            .reduce(into: [String: String]()) { values, component in
+                let pair = component.split(separator: "=", maxSplits: 1).map(String.init)
+                guard pair.count == 2 else { return }
+                values[pair[0]] = pair[1]
+            }
+    }
+
     private static func compactTeamTitle(_ title: String) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let visibleTitle = trimmed.isEmpty ? "selected team" : trimmed
