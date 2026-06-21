@@ -2414,6 +2414,7 @@ struct VideoPlayerView: View {
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "clientChunkedUploadCompatible=true",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
+            "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
             "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
@@ -2426,6 +2427,13 @@ struct VideoPlayerView: View {
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
+    }
+
+    private var backgroundUploadWakeReceivedFlag: String {
+        let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
+        let proofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
+        let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
+        return combinedProof.contains("background_urlsession_events_received") ? "true" : "false"
     }
 
     private var uploadProofScenePhase: String {
