@@ -11,6 +11,7 @@ private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
 private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
 private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
 private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
+private let cloudUploadStallProofThresholdSeconds: TimeInterval = 90
 private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
 private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5]
 
@@ -188,7 +189,11 @@ struct CloudAnalysisService {
             "backgroundResourceTimeoutSeconds=\(Int(cloudUploadBackgroundResourceTimeoutSeconds))",
             "foregroundRequestTimeoutSeconds=\(Int(cloudUploadForegroundRequestTimeoutSeconds))",
             "fileProtection=\(cloudUploadFileProtectionName)",
+            "stallProofThresholdSeconds=\(Int(cloudUploadStallProofThresholdSeconds))",
             "waitsForConnectivity=true",
+            "allowsCellularAccess=true",
+            "allowsExpensiveNetworkAccess=true",
+            "allowsConstrainedNetworkAccess=true",
             "sessionSendsLaunchEvents=true",
             "multipartCompleteIdempotent=true",
             "isDiscretionary=false",
@@ -1109,7 +1114,7 @@ struct CloudAnalysisService {
                     transferContext: nil,
                     stalled: stalled
                 )
-                if snapshot.secondsSinceProgress >= 180,
+                if snapshot.secondsSinceProgress >= cloudUploadStallProofThresholdSeconds,
                    snapshot.fraction < 0.99,
                    await tracker.markStallProofSentIfNeeded() {
                     let proofText = await MainActor.run {

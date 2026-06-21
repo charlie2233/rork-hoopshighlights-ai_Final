@@ -19,9 +19,9 @@ nonisolated enum CloudAnalysisProgressCopy {
         let totalRange = approximateAnalysisRangeMinutes(for: durationSeconds)
         if status.contains("upload") {
             if let liveEstimateSummary = liveUploadEstimateSummary(from: statusMessage) {
-                return "Upload \(liveEstimateSummary). Safe to switch apps. Wi-Fi is fastest; analysis after upload is about \(formatMinuteRange(totalRange))."
+                return "Upload \(liveEstimateSummary). Safe to switch apps. Large files use resumable background upload; Wi-Fi is fastest. Analysis after upload is about \(formatMinuteRange(totalRange))."
             }
-            return "Upload speed depends on connection; Wi-Fi is fastest. Safe to switch apps; after upload, analysis is about \(formatMinuteRange(totalRange))."
+            return "Large uploads stay resumable in background. Wi-Fi is fastest; cellular can work if iOS allows it. After upload, analysis is about \(formatMinuteRange(totalRange))."
         }
 
         if status.contains("queued") || status.contains("waiting") {
@@ -49,7 +49,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if status.contains("upload") {
-            return "Background upload is active. You can switch apps; HoopClips will keep the transfer resumable and reopen with live progress."
+            return "Background upload is active. Large videos upload in resumable chunks when the server supports it; you can switch apps and reopen for live progress."
         }
 
         if status.contains("team") || status.contains("jersey") {
