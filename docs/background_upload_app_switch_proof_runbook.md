@@ -171,7 +171,8 @@ python3 scripts/resumable_upload_interrupt_smoke.py \
   --worker-url "$WORKER_BASE_URL" \
   --state-path artifacts/resumable_upload_interrupt_state.json \
   --mode resume \
-  --verify-duplicate-complete
+  --verify-duplicate-complete \
+  --evidence-path artifacts/resumable_upload_interrupt_evidence.json
 ```
 
 Required evidence:
@@ -184,6 +185,7 @@ Required evidence:
 - Final `status=pass`.
 - Final `duplicateCompleteAttempted=true`.
 - Final `duplicateCompleteProven=true`.
+- Final `evidenceWritten=true` when `--evidence-path` is used.
 - No presigned URLs, object keys, or secrets in shared output.
 
 Pass criteria:

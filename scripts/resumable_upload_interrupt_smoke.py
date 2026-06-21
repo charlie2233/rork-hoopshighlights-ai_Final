@@ -25,6 +25,10 @@ def main() -> int:
     args = parse_args()
     try:
         result = run(args)
+        if args.evidence_path:
+            write_sanitized_evidence(args.evidence_path, result)
+            result["evidenceWritten"] = True
+            result["evidencePathHash"] = stable_hash(str(args.evidence_path))
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     except ResumableUploadSmokeError as error:
@@ -97,6 +101,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "After the final multipart completion succeeds, call complete again and require success. "
             "Use this to prove duplicate-safe completion for iOS background resume races."
+        ),
+    )
+    parser.add_argument(
+        "--evidence-path",
+        type=Path,
+        help=(
+            "Write a sanitized shareable JSON evidence artifact. "
+            "The local resume state file still contains job/upload identifiers and must stay private."
         ),
     )
     args = parser.parse_args()
@@ -234,7 +246,7 @@ def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[
         "status": "interrupted",
         "mode": "interrupt-after-first",
         "worker": sanitized_worker(base_url),
-        "statePath": str(args.state_path),
+        "statePathHash": stable_hash(str(args.state_path)),
         "jobIdHash": stable_hash(job_id),
         "uploadIdHash": stable_hash(upload_id),
         "chunkSizeBytes": chunk_size,
@@ -377,6 +389,28 @@ def persist_resume_state(
     }
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(updated_state, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_sanitized_evidence(evidence_path: Path, result: dict[str, Any]) -> None:
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence = sanitize_for_shareable_evidence(result)
+    evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def sanitize_for_shareable_evidence(value: Any) -> Any:
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            if key in {"statePath", "sourcePath", "jobId", "uploadId", "sourceObjectKey", "uploadUrl"}:
+                sanitized[f"{key}Hash"] = stable_hash(str(item))
+            elif key in {"uploadHeaders"}:
+                sanitized[key] = "[redacted]"
+            else:
+                sanitized[key] = sanitize_for_shareable_evidence(item)
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_for_shareable_evidence(item) for item in value]
+    return value
 
 
 def create_analysis_job(
