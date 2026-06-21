@@ -31,12 +31,15 @@ Already built or heavily progressed:
 
 - Cloud analysis and cloud AI Edit control surfaces.
 - Review, Export, AI Edit, History, Settings, rookie guide, telemetry, and proof copy surfaces.
+- Review declutter is in progress: compact status strip, folded progress, fewer visible filters, and compact AI Edit entry are implemented on current `main`.
 - Background/resumable upload proof tooling and app-switch proof handoff.
 - Free/Pro copy, template packs, AI Edit prompt parsing, and revision flows.
 - Real proof tooling for TestFlight/backend/phone evidence.
 
 Still blocking launch quality:
 
+- Current `main` build/simulator proof after recent SwiftUI Review edits.
+- Simulator repro/proof for the reported AI Analysis crash.
 - Current TestFlight build proof.
 - Real iPhone smoke proof.
 - Backend/staging deploy proof.
@@ -251,6 +254,50 @@ Important proof docs:
 - `docs/background_upload_phone_tester_checklist.md`
 - `docs/background_upload_real_proof_handoff.md`
 - `docs/background_upload_current_tip_proof_packet.md`
+
+## Current-tip validation checklist
+
+Run this before more Review UI surgery or any TestFlight upload from current `main`.
+
+Simulator/code proof:
+
+- Build current `main` for the active HoopClips simulator target.
+- Open Player, Review, Export, History, and Settings once.
+- Start AI Analysis from Player and confirm the app does not crash immediately.
+- While analysis is active, switch to Review and confirm it says `Analyzing, please wait`, not rerun/recovery.
+- Review with sample clips: swipe right Keep, swipe left Nah, tap Keep/Nah buttons, use undo toast, scrub a clip, and open `Make reel`.
+- Confirm the compact Review status strip does not clip at larger Dynamic Type.
+- Confirm filters stay hidden when only one useful filter exists and `More` only appears for extra useful filters.
+- Confirm mute/audio-unavailable chips behave consistently in Player, Review, Export, and History previews.
+
+Phone/TestFlight proof:
+
+- Install the uploaded build from TestFlight, not a local developer build.
+- Import a long basketball video.
+- Confirm Uploading -> Analyzing -> Review ready pipeline stays readable.
+- Switch apps during upload and return to HoopClips.
+- Copy or send sanitized upload proof from the in-app proof control.
+- Confirm History does not make the current import/upload disappear.
+- Confirm Review opens when ready or shows a truthful waiting/retry state if clips are not ready.
+- Export/AI Edit a reel, preview it, request a revision, preview the revised reel, then share/open-in.
+
+Evidence to capture:
+
+- Commit SHA tested.
+- Build number tested.
+- Simulator/device model.
+- TestFlight workflow run URL if applicable.
+- Sanitized Formspree crash/report submission if anything exits unexpectedly.
+- Sanitized upload proof text.
+- Cloud render job/revision IDs only if already sanitized by existing proof tools.
+
+Do not call complete from:
+
+- Simulator-only proof.
+- A TestFlight upload without installed-phone smoke.
+- A phone smoke on an older build.
+- A successful upload that does not cover background/app-switch behavior.
+- A render preview that still contains the unwanted black-screen outro/effect.
 
 ## Subagent plan
 
