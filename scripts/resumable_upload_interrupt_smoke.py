@@ -68,11 +68,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["interrupt-after-first", "resume", "roundtrip"],
+        choices=["interrupt-after-first", "resume", "roundtrip", "plan"],
         required=True,
         help=(
             "interrupt-after-first uploads part 1 and writes state, resume continues from that state, "
-            "roundtrip uploads part 1, reloads state, then completes in the same process."
+            "roundtrip uploads part 1, reloads state, then completes in the same process, "
+            "plan reports sizing without creating jobs or uploading."
         ),
     )
     parser.add_argument("--timeout-seconds", type=float, default=float(os.getenv("HOOPS_UPLOAD_SMOKE_TIMEOUT_SECONDS", "60")))
@@ -98,16 +99,17 @@ def parse_args() -> argparse.Namespace:
         raise ResumableUploadSmokeError("Timeout must be positive.", {"timeoutSeconds": args.timeout_seconds})
     if args.generate_test_file_mb < 0:
         raise ResumableUploadSmokeError("--generate-test-file-mb must be zero or positive.")
+    source_required_modes = {"interrupt-after-first", "roundtrip", "plan"}
     if (
-        args.mode in {"interrupt-after-first", "roundtrip"}
+        args.mode in source_required_modes
         and not args.file_path
         and args.generate_test_file_mb <= 0
         and not args.auto_generate_test_file
     ):
         raise ResumableUploadSmokeError("--file, --generate-test-file-mb, or --auto-generate-test-file is required for this mode.")
-    if args.mode in {"interrupt-after-first", "roundtrip"} and not args.file_path:
+    if args.mode in source_required_modes and not args.file_path:
         args.file_path = args.state_path.parent / "resumable_upload_synthetic.mp4"
-    if args.file_path and not args.file_path.is_file() and args.generate_test_file_mb <= 0:
+    if args.file_path and not args.file_path.is_file() and args.generate_test_file_mb <= 0 and not args.auto_generate_test_file:
         raise ResumableUploadSmokeError("Upload source file does not exist.", {"file": str(args.file_path)})
     if args.stop_after_new_parts < 0:
         raise ResumableUploadSmokeError("--stop-after-new-parts must be zero or positive.")
@@ -116,7 +118,9 @@ def parse_args() -> argparse.Namespace:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     base_url = args.worker_url.rstrip("/") + "/"
-    if args.mode == "resume":
+    if args.mode == "plan":
+        result = plan_smoke(base_url, args)
+    elif args.mode == "resume":
         state = load_state(args.state_path)
         result = resume_from_state(base_url, args, state)
     elif args.mode == "interrupt-after-first":
@@ -134,6 +138,42 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "privacy": "no_secrets_no_presigned_urls_no_object_keys",
         }
     return result
+
+
+def plan_smoke(base_url: str, args: argparse.Namespace) -> dict[str, Any]:
+    source_path = args.file_path
+    assert source_path is not None
+
+    capabilities = fetch_capabilities(base_url, args)
+    source_kind = "existing_file" if source_path.is_file() else "synthetic"
+    if source_path.is_file():
+        planned_size_bytes = source_path.stat().st_size
+    else:
+        planned_size_bytes = synthetic_test_file_size_bytes(base_url, args)
+
+    threshold = capabilities.get("resumableUploadThresholdBytes")
+    max_size = capabilities.get("maxFileSizeBytes")
+    expected_resumable = (
+        isinstance(threshold, int)
+        and isinstance(max_size, int)
+        and planned_size_bytes >= threshold
+        and planned_size_bytes <= max_size
+    )
+
+    return {
+        "status": "pass" if expected_resumable else "fail",
+        "mode": "plan",
+        "worker": sanitized_worker(base_url),
+        "sourceKind": source_kind,
+        "sourcePathHash": stable_hash(str(source_path)),
+        "plannedFileSizeBytes": planned_size_bytes,
+        "resumableUploadThresholdBytes": threshold,
+        "maxFileSizeBytes": max_size,
+        "expectedResumable": expected_resumable,
+        "willCreateJob": False,
+        "willUpload": False,
+        "privacy": "no_secrets_no_presigned_urls_no_object_keys",
+    }
 
 
 def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[str, Any]:
@@ -215,9 +255,7 @@ def synthetic_test_file_size_bytes(base_url: str, args: argparse.Namespace) -> i
     if args.generate_test_file_mb > 0:
         return args.generate_test_file_mb * 1024 * 1024
 
-    status, capabilities = request_json_get(urljoin(base_url, "v1/analysis/capabilities"), args.timeout_seconds)
-    if status < 200 or status >= 300:
-        raise ResumableUploadSmokeError("Could not fetch capabilities for synthetic payload sizing.", {"httpStatus": status})
+    capabilities = fetch_capabilities(base_url, args)
 
     threshold = capabilities.get("resumableUploadThresholdBytes")
     max_size = capabilities.get("maxFileSizeBytes")
@@ -228,6 +266,13 @@ def synthetic_test_file_size_bytes(base_url: str, args: argparse.Namespace) -> i
 
     target_bytes = max(threshold + (8 * 1024 * 1024), 160 * 1024 * 1024)
     return min(target_bytes, max_size)
+
+
+def fetch_capabilities(base_url: str, args: argparse.Namespace) -> dict[str, Any]:
+    status, capabilities = request_json_get(urljoin(base_url, "v1/analysis/capabilities"), args.timeout_seconds)
+    if status < 200 or status >= 300:
+        raise ResumableUploadSmokeError("Could not fetch capabilities for synthetic payload sizing.", {"httpStatus": status})
+    return capabilities
 
 
 def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, Any]) -> dict[str, Any]:
