@@ -296,31 +296,63 @@ struct ReviewView: View {
     }
 
     private var headerStats: some View {
-        LazyVGrid(columns: reviewStatGridColumns, spacing: 10) {
-            reviewStatCard(
+        HStack(spacing: 10) {
+            reviewStatusPill(
                 value: "\(viewModel.keptClips.count)",
-                label: "Keeping",
+                label: "Keep",
                 icon: "checkmark.circle.fill",
                 color: AppTheme.successGreen
             )
-            reviewStatCard(
+            reviewStatusPill(
                 value: "\(viewModel.discardedClips.count)",
-                label: "Skipped",
+                label: "Nah",
                 icon: "xmark.circle.fill",
                 color: AppTheme.dangerRed
             )
-            reviewStatCard(
-                value: "\(viewModel.needsReviewClips.count)",
-                label: "Check",
-                icon: "exclamationmark.triangle.fill",
-                color: AppTheme.warningYellow
-            )
-            reviewStatCard(
+            reviewStatusPill(
                 value: Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration }),
-                label: "Total Time",
+                label: "Reel",
                 icon: "clock.fill",
                 color: AppTheme.neonPurple
             )
+        }
+        .padding(10)
+        .background(AppTheme.surfaceBg.opacity(0.72), in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppTheme.neonPurple.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Review status")
+        .accessibilityValue("\(viewModel.keptClips.count) kept, \(viewModel.discardedClips.count) skipped, \(Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration })) reel time")
+    }
+
+    private func reviewStatusPill(value: String, label: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(color)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.subheadline.weight(.heavy).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                Text(label)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(color.opacity(0.10), in: .rect(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(color.opacity(0.18), lineWidth: 1)
         }
     }
 
