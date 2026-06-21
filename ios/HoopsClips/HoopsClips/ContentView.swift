@@ -742,6 +742,8 @@ struct ContentView: View {
         let completed = uploadProgressField("completed", in: trimmedSummary)
         let nextAction = uploadProgressField("nextAction", in: trimmedSummary)
         let source = uploadProgressField("source", in: trimmedSummary)
+        let staleWithoutActiveSession = uploadProgressField("staleWithoutActiveSession", in: trimmedSummary) == "true"
+        let ageSeconds = Int(uploadProgressField("ageSeconds", in: trimmedSummary) ?? "")
         var parts: [String] = []
 
         if let progress, progress != "0" {
@@ -753,9 +755,10 @@ struct ContentView: View {
         if let nextAction {
             switch nextAction {
             case "wait for background session":
-                parts.append("still uploading")
+                parts.append(ageSeconds.map { "still uploading \(savedUploadAgeLabel($0))" } ?? "still uploading")
             case "resume upload":
-                parts.append("tap resume")
+                let resumeLabel = staleWithoutActiveSession ? "tap resume" : "resume ready"
+                parts.append(ageSeconds.map { "\(resumeLabel) \(savedUploadAgeLabel($0))" } ?? resumeLabel)
             case "start cloud analysis", "run team scan":
                 parts.append("upload done")
             default:
@@ -768,6 +771,17 @@ struct ContentView: View {
 
         guard !parts.isEmpty else { return nil }
         return parts.prefix(3).joined(separator: " · ")
+    }
+
+    private func savedUploadAgeLabel(_ seconds: Int) -> String {
+        let boundedSeconds = max(0, seconds)
+        if boundedSeconds >= 3600 {
+            return "\(boundedSeconds / 3600)h ago"
+        }
+        if boundedSeconds >= 60 {
+            return "\(boundedSeconds / 60)m ago"
+        }
+        return "just now"
     }
 
     private var pipelineStage: AnalysisPipelineStage {
