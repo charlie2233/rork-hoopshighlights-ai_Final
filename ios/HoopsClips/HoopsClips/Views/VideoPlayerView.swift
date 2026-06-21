@@ -11,6 +11,27 @@ enum PreviewAudioCopy {
     static let noHistoryPreviewAudio = "No preview audio"
     static let noReelAudio = "No reel audio"
 
+    static func statusText(isMuted: Bool, hasAudioTrack: Bool?) -> String {
+        if hasAudioTrack == false {
+            return "No audio"
+        }
+        return isMuted ? "Muted" : "Audio on"
+    }
+
+    static func statusIcon(isMuted: Bool, hasAudioTrack: Bool?) -> String {
+        if hasAudioTrack == false {
+            return "speaker.badge.exclamationmark.fill"
+        }
+        return isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill"
+    }
+
+    static func statusTint(isMuted: Bool, hasAudioTrack: Bool?) -> Color {
+        if hasAudioTrack == false {
+            return AppTheme.warningYellow
+        }
+        return isMuted ? .white.opacity(0.72) : AppTheme.successGreen
+    }
+
     static func applyMuted(_ isMuted: Bool, to players: AVPlayer?...) {
         if !isMuted {
             activatePlaybackSession()
@@ -1151,6 +1172,11 @@ struct VideoPlayerView: View {
                         .accessibilityHint("Use playback controls to review the imported video.")
 
                     VStack(alignment: .trailing, spacing: 8) {
+                        previewAudioStatusChip(
+                            isMuted: previewAudioMuted,
+                            hasAudioTrack: sourcePreviewHasAudioTrack
+                        )
+
                         Button {
                             previewAudioMuted.toggle()
                             applySourcePreviewAudioMute()
@@ -1164,16 +1190,6 @@ struct VideoPlayerView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("source.preview.muteToggle")
                         .accessibilityLabel(previewAudioMuted ? "Unmute source preview" : "Mute source preview")
-
-                        if sourcePreviewHasAudioTrack == false && !previewAudioMuted {
-                            Text(PreviewAudioCopy.noSourceAudio)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 6)
-                                .background(.black.opacity(0.62), in: Capsule())
-                                .accessibilityIdentifier("source.preview.noAudio")
-                        }
                     }
                     .padding(10)
                 }
@@ -2682,6 +2698,27 @@ struct VideoPlayerView: View {
             return "Upload is still running in the background. Send proof so we can confirm the handoff."
         }
         return "Upload recovered after app switch. Send proof so we can confirm resume worked."
+    }
+
+    private func previewAudioStatusChip(isMuted: Bool, hasAudioTrack: Bool?) -> some View {
+        Label(
+            PreviewAudioCopy.statusText(isMuted: isMuted, hasAudioTrack: hasAudioTrack),
+            systemImage: PreviewAudioCopy.statusIcon(isMuted: isMuted, hasAudioTrack: hasAudioTrack)
+        )
+        .font(.caption2.weight(.bold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            PreviewAudioCopy.statusTint(isMuted: isMuted, hasAudioTrack: hasAudioTrack).opacity(0.82),
+            in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .stroke(.white.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityIdentifier("source.preview.audioStatus")
+        .accessibilityLabel(PreviewAudioCopy.statusText(isMuted: isMuted, hasAudioTrack: hasAudioTrack))
     }
 
     private var analysisSlowUploadHelp: CloudAnalysisSlowUploadHelp? {
