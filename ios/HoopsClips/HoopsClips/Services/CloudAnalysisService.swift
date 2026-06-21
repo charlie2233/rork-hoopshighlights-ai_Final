@@ -12,6 +12,7 @@ private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 *
 private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
 private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
 private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
+private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5]
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -1544,22 +1545,29 @@ struct CloudAnalysisService {
                     sessionIdentifier: backgroundIdentifier
                 )
                 let snapshot = await tracker.snapshot()
+                let retryDelaySeconds = retrying ? Self.chunkRetryBackoffSeconds(afterAttempt: attemptNumber) : 0
+                let retryContext = retryDelaySeconds > 0
+                    ? "chunk \(partTarget.partNumber)/\(partCount) retrying in \(retryDelaySeconds)s after try \(attemptNumber)"
+                    : "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attemptNumber)"
+                let failedContext = "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attemptNumber)"
                 reportUploadProgress(
                     snapshot,
                     true,
-                    retrying
-                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attemptNumber)"
-                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attemptNumber)"
+                    retrying ? retryContext : failedContext
                 )
                 Self.recordLatestUploadProgressSummary(
                     stage: "Uploading video chunk",
                     snapshot: snapshot,
-                    transferContext: retrying
-                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attemptNumber)"
-                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attemptNumber)",
+                    transferContext: retrying ? retryContext : failedContext,
                     stalled: true
                 )
-                try await Task.sleep(nanoseconds: 700_000_000)
+                if retryDelaySeconds > 0 {
+                    LaunchTelemetry.shared.recordBackgroundUploadProof(
+                        "chunk_retry_backoff",
+                        metadata: "kind=chunk partNumber=\(partTarget.partNumber) attempt=\(attemptNumber) delaySeconds=\(retryDelaySeconds)"
+                    )
+                    try await Task.sleep(nanoseconds: retryDelaySeconds * 1_000_000_000)
+                }
             }
         }
 
@@ -1568,6 +1576,12 @@ struct CloudAnalysisService {
             metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempts=3 reason=\(Self.uploadRetryReason(for: lastError))"
         )
         throw lastError ?? CloudAnalysisError.uploadFailed
+    }
+
+    private static func chunkRetryBackoffSeconds(afterAttempt attemptNumber: Int) -> UInt64 {
+        guard !cloudUploadChunkRetryBackoffSeconds.isEmpty else { return 0 }
+        let index = min(max(attemptNumber - 1, 0), cloudUploadChunkRetryBackoffSeconds.count - 1)
+        return cloudUploadChunkRetryBackoffSeconds[index]
     }
 
     private static func prepareFileForBackgroundUpload(_ url: URL, context: String) {
