@@ -1154,6 +1154,15 @@ struct VideoPlayerView: View {
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
     }
 
+    private var isAnalysisStartDisabled: Bool {
+        viewModel.isVideoImportInProgress
+            || !viewModel.isVideoLoaded
+            || viewModel.videoURL == nil
+            || viewModel.analysisService.isAnalyzing
+            || viewModel.isCloudTeamScanInProgress
+            || viewModel.requiresHighlightTeamSelectionConfirmation
+    }
+
     private var analysisSection: some View {
         VStack(spacing: 16) {
             RorkSectionHeader(
@@ -1225,8 +1234,8 @@ struct VideoPlayerView: View {
                     .padding(16)
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
-                .disabled(viewModel.isCloudTeamScanInProgress || viewModel.requiresHighlightTeamSelectionConfirmation)
-                .opacity(viewModel.isCloudTeamScanInProgress || viewModel.requiresHighlightTeamSelectionConfirmation ? 0.72 : 1)
+                .disabled(isAnalysisStartDisabled)
+                .opacity(isAnalysisStartDisabled ? 0.72 : 1)
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
                 .accessibilityIdentifier("analysis.startButton")
 
