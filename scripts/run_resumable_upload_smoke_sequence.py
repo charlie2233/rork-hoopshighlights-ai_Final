@@ -21,10 +21,12 @@ def main() -> int:
     args = parse_args()
     try:
         result = run_sequence(args)
+        assert_shareable_evidence(result)
         if args.evidence_path:
             write_evidence(args.evidence_path, result)
             result["evidenceWritten"] = True
             result["evidencePathHash"] = stable_hash(str(args.evidence_path))
+            assert_shareable_evidence(result)
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     except SmokeSequenceError as error:
@@ -176,7 +178,9 @@ def run_smoke_step(args: argparse.Namespace, step_args: list[str], include_sourc
 
 def write_evidence(evidence_path: Path, result: dict[str, Any]) -> None:
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
-    evidence_path.write_text(json.dumps(sanitize_for_shareable_evidence(result), indent=2, sort_keys=True), encoding="utf-8")
+    evidence = sanitize_for_shareable_evidence(result)
+    assert_shareable_evidence(evidence)
+    evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def sanitize_for_shareable_evidence(value: Any) -> Any:
@@ -193,6 +197,50 @@ def sanitize_for_shareable_evidence(value: Any) -> Any:
     if isinstance(value, list):
         return [sanitize_for_shareable_evidence(item) for item in value]
     return value
+
+
+def assert_shareable_evidence(value: Any) -> None:
+    leaks = find_shareable_evidence_leaks(value)
+    if leaks:
+        raise SmokeSequenceError(
+            "Sanitized evidence failed privacy checks.",
+            {
+                "leakCount": len(leaks),
+                "firstLeak": leaks[0],
+                "privacy": "leak_paths_only_no_secret_values",
+            },
+        )
+
+
+def find_shareable_evidence_leaks(value: Any, path: str = "$") -> list[dict[str, str]]:
+    leaks: list[dict[str, str]] = []
+    forbidden_keys = {"jobId", "uploadId", "sourceObjectKey", "uploadUrl", "sourcePath", "statePath", "uploadHeaders"}
+    forbidden_value_fragments = (
+        "X-Amz-",
+        "Signature=",
+        "Credential=",
+        "uploads/",
+        "/Users/",
+        "/private/",
+        "/var/folders/",
+        "file://",
+    )
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child_path = f"{path}.{key}"
+            if key in forbidden_keys:
+                leaks.append({"path": child_path, "reason": "forbidden_key"})
+            leaks.extend(find_shareable_evidence_leaks(item, child_path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            leaks.extend(find_shareable_evidence_leaks(item, f"{path}[{index}]"))
+    elif isinstance(value, str):
+        for fragment in forbidden_value_fragments:
+            if fragment in value:
+                leaks.append({"path": path, "reason": f"forbidden_fragment:{fragment}"})
+                break
+    return leaks
 
 
 def summarize_text(value: str) -> str:

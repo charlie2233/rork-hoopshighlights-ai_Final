@@ -130,7 +130,7 @@ python3 scripts/run_resumable_upload_smoke_sequence.py \
   --replace-existing-state
 ```
 
-This runs first interruption, second interruption, final resume, and duplicate multipart-complete proof. `--replace-existing-state` intentionally deletes the private state file from any previous proof run so old job/upload identifiers cannot affect new evidence. Share the sequence evidence JSON, not the private state file.
+This runs first interruption, second interruption, final resume, and duplicate multipart-complete proof. `--replace-existing-state` intentionally deletes the private state file from any previous proof run so old job/upload identifiers cannot affect new evidence. The wrapper refuses to write evidence if its privacy self-check detects raw job IDs, upload IDs, object keys, presigned URL fragments, or local paths. Share the sequence evidence JSON, not the private state file.
 
 Preferred synthetic payload option:
 
@@ -199,6 +199,7 @@ Required evidence:
 - Final `duplicateCompleteProven=true`.
 - Sequence `startedFromFreshState=true` when using the one-command wrapper.
 - Final `evidenceWritten=true` when `--evidence-path` is used.
+- Wrapper privacy self-check passes.
 - No presigned URLs, object keys, or secrets in shared output.
 
 Pass criteria:
