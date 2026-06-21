@@ -459,8 +459,15 @@ struct VideoPlayerView: View {
                 "video_import.preflight_passed",
                 metadata: "\(summary.telemetryMetadata(source: source)) capabilitySource=\(capabilities == nil ? "client_default" : "deployed_backend")"
             )
+            if summary.shouldExpectResumableBackgroundUpload(capabilities: capabilities) {
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "video_import_resumable_background_ready",
+                    metadata: summary.backgroundUploadReadinessMetadata(source: source, capabilities: capabilities)
+                )
+            }
             await MainActor.run {
-                importStatusMessage = VideoImportStatusCopy.checkedSaving
+                importStatusMessage = summary.largeBackgroundUploadStatusMessage(capabilities: capabilities)
+                    ?? VideoImportStatusCopy.checkedSaving
                 viewModel.updateVideoImportProgress(importStatusMessage)
             }
             return summary
@@ -2975,6 +2982,35 @@ struct VideoImportPreflightSummary: Equatable, Sendable {
         }
         let codecText = codecNames.isEmpty ? "unknown" : codecNames.joined(separator: ",")
         return "source=\(source) fileSizeBytes=\(fileSizeBytes) durationSeconds=\(durationText) resolution=\(dimensionsText) codecs=\(codecText)"
+    }
+
+    func shouldExpectResumableBackgroundUpload(capabilities: CloudAnalysisCapabilitiesResponse?) -> Bool {
+        let thresholdBytes = max(capabilities?.resumableUploadThresholdBytes ?? 256 * 1024 * 1024, 1)
+        return fileSizeBytes >= thresholdBytes
+    }
+
+    func largeBackgroundUploadStatusMessage(capabilities: CloudAnalysisCapabilitiesResponse?) -> String? {
+        shouldExpectResumableBackgroundUpload(capabilities: capabilities)
+            ? "Large video ready for resumable upload"
+            : nil
+    }
+
+    func backgroundUploadReadinessMetadata(
+        source: String,
+        capabilities: CloudAnalysisCapabilitiesResponse?
+    ) -> String {
+        let thresholdBytes = max(capabilities?.resumableUploadThresholdBytes ?? 256 * 1024 * 1024, 1)
+        let durationText = durationSeconds.map { String(Int($0.rounded())) } ?? "unknown"
+        return [
+            "source=\(source)",
+            "fileSizeBytes=\(fileSizeBytes)",
+            "durationSeconds=\(durationText)",
+            "resumableThresholdBytes=\(thresholdBytes)",
+            "supportsResumableUpload=\(capabilities?.supportsResumableUpload ?? true)",
+            "capabilitySource=\(capabilities == nil ? "client_default" : "deployed_backend")",
+            "next=ios_background_urlsession",
+            "privacy=no_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: " ")
     }
 }
 
