@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import UniformTypeIdentifiers
 
 private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
@@ -156,8 +157,15 @@ struct CloudAnalysisService {
     }
 
     static func multipartUploadPolicySummary() -> String {
+        let networkPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+            defaultMaximum: maxConcurrentMultipartUploads
+        )
         [
-            "maxConcurrentMultipartUploads=\(maxConcurrentMultipartUploads)",
+            "maxConcurrentMultipartUploads=\(networkPolicy.laneLimit)",
+            "configuredMaxConcurrentMultipartUploads=\(maxConcurrentMultipartUploads)",
+            "multipartLaneReason=\(networkPolicy.reason)",
+            "networkExpensive=\(networkPolicy.isExpensive)",
+            "networkConstrained=\(networkPolicy.isConstrained)",
             "progressAggregation=total_bytes_across_active_chunks",
             "memoryPolicy=bounded_chunk_data_per_lane",
             "resumePolicy=persist_completed_parts"
@@ -1363,7 +1371,10 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
-        let maxConcurrentUploads = Self.multipartUploadConcurrency(partCount: resumableUpload.partCount)
+        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+            defaultMaximum: Self.maxConcurrentMultipartUploads
+        )
+        let maxConcurrentUploads = min(max(resumableUpload.partCount, 1), networkUploadPolicy.laneLimit)
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -1371,7 +1382,7 @@ struct CloudAnalysisService {
         )
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "multipart_parallel_upload_selected",
-            metadata: "lanes=\(maxConcurrentUploads) partCount=\(resumableUpload.partCount)"
+            metadata: "lanes=\(maxConcurrentUploads) partCount=\(resumableUpload.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
@@ -1747,7 +1758,10 @@ struct CloudAnalysisService {
     }
 
     private static func multipartUploadConcurrency(partCount: Int) -> Int {
-        min(max(partCount, 1), maxConcurrentMultipartUploads)
+        let networkPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+            defaultMaximum: maxConcurrentMultipartUploads
+        )
+        return min(max(partCount, 1), networkPolicy.laneLimit)
     }
 
     private static func prepareFileForBackgroundUpload(_ url: URL, context: String) {
@@ -1982,6 +1996,73 @@ struct CloudAnalysisService {
         } catch {
             throw CloudAnalysisError.invalidResponse
         }
+    }
+}
+
+private struct CloudUploadNetworkLanePolicy {
+    let laneLimit: Int
+    let reason: String
+    let isExpensive: Bool
+    let isConstrained: Bool
+}
+
+private final class CloudUploadNetworkPolicy: @unchecked Sendable {
+    static let shared = CloudUploadNetworkPolicy()
+
+    private let monitor = NWPathMonitor()
+    private let monitorQueue = DispatchQueue(label: "hoopsclips.cloud-upload.network-policy")
+    private let lock = NSLock()
+    private var latestPath: NWPath?
+
+    private init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            self?.lock.lock()
+            self?.latestPath = path
+            self?.lock.unlock()
+        }
+        monitor.start(queue: monitorQueue)
+    }
+
+    func currentPolicy(defaultMaximum: Int) -> CloudUploadNetworkLanePolicy {
+        let safeMaximum = max(defaultMaximum, 1)
+
+        lock.lock()
+        let path = latestPath
+        lock.unlock()
+
+        guard let path else {
+            return CloudUploadNetworkLanePolicy(
+                laneLimit: safeMaximum,
+                reason: "network_pending",
+                isExpensive: false,
+                isConstrained: false
+            )
+        }
+
+        if path.isConstrained {
+            return CloudUploadNetworkLanePolicy(
+                laneLimit: 1,
+                reason: "low_data_mode",
+                isExpensive: path.isExpensive,
+                isConstrained: true
+            )
+        }
+
+        if path.isExpensive {
+            return CloudUploadNetworkLanePolicy(
+                laneLimit: min(safeMaximum, 2),
+                reason: "expensive_network",
+                isExpensive: true,
+                isConstrained: false
+            )
+        }
+
+        return CloudUploadNetworkLanePolicy(
+            laneLimit: safeMaximum,
+            reason: "normal_network",
+            isExpensive: false,
+            isConstrained: false
+        )
     }
 }
 
