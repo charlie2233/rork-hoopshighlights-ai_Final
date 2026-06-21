@@ -167,7 +167,7 @@ struct CloudAnalysisService {
         let networkPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
             defaultMaximum: maxConcurrentMultipartUploads
         )
-        [
+        return [
             "maxConcurrentMultipartUploads=\(networkPolicy.laneLimit)",
             "configuredMaxConcurrentMultipartUploads=\(maxConcurrentMultipartUploads)",
             "multipartLaneReason=\(networkPolicy.reason)",

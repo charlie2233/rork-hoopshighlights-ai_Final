@@ -1243,14 +1243,14 @@ struct VideoPlayerView: View {
         if hasPendingUploadResume {
             return "Skip finished chunks and keep going."
         }
-        analysisStartUnavailableReason ?? analysisButtonSubtitle
+        return analysisStartUnavailableReason ?? analysisButtonSubtitle
     }
 
     private var isAnalysisStartDisabled: Bool {
         if hasPendingUploadResume {
             return false
         }
-        viewModel.isVideoImportInProgress
+        return viewModel.isVideoImportInProgress
             || !viewModel.isVideoLoaded
             || viewModel.videoURL == nil
             || viewModel.analysisService.isAnalyzing
@@ -2696,7 +2696,7 @@ struct VideoPlayerView: View {
         [
             "source=HoopClips Player upload card",
             "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
-            "build=\(safeUploadProofValue(Bundle.main.infoDictionary?[\"CFBundleVersion\"] as? String))",
+            "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))",
             "scenePhase=\(uploadProofScenePhase)",
             "environment=\(safeUploadProofValue(AppConstants.environmentName))",
             "cloudLaunchMode=\(safeUploadProofValue(AppConstants.cloudLaunchMode.rawValue))",
@@ -2835,7 +2835,6 @@ struct VideoPlayerView: View {
                     }
             }
             .buttonStyle(.plain)
-            $1
             .accessibilityLabel("Copy background upload proof")
             .accessibilityHint("Copies timestamped upload proof for the app-switch background upload test.")
 

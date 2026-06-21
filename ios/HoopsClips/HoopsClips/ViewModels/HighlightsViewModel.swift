@@ -613,10 +613,11 @@ final class HighlightsViewModel {
                 teamSelection: settings.highlightTeamSelection,
                 onCloudHandoff: { [weak self] jobID, sourceObjectKey in
                     self?.recordCloudAnalysisHandoff(jobID: jobID, sourceObjectKey: sourceObjectKey)
+                },
+                progress: { [weak service = analysisService] progress, status in
+                    service?.updateExternalAnalysis(progress: progress, status: status)
                 }
-            ) { [weak service = analysisService] progress, status in
-                service?.updateExternalAnalysis(progress: progress, status: status)
-            } else {
+            ) else {
                 analysisService.finishExternalAnalysis(with: "No background upload to resume")
                 return false
             }
@@ -2637,7 +2638,7 @@ internal func isPreferredRedundantClipCandidate(_ lhs: Clip, over rhs: Clip) -> 
     return lhs.startTime < rhs.startTime
 }
 
-private extension Error {
+extension Error {
     var isTaskCancellation: Bool {
         if self is CancellationError {
             return true
