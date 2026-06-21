@@ -18,6 +18,12 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
         let totalRange = approximateAnalysisRangeMinutes(for: durationSeconds)
         if status.contains("upload") {
+            if isSlowUploadStatus(status) {
+                if let liveEstimateSummary = liveUploadEstimateSummary(from: statusMessage) {
+                    return "Slow network, still uploading: \(liveEstimateSummary). Safe to switch apps; HoopClips will resume chunks when reopened."
+                }
+                return "Slow network, still uploading. Safe to switch apps; HoopClips will resume chunks when reopened. Analysis after upload is about \(formatMinuteRange(totalRange))."
+            }
             if let liveEstimateSummary = liveUploadEstimateSummary(from: statusMessage) {
                 return "Upload \(liveEstimateSummary). Safe to switch apps. Large files use resumable background upload; Wi-Fi is fastest. Analysis after upload is about \(formatMinuteRange(totalRange))."
             }
@@ -46,6 +52,10 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         if status.contains("resuming") && status.contains("upload") {
             return "Reconnecting to the saved background upload. HoopClips will skip chunks that already finished."
+        }
+
+        if status.contains("upload") && isSlowUploadStatus(status) {
+            return "Connection is slow, but upload is still alive. Keep going, or switch apps and reopen HoopClips to refresh progress."
         }
 
         if status.contains("upload") {
@@ -101,6 +111,10 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
         if status.contains("resuming") && status.contains("upload") {
             return "Resuming saved background upload. Completed chunks are preserved."
+        }
+
+        if status.contains("upload") && isSlowUploadStatus(status) {
+            return "Slow upload, still working. Wi-Fi helps most; switching apps is OK because chunks can resume."
         }
 
         if status.contains("upload") {
@@ -195,5 +209,16 @@ nonisolated enum CloudAnalysisProgressCopy {
             return nil
         }
         return summaryParts.joined(separator: " · ")
+    }
+
+    private static func isSlowUploadStatus(_ status: String) -> Bool {
+        status.contains("slow")
+            || status.contains("paused")
+            || status.contains("stall")
+            || status.contains("stalled")
+            || status.contains("retry")
+            || status.contains("retrying")
+            || status.contains("waiting for connection")
+            || status.contains("waiting for connectivity")
     }
 }
