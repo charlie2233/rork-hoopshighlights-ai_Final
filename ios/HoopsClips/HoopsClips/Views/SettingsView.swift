@@ -722,7 +722,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: testFlightChecklistCopied ? "checkmark.circle.fill" : "checklist.checked")
-                Text(testFlightChecklistCopied ? "Steps copied" : "Copy smoke steps")
+                Text(testFlightChecklistCopied ? "Packet copied" : "Copy smoke packet")
                     .font(.subheadline.weight(.bold))
                 Spacer(minLength: 0)
             }
@@ -1331,6 +1331,20 @@ struct SettingsView: View {
         )
     }
 
+    private var testFlightSmokePacketText: String {
+        [
+            testFlightSmokeChecklistText,
+            "",
+            "Build summary proof:",
+            buildSummaryProofText,
+            "",
+            "Upload proof:",
+            recoveredUploadStateProofText,
+            "",
+            "packetPrivacy=no secrets, presigned URLs, object keys, or local file paths"
+        ].joined(separator: "\n")
+    }
+
     private var uploadStateProofText: String {
         let generatedAt = ISO8601DateFormatter().string(from: Date())
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
@@ -1442,9 +1456,9 @@ struct SettingsView: View {
     }
 
     private func copyTestFlightSmokeChecklist() {
-        UIPasteboard.general.string = testFlightSmokeChecklistText
+        UIPasteboard.general.string = testFlightSmokePacketText
         testFlightChecklistCopied = true
-        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.testflight_checklist_copied", metadata: "build=\(appBuildNumber)")
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.testflight_packet_copied", metadata: "build=\(appBuildNumber)")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             testFlightChecklistCopied = false
