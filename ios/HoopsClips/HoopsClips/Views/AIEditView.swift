@@ -2556,19 +2556,19 @@ struct AIEditView: View {
     private var exportProgressTitle: String {
         switch phase {
         case .planning:
-            return hasStartedAIEditJob || isWorking ? "Analyzing clips" : "Ready to export"
+            return hasStartedAIEditJob || isWorking ? "Building reel" : "Ready to make reel"
         case .planReady:
             return "Edit plan ready"
         case .renderRequested, .created, .queued:
-            return "Render queued"
+            return "Reel queued"
         case .rendering:
-            return "Rendering MP4"
+            return "Making reel"
         case .rendered:
             return "Your reel is ready"
         case .failed, .failedTimeout:
-            return "Render failed"
+            return "Reel failed"
         case .cancelled:
-            return "Render cancelled"
+            return "Reel cancelled"
         }
     }
 
@@ -2577,10 +2577,10 @@ struct AIEditView: View {
             return "Preview, save, or share below."
         }
         if phase == .failed || phase == .failedTimeout || phase == .cancelled {
-            return "Try again when the cloud job is available."
+            return "Try again when cloud render is available."
         }
         if isWorking || hasStartedAIEditJob {
-            return "This can take a while."
+            return "Cloud status updates here."
         }
         return "Pick setup, then make the reel."
     }
@@ -2922,13 +2922,13 @@ struct AIEditView: View {
         case .planning:
             return "Cloud is preparing your edit plan from selected clips."
         case .planReady:
-            return "Plan is ready. Start render to create the finished video."
+            return "Plan is ready. Make the finished reel when you are ready."
         case .renderRequested, .created, .queued:
-            return "Render is in queue. You can switch apps while HoopClips keeps rendering."
+            return "Your reel is in queue. You can switch apps while HoopClips keeps rendering."
         case .rendering:
             return "Making your highlight reel in the cloud. Return for the finished file."
         case .rendered:
-            return "Your video is ready to preview and share."
+            return "Your reel is ready to preview and share."
         case .failed:
             return "The video did not finish. Retry when the backend is available."
         case .failedTimeout:
@@ -2959,13 +2959,13 @@ struct AIEditView: View {
         case .planning:
             return "Cloud edit is reviewing candidate clips to build a plan."
         case .planReady:
-            return "Plan is ready. Next step: render the finished MP4."
+            return "Plan is ready. Next step: make the finished reel."
         case .renderRequested, .created:
-            return "Sending the edit plan to the cloud render service."
+            return "Sending your reel plan to cloud render."
         case .queued:
-            return "Cloud edit is in queue. HoopClips refreshes from live job status."
+            return "Your reel is queued. HoopClips refreshes from live cloud status."
         case .rendering:
-            return "HoopClips is producing the cloud MP4."
+            return "HoopClips is making the finished reel."
         case .rendered, .failed, .failedTimeout, .cancelled:
             return nil
         }
