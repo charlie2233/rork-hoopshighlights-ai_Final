@@ -219,7 +219,69 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return titleCased(value)
+        let tokens = cleanedTitleTokens(value)
+        guard !tokens.isEmpty,
+              !looksLikeCameraRollTitle(tokens) else {
+            return ""
+        }
+
+        return titleCased(tokens.joined(separator: " "))
+    }
+
+    private static func cleanedTitleTokens(_ value: String) -> [String] {
+        var tokens = value
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+
+        while let last = tokens.last,
+              shouldDropTrailingGeneratedToken(last) {
+            tokens.removeLast()
+        }
+
+        return tokens
+    }
+
+    private static func shouldDropTrailingGeneratedToken(_ token: String) -> Bool {
+        let lower = token.lowercased()
+        if lower == "4k" || lower == "uhd" || lower == "hd" {
+            return true
+        }
+        if lower.range(of: #"^\d{3,4}p$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if lower.range(of: #"^\d{3,}$"#, options: .regularExpression) != nil {
+            return !isLikelyYear(lower)
+        }
+        if lower.count >= 8 {
+            let alphanumeric = lower.filter { $0.isLetter || $0.isNumber }
+            let digitCount = alphanumeric.filter(\.isNumber).count
+            let letterCount = alphanumeric.filter(\.isLetter).count
+            if alphanumeric.count == lower.count,
+               digitCount > 0,
+               letterCount > 0 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func looksLikeCameraRollTitle(_ tokens: [String]) -> Bool {
+        guard let first = tokens.first?.lowercased() else { return true }
+        let cameraPrefixes: Set<String> = ["img", "vid", "mov", "dsc", "pxl", "trim"]
+        guard cameraPrefixes.contains(first) else { return false }
+
+        let rest = tokens.dropFirst().joined()
+        guard !rest.isEmpty else { return true }
+        let digitCount = rest.filter(\.isNumber).count
+        return digitCount >= max(3, rest.count / 2)
+    }
+
+    private static func isLikelyYear(_ value: String) -> Bool {
+        guard value.count == 4,
+              let year = Int(value) else {
+            return false
+        }
+        return (1900...2100).contains(year)
     }
 
     private static func titleCased(_ value: String) -> String {
@@ -228,6 +290,10 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .map { token in
                 let lower = token.lowercased()
                 if lower == "vs" { return "vs" }
+                let upper = token.uppercased()
+                if preservedUppercaseTitleTokens.contains(upper) {
+                    return upper
+                }
                 if lower.count <= 2, lower.allSatisfy(\.isLetter) {
                     return lower.uppercased()
                 }
@@ -237,6 +303,20 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             }
             .joined(separator: " ")
     }
+
+    private static let preservedUppercaseTitleTokens: Set<String> = [
+        "AAU",
+        "AI",
+        "ESPN",
+        "HS",
+        "JV",
+        "NBA",
+        "NCAA",
+        "UCLA",
+        "USA",
+        "USC",
+        "WNBA"
+    ]
 
     private static func looksLikeRandomCode(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
