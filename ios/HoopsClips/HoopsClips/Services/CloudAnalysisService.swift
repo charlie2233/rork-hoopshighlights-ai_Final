@@ -123,6 +123,15 @@ struct CloudAnalysisService {
         let sourceAvailability = FileManager.default.fileExists(atPath: manifest.sourceFilePath) ? "available" : "missing"
         let completedParts = manifest.completedParts.count
         let partCount = max(manifest.partCount, 0)
+        let completedBytes = completedUploadBytes(
+            completedParts: manifest.completedParts,
+            chunkSizeBytes: manifest.chunkSizeBytes,
+            totalFileSizeBytes: manifest.totalFileSizeBytes
+        )
+        let totalBytes = max(manifest.totalFileSizeBytes, 0)
+        let progressPercent = totalBytes > 0
+            ? min(100, max(0, Int((Double(completedBytes) / Double(totalBytes) * 100).rounded())))
+            : 0
         let uploadComplete = partCount > 0 && completedParts >= partCount
         let activeSessions = manifest.activeSessionIdentifiers.count
         let ageSeconds = max(0, Int(Date().timeIntervalSince(manifest.updatedAt).rounded(.down)))
@@ -139,6 +148,9 @@ struct CloudAnalysisService {
             "pending=true",
             "purpose=\(manifest.purpose.rawValue)",
             "completed=\(completedParts)/\(partCount)",
+            "completedBytes=\(completedBytes)",
+            "totalBytes=\(totalBytes)",
+            "progressPercent=\(progressPercent)",
             "uploadComplete=\(uploadComplete)",
             "sessions=\(activeSessions)",
             "activeUploadSessions=\(activeSessions > 0)",
