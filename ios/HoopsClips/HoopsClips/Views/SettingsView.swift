@@ -912,6 +912,8 @@ struct SettingsView: View {
         let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
+        let savedPlayerBackgroundUploadProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
+        let savedPlayerBackgroundUploadProofSummary = savedPlayerBackgroundUploadProof.isEmpty ? "missing" : "present length=\(savedPlayerBackgroundUploadProof.count)"
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
@@ -940,6 +942,7 @@ struct SettingsView: View {
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
             "backgroundUploadCompletionProof=\(proofTextValue(backgroundUploadCompletionProof))",
+            "savedPlayerBackgroundUploadProof=\(savedPlayerBackgroundUploadProofSummary)",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(pendingBackgroundUploadManifest)",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
@@ -975,6 +978,8 @@ struct SettingsView: View {
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
+        let savedPlayerBackgroundUploadProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
+        let savedPlayerBackgroundUploadProofSummary = savedPlayerBackgroundUploadProof.isEmpty ? "missing" : "present length=\(savedPlayerBackgroundUploadProof.count)"
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
         let backgroundUploadWakeReceived = backgroundUploadWakeReceivedFlag(
@@ -1000,6 +1005,7 @@ struct SettingsView: View {
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
             "backgroundUploadCompletionProof=\(proofTextValue(backgroundUploadCompletionProof))",
+            "savedPlayerBackgroundUploadProof=\(savedPlayerBackgroundUploadProofSummary)",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
             "latestUploadProgress=\(proofTextValue(latestProgress))",
