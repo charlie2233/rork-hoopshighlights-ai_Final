@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var buildSummaryCopied = false
     @State private var testFlightChecklistCopied = false
     @State private var phoneSmokeResult: PhoneSmokeResultStatus = .notRun
+    @State private var phoneSmokeIssueNote = ""
     @State private var smokeProofCopied = false
     @State private var uploadStateProofCopied = false
     @State private var isSendingSmokeProof = false
@@ -595,6 +596,28 @@ struct SettingsView: View {
                     phoneSmokeResultButtons
                 }
             }
+
+            if phoneSmokeResult == .issue {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                    TextField("Short issue note, no links", text: $phoneSmokeIssueNote)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .textInputAutocapitalization(.sentences)
+                        .autocorrectionDisabled()
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+                .background(AppTheme.surfaceBg.opacity(0.72), in: .rect(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.warningYellow.opacity(0.18), lineWidth: 1)
+                }
+                .accessibilityIdentifier("settings.smokeProof.phoneSmokeIssueNote")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
@@ -636,6 +659,10 @@ struct SettingsView: View {
         case .issue:
             return AppTheme.warningYellow
         }
+    }
+
+    private var phoneSmokeIssueNoteForProof: String {
+        PhoneSmokeIssueNoteCopy.sanitized(phoneSmokeIssueNote, enabled: phoneSmokeResult == .issue)
     }
 
     private var copyBuildSummaryButton: some View {
@@ -1116,6 +1143,7 @@ struct SettingsView: View {
             environment: AppConstants.environmentName,
             cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue,
             phoneSmokeResult: phoneSmokeResult.rawValue,
+            phoneSmokeIssueNote: phoneSmokeIssueNoteForProof,
             videoLoaded: viewModel.isVideoLoaded,
             videoDurationSeconds: Int(viewModel.videoDuration.rounded()),
             importInProgress: viewModel.isVideoImportInProgress,
@@ -1139,7 +1167,8 @@ struct SettingsView: View {
             build: appBuildNumber,
             environment: AppConstants.environmentName,
             cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue,
-            phoneSmokeResult: phoneSmokeResult.rawValue
+            phoneSmokeResult: phoneSmokeResult.rawValue,
+            phoneSmokeIssueNote: phoneSmokeIssueNoteForProof
         )
     }
 

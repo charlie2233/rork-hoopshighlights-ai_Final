@@ -9,7 +9,8 @@ nonisolated enum TestFlightSmokeChecklistCopy {
         build: String,
         environment: String,
         cloudLaunchMode: String,
-        phoneSmokeResult: String = "not_run"
+        phoneSmokeResult: String = "not_run",
+        phoneSmokeIssueNote: String = "none"
     ) -> String {
         [
             title,
@@ -19,6 +20,7 @@ nonisolated enum TestFlightSmokeChecklistCopy {
             "environment=\(safeValue(environment))",
             "cloudLaunchMode=\(safeValue(cloudLaunchMode))",
             "phoneSmokeResult=\(safeValue(phoneSmokeResult))",
+            "phoneSmokeIssueNote=\(safeValue(phoneSmokeIssueNote))",
             "1. Install this exact TestFlight build.",
             "2. Import a long basketball video.",
             "3. Confirm Uploading -> Analyzing -> Review ready stays readable.",

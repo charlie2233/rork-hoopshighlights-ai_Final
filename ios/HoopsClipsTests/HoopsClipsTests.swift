@@ -1220,6 +1220,7 @@ struct HoopsClipsTests {
             environment: "internal_staging",
             cloudLaunchMode: "internal_only",
             phoneSmokeResult: PhoneSmokeResultStatus.issue.rawValue,
+            phoneSmokeIssueNote: "AI analysis crashed after https://example.test/uploads/source.mp4?X-Amz-Signature=secret",
             videoLoaded: true,
             videoDurationSeconds: 210,
             importInProgress: false,
@@ -1238,6 +1239,7 @@ struct HoopsClipsTests {
         #expect(summary.contains("HoopClips Build Summary"))
         #expect(summary.contains("build=44"))
         #expect(summary.contains("phoneSmokeResult=issue"))
+        #expect(summary.contains("phoneSmokeIssueNote=redacted"))
         #expect(summary.contains("analysisProgressPercent=100"))
         #expect(summary.contains("analysisStatus=redacted"))
         #expect(summary.contains("privacy=no secrets"))
@@ -1253,12 +1255,14 @@ struct HoopsClipsTests {
             build: "45",
             environment: "internal_staging",
             cloudLaunchMode: "internal_only",
-            phoneSmokeResult: PhoneSmokeResultStatus.passed.rawValue
+            phoneSmokeResult: PhoneSmokeResultStatus.issue.rawValue,
+            phoneSmokeIssueNote: "analysis_crash_after_tap"
         )
 
         #expect(checklist.contains("HoopClips TestFlight Smoke Checklist"))
         #expect(checklist.contains("build=45"))
-        #expect(checklist.contains("phoneSmokeResult=passed"))
+        #expect(checklist.contains("phoneSmokeResult=issue"))
+        #expect(checklist.contains("phoneSmokeIssueNote=analysis_crash_after_tap"))
         #expect(checklist.contains("Import a long basketball video"))
         #expect(checklist.contains("Uploading -> Analyzing -> Review ready"))
         #expect(checklist.contains("Switch apps during upload"))
@@ -1275,6 +1279,13 @@ struct HoopsClipsTests {
         #expect(PhoneSmokeResultStatus.allCases.map(\.title) == ["Not run", "Passed", "Issue"])
         #expect(PhoneSmokeResultStatus.allCases.allSatisfy { $0.title.count <= 8 })
         #expect(PhoneSmokeResultStatus.allCases.allSatisfy { !$0.icon.isEmpty })
+    }
+
+    @Test func testPhoneSmokeIssueNoteSanitizesSensitiveText() {
+        #expect(PhoneSmokeIssueNoteCopy.sanitized("", enabled: true) == "none")
+        #expect(PhoneSmokeIssueNoteCopy.sanitized("ignored", enabled: false) == "none")
+        #expect(PhoneSmokeIssueNoteCopy.sanitized("analysis crashed after tap", enabled: true) == "analysis_crashed_after_tap")
+        #expect(PhoneSmokeIssueNoteCopy.sanitized("https://x.test/uploads/a?X-Amz-Signature=b", enabled: true) == "redacted")
     }
 
     @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
