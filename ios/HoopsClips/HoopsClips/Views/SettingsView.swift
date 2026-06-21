@@ -133,7 +133,7 @@ struct SettingsView: View {
                         AnyView(languageSettingsCard)
                         AnyView(workflowHubLink)
                         AnyView(supportHubLink)
-                        if shouldShowSmokeProofCard {
+                        if shouldShowSmokeProofCard && shouldSurfaceSmokeProofCard {
                             AnyView(smokeProofCard)
                         }
                         AnyView(aboutHubLink)
@@ -434,6 +434,14 @@ struct SettingsView: View {
         ) {
             supportSettingsPage
         }
+    }
+
+    private var shouldSurfaceSmokeProofCard: Bool {
+        viewModel.isVideoImportInProgress
+            || viewModel.analysisService.isAnalyzing
+            || viewModel.isCloudTeamScanInProgress
+            || viewModel.canRetryUploadAfterCancel
+            || LaunchTelemetry.shared.latestCrashReportDeliverySummary != nil
     }
 
     private var shouldShowSmokeProofCard: Bool {
