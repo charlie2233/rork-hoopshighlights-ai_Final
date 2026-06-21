@@ -34,7 +34,7 @@ struct CloudAnalysisService {
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
     private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
-    private static let maxConcurrentMultipartUploads = 2
+    private static let maxConcurrentMultipartUploads = 3
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
