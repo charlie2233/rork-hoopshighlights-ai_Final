@@ -1268,7 +1268,12 @@ struct VideoPlayerView: View {
                     }
                     .foregroundStyle(.white)
                     .padding(16)
-                    .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
+                    .background(
+                        isAnalysisStartDisabled
+                            ? AnyShapeStyle(AppTheme.surfaceBg.opacity(0.72))
+                            : AnyShapeStyle(AppTheme.purpleGradient),
+                        in: .rect(cornerRadius: 16)
+                    )
                 }
                 .disabled(isAnalysisStartDisabled)
                 .opacity(isAnalysisStartDisabled ? 0.72 : 1)
