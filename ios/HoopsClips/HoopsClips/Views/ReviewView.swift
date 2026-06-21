@@ -181,47 +181,24 @@ struct ReviewView: View {
     }
 
     private var reviewEmptyStateTitle: String {
-        isWaitingForReviewClips ? "Analyzing, please wait" : "Review opens after analysis"
+        reviewEmptyStateContent.title
     }
 
     private var reviewEmptyStateMessage: String {
-        guard isWaitingForReviewClips else {
-            return "Go to Player, import a video, then tap AI Analysis. Your best plays will show here ready to keep or skip."
-        }
-
-        let progressText = reviewEmptyStateProgressText.map { " \($0) done." } ?? ""
-        let statusText = reviewEmptyStateStatusText.map { " \($0)" } ?? ""
-        return "HoopClips is \(reviewEmptyStateWorkLabel).\(progressText)\(statusText) Review opens automatically when clips are ready."
+        reviewEmptyStateContent.message
     }
 
     private var reviewEmptyStateIcon: String {
-        isWaitingForReviewClips ? "brain.head.profile.fill" : "film.stack.fill"
+        reviewEmptyStateContent.icon
     }
 
-    private var isWaitingForReviewClips: Bool {
-        viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing
-    }
-
-    private var reviewEmptyStateWorkLabel: String {
-        let status = reviewEmptyStateRawStatus.lowercased()
-        if viewModel.isVideoImportInProgress || status.contains("upload") {
-            return "uploading your video"
-        }
-        return "scanning your video"
-    }
-
-    private var reviewEmptyStateProgressText: String? {
-        let progress = viewModel.analysisService.progress
-        guard progress.isFinite, progress > 0 else { return nil }
-        let percent = Int((min(max(progress, 0), 1) * 100).rounded(.down))
-        guard percent > 0 else { return nil }
-        return "\(percent)%"
-    }
-
-    private var reviewEmptyStateStatusText: String? {
-        let status = reviewEmptyStateRawStatus.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !status.isEmpty else { return nil }
-        return status.hasSuffix(".") ? status : "\(status)."
+    private var reviewEmptyStateContent: ReviewEmptyStateContent {
+        ReviewEmptyStateCopy.content(
+            isVideoImportInProgress: viewModel.isVideoImportInProgress,
+            isAnalyzing: viewModel.analysisService.isAnalyzing,
+            progress: viewModel.analysisService.progress,
+            statusMessage: reviewEmptyStateRawStatus
+        )
     }
 
     private var reviewEmptyStateRawStatus: String {

@@ -1789,6 +1789,51 @@ struct HoopsClipsTests {
         #expect(accessibility == "1 clip selected for edit out of 2 clips. 1 clip needs a closer check.")
     }
 
+    @Test func testReviewEmptyStateCopyWaitsDuringUploadOrAnalysis() {
+        let uploading = ReviewEmptyStateCopy.content(
+            isVideoImportInProgress: true,
+            isAnalyzing: false,
+            progress: 0.38,
+            statusMessage: "Uploading video"
+        )
+        let analyzing = ReviewEmptyStateCopy.content(
+            isVideoImportInProgress: false,
+            isAnalyzing: true,
+            progress: 0.42,
+            statusMessage: "Preparing cloud analysis"
+        )
+
+        #expect(uploading.title == "Analyzing, please wait")
+        #expect(uploading.icon == "brain.head.profile.fill")
+        #expect(uploading.message.contains("uploading your video"))
+        #expect(uploading.message.contains("38% done"))
+        #expect(uploading.message.contains("Uploading video."))
+        #expect(!uploading.message.localizedCaseInsensitiveContains("rerun"))
+        #expect(!uploading.message.localizedCaseInsensitiveContains("re-run"))
+
+        #expect(analyzing.title == "Analyzing, please wait")
+        #expect(analyzing.message.contains("scanning your video"))
+        #expect(analyzing.message.contains("42% done"))
+        #expect(analyzing.message.contains("Review opens automatically when clips are ready."))
+        #expect(!analyzing.message.localizedCaseInsensitiveContains("rerun"))
+        #expect(!analyzing.message.localizedCaseInsensitiveContains("re-run"))
+    }
+
+    @Test func testReviewEmptyStateCopyOnlyShowsRecoveryWhenNoWorkIsActive() {
+        let idle = ReviewEmptyStateCopy.content(
+            isVideoImportInProgress: false,
+            isAnalyzing: false,
+            progress: 0.88,
+            statusMessage: "Preparing cloud analysis"
+        )
+
+        #expect(idle.title == "Review opens after analysis")
+        #expect(idle.icon == "film.stack.fill")
+        #expect(idle.message.contains("Go to Player"))
+        #expect(!idle.message.localizedCaseInsensitiveContains("please wait"))
+        #expect(!idle.message.localizedCaseInsensitiveContains("88%"))
+    }
+
     @Test func testReviewFilterDisplayPolicyKeepsActiveHiddenFilterVisible() {
         let available = ["all", "priority", "team", "defense", "blocks", "sound", "kept"]
         let primary: Set<String> = ["all", "priority", "team"]
