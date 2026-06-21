@@ -10,16 +10,16 @@ struct AIEditQuickPrompt: Identifiable, Equatable, Sendable {
 enum AIEditQuickPromptLibrary {
     static let options: [AIEditQuickPrompt] = [
         AIEditQuickPrompt(
-            id: "hype",
-            title: "More hype",
-            prompt: "More hype. Prioritize clear made shots, blocks, steals, and big stops.",
-            icon: "bolt.fill"
-        ),
-        AIEditQuickPrompt(
             id: "personal",
             title: "My highlights",
             prompt: "Personal highlight: focus on one player when clear, keep full makes, assists, blocks, steals, and best defense.",
             icon: "person.crop.circle.fill"
+        ),
+        AIEditQuickPrompt(
+            id: "hype",
+            title: "More hype",
+            prompt: "More hype. Prioritize clear made shots, blocks, steals, and big stops.",
+            icon: "bolt.fill"
         ),
         AIEditQuickPrompt(
             id: "defense",
