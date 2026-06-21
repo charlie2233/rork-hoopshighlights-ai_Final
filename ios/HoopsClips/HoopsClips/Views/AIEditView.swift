@@ -205,12 +205,10 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
+            promptCard
             actionCard
             compactExportSetupCard
             exportProgressCard
-            if showSetupControls || !userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                promptCard
-            }
             if showSetupControls {
                 smartSetupCard
                 stylePicker
