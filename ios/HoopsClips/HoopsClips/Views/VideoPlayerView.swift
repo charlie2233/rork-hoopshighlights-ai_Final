@@ -1276,6 +1276,9 @@ struct VideoPlayerView: View {
                 } else if let failedUploadProofPromptText {
                     failedUploadProofPrompt(failedUploadProofPromptText)
                 }
+                if let analysisStartRecoveryContent {
+                    analysisStartRecoveryCard(analysisStartRecoveryContent)
+                }
 
                 if viewModel.isVideoLoaded, viewModel.videoURL != nil, !viewModel.isVideoImportInProgress {
                     teamTargetControl
@@ -2396,6 +2399,35 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.pendingUploadResumePrompt")
     }
 
+    private func analysisStartRecoveryCard(_ content: AnalysisStartRecoveryContent) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(content.title, systemImage: content.icon)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(content.message)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.78))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("analysis.startRecoveryCard")
+    }
+
     private var analysisUploadMetricText: String? {
         CloudAnalysisProgressCopy.compactUploadProgressSummary(
             statusMessage: viewModel.analysisService.statusMessage
@@ -2502,6 +2534,17 @@ struct VideoPlayerView: View {
 
     private var hasPendingUploadResume: Bool {
         pendingUploadResumePromptText != nil
+    }
+
+    private var analysisStartRecoveryContent: AnalysisStartRecoveryContent? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty,
+              let lastReason = viewModel.lastAnalysisStartBlockReason,
+              viewModel.analysisStartBlockReason?.rawValue == lastReason.rawValue else {
+            return nil
+        }
+
+        return AnalysisStartRecoveryCopy.content(for: lastReason)
     }
 
     private var analysisRecoveredUploadProofPromptText: String? {

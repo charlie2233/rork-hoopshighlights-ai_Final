@@ -1643,6 +1643,7 @@ struct HoopsClipsTests {
 
         #expect(started == false)
         #expect(viewModel.analysisStartBlockReason == .noVideo)
+        #expect(viewModel.lastAnalysisStartBlockReason == .noVideo)
         #expect(viewModel.analysisService.isAnalyzing == false)
         #expect(noClipsCallbackCalled == false)
     }
@@ -1660,8 +1661,21 @@ struct HoopsClipsTests {
 
         #expect(started == false)
         #expect(viewModel.analysisStartBlockReason == .alreadyAnalyzing)
+        #expect(viewModel.lastAnalysisStartBlockReason == .alreadyAnalyzing)
         #expect(viewModel.analysisService.isAnalyzing)
         #expect(noClipsCallbackCalled == false)
+    }
+
+    @Test func testAnalysisStartRecoveryCopyStaysShortAndActionable() {
+        let contents = AnalysisStartBlockReason.allCases.map(AnalysisStartRecoveryCopy.content(for:))
+
+        #expect(contents.allSatisfy { !$0.title.isEmpty })
+        #expect(contents.allSatisfy { !$0.message.isEmpty })
+        #expect(contents.allSatisfy { $0.message.count <= 82 })
+        #expect(contents.allSatisfy { !$0.message.localizedCaseInsensitiveContains("thinking") })
+        #expect(contents.allSatisfy { !$0.message.localizedCaseInsensitiveContains("ETA") })
+        #expect(AnalysisStartRecoveryCopy.content(for: .teamSelection).message.contains("Solo?"))
+        #expect(AnalysisStartRecoveryCopy.content(for: .alreadyAnalyzing).message.contains("Review opens automatically"))
     }
 
     @Test @MainActor func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {

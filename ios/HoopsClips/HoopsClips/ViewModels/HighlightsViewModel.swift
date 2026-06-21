@@ -10,7 +10,7 @@ nonisolated enum CloudAnalysisFallbackCopy {
     static let cloudRequiredTelemetryReason = "cloud_required_no_local_fallback"
 }
 
-nonisolated enum AnalysisStartBlockReason: String, Sendable {
+nonisolated enum AnalysisStartBlockReason: String, Sendable, CaseIterable {
     case importing
     case noVideo = "no_video"
     case alreadyAnalyzing = "already_analyzing"
@@ -123,6 +123,7 @@ final class HighlightsViewModel {
     var isVideoImportInProgress = false
     var videoImportStatusMessage: String?
     var didCancelUploadOrAnalysis = false
+    var lastAnalysisStartBlockReason: AnalysisStartBlockReason?
 
     var canCancelUploadOrAnalysis: Bool {
         isVideoImportInProgress || analysisService.isAnalyzing || activeAnalysisTask != nil
@@ -444,6 +445,7 @@ final class HighlightsViewModel {
     @discardableResult
     func startAnalysisTask(onNoClips: @escaping @MainActor () -> Void) -> Bool {
         if let blockReason = analysisStartBlockReason {
+            lastAnalysisStartBlockReason = blockReason
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "analysis.start_task.blocked",
                 metadata: "reason=\(blockReason.rawValue) videoLoaded=\(isVideoLoaded) importing=\(isVideoImportInProgress) analyzing=\(analysisService.isAnalyzing) progress=\(analysisService.progress)"
@@ -452,6 +454,7 @@ final class HighlightsViewModel {
         }
 
         didCancelUploadOrAnalysis = false
+        lastAnalysisStartBlockReason = nil
 
         activeAnalysisTask = Task { @MainActor [weak self] in
             guard let self else { return }
