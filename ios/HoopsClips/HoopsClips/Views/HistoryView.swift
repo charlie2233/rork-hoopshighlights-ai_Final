@@ -246,6 +246,24 @@ struct HistoryView: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if onReturnToPlayer != nil {
+                    Button {
+                        onReturnToPlayer?()
+                    } label: {
+                        Text(viewModel.canRetryUploadAfterCancel ? "Retry" : "Player")
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(currentWorkTint.opacity(0.24), in: .capsule)
+                            .overlay {
+                                Capsule().stroke(currentWorkTint.opacity(0.34), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(viewModel.canRetryUploadAfterCancel ? "Return to Player to retry upload" : "Return to Player")
+                }
             }
 
             ProgressView(value: currentWorkProgress)
