@@ -15,7 +15,6 @@ struct ReviewView: View {
     @State private var clipTimeObserverToken: Any?
     @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
-    @State private var hasAutoFocusedPriorityFilter = false
     @State private var sortByScore = true
     @State private var expandedClipID: UUID?
     @State private var focusedClipID: UUID?
@@ -159,11 +158,9 @@ struct ReviewView: View {
                 }
             }
             .onAppear {
-                focusPriorityReviewIfNeeded()
                 settleFocusedClipIfNeeded()
             }
             .onChange(of: priorityReviewClips.map(\.id)) { _, _ in
-                focusPriorityReviewIfNeeded()
                 settleFocusedClipIfNeeded()
             }
             .onChange(of: filteredClips.map(\.id)) { _, _ in
@@ -1859,15 +1856,6 @@ struct ReviewView: View {
 
         withAnimation(tabTransitionAnimation) {
             selectedTab = 2
-        }
-    }
-
-    private func focusPriorityReviewIfNeeded() {
-        guard !hasAutoFocusedPriorityFilter else { return }
-        guard filterOption == .all, !priorityReviewClips.isEmpty else { return }
-        hasAutoFocusedPriorityFilter = true
-        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-            filterOption = .priority
         }
     }
 
