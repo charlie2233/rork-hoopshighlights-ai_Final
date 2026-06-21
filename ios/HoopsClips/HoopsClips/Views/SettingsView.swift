@@ -32,6 +32,7 @@ struct SettingsView: View {
     @State private var smokeProofSendSucceeded = false
     @State private var smokeProofSendFailed = false
     @State private var showingSmokeProofTools = false
+    @AppStorage("hoopsclips.cloudUpload.fastUploadMode.v1") private var fastUploadModeEnabled = false
 
     private var settingsPrimaryAccent: Color { AppTheme.rimOrange }
     private var settingsSecondaryAccent: Color { AppTheme.neonPurple.opacity(0.86) }
@@ -1660,6 +1661,7 @@ struct SettingsView: View {
             accent: AppTheme.courtBlue
         ) {
             clipSettingsSection
+            uploadSettingsSection
             advancedSettingsSection
             dangerZone
         }
@@ -2015,6 +2017,38 @@ struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
+        }
+    }
+
+    private var uploadSettingsSection: some View {
+        settingsCard(title: languageStore.text(.settingsCloudAI), icon: "bolt.icloud.fill") {
+            Toggle(isOn: $fastUploadModeEnabled) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(languageStore.text(.settingsFastUploadMode))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(languageStore.text(.settingsFastUploadModeHelp))
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+            }
+            .tint(AppTheme.rimOrange)
+
+            HStack(spacing: 8) {
+                Image(systemName: fastUploadModeEnabled ? "bolt.fill" : "icloud.and.arrow.up.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(fastUploadModeEnabled ? AppTheme.rimOrange : AppTheme.courtBlue)
+                Text(fastUploadModeEnabled ? languageStore.text(.settingsOn) : languageStore.text(.settingsOff))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(
+                (fastUploadModeEnabled ? AppTheme.rimOrange : AppTheme.courtBlue).opacity(0.14),
+                in: Capsule()
+            )
         }
     }
 

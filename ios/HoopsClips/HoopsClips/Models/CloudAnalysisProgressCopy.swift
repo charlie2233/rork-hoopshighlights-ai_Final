@@ -14,6 +14,7 @@ nonisolated struct CloudAnalysisUploadSourceOptimization: Equatable, Sendable {
 
 nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
+    private static let fastUploadModeDefaultsKey = "hoopsclips.cloudUpload.fastUploadMode.v1"
 
     static func approximateRemainingTime(
         statusMessage: String,
@@ -352,14 +353,17 @@ nonisolated enum CloudAnalysisProgressCopy {
         latestUploadProgress: String
     ) -> CloudAnalysisUploadSourceOptimization {
         let status = "\(statusMessage) \(latestUploadProgress)".lowercased()
+        let fastUploadModeEnabled = UserDefaults.standard.bool(forKey: fastUploadModeDefaultsKey)
         let isLongSource = durationSeconds.isFinite && durationSeconds >= 30 * 60
         let isHugeSource = (fileSizeBytes ?? 0) >= 900 * 1_024 * 1_024
-        let prefersCompactSource = durationSeconds.isFinite && durationSeconds >= 45 * 60
+        let prefersCompactSource = fastUploadModeEnabled
+            || durationSeconds.isFinite && durationSeconds >= 45 * 60
             || (fileSizeBytes ?? 0) >= 1_400 * 1_024 * 1_024
         let isUploadStruggling = status.contains("upload") && isSlowUploadStatus(status)
-        let shouldOptimize = isLongSource || isHugeSource || isUploadStruggling
+        let shouldOptimize = fastUploadModeEnabled || isLongSource || isHugeSource || isUploadStruggling
 
         let reasons = [
+            fastUploadModeEnabled ? "fast_upload_mode" : nil,
             isLongSource ? "long_source" : nil,
             isHugeSource ? "huge_source" : nil,
             isUploadStruggling ? "slow_upload" : nil
@@ -375,6 +379,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             isLongSource: isLongSource,
             isHugeSource: isHugeSource,
             isUploadStruggling: isUploadStruggling,
+            fastUploadModeEnabled: fastUploadModeEnabled,
             prefersCompactSource: prefersCompactSource,
             durationMinutes: durationMinutes,
             sourceSizeMB: sourceSizeMB
@@ -382,6 +387,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let proof = [
             "recommended=\(shouldOptimize)",
             "reason=\(reason)",
+            "fastUploadMode=\(fastUploadModeEnabled)",
             "durationMinutes=\(durationMinutes)",
             "sourceSizeMB=\(sourceSizeMB.map(String.init) ?? "unknown")",
             "optimizedSourceStatus=available",
@@ -402,6 +408,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         isLongSource: Bool,
         isHugeSource: Bool,
         isUploadStruggling: Bool,
+        fastUploadModeEnabled: Bool,
         prefersCompactSource: Bool,
         durationMinutes: Int,
         sourceSizeMB: Int?
@@ -409,6 +416,16 @@ nonisolated enum CloudAnalysisProgressCopy {
         guard shouldOptimize else { return nil }
 
         let sizeText = sourceSizeMB.map { "\($0) MB" }
+        if fastUploadModeEnabled {
+            if durationMinutes > 0 {
+                return "Fast Upload Mode: compact upload for \(durationMinutes) min video"
+            }
+            if let sizeText {
+                return "Fast Upload Mode: compact upload from \(sizeText)"
+            }
+            return "Fast Upload Mode: compact upload"
+        }
+
         if status.contains("preparing smaller") {
             if let sizeText {
                 return "Preparing smaller upload from \(sizeText)"

@@ -165,6 +165,8 @@ enum AppTextKey {
     case settingsDraftType
     case settingsDraftChars
     case settingsCloudAI
+    case settingsFastUploadMode
+    case settingsFastUploadModeHelp
     case settingsOnDevice
     case settingsHistory
     case settingsEngine
@@ -462,6 +464,8 @@ extension AppLanguage {
         .settingsDraftType: "Draft Type",
         .settingsDraftChars: "Draft Chars",
         .settingsCloudAI: "Cloud AI",
+        .settingsFastUploadMode: "Fast Upload Mode",
+        .settingsFastUploadModeHelp: "Use a smaller cloud-analysis source for faster uploads. Best for long games or slow Wi-Fi.",
         .settingsOnDevice: "On This iPhone",
         .settingsHistory: "History",
         .settingsEngine: "Engine",
@@ -723,6 +727,8 @@ extension AppLanguage {
         .settingsDraftType: "草稿类型",
         .settingsDraftChars: "草稿字数",
         .settingsCloudAI: "云端 AI",
+        .settingsFastUploadMode: "快速上传模式",
+        .settingsFastUploadModeHelp: "使用更小的云端分析源，让上传更快。适合长比赛或 Wi-Fi 较慢时使用。",
         .settingsOnDevice: "此 iPhone 本地",
         .settingsHistory: "历史",
         .settingsEngine: "引擎",
@@ -984,6 +990,8 @@ extension AppLanguage {
         .settingsDraftType: "Tipo de borrador",
         .settingsDraftChars: "Caracteres",
         .settingsCloudAI: "IA en nube",
+        .settingsFastUploadMode: "Modo de subida rápida",
+        .settingsFastUploadModeHelp: "Usa una fuente más pequeña para el análisis en la nube y sube más rápido. Ideal para partidos largos o Wi-Fi lento.",
         .settingsOnDevice: "En este iPhone",
         .settingsHistory: "Historial",
         .settingsEngine: "Motor",
@@ -1245,6 +1253,8 @@ extension AppLanguage {
         .settingsDraftType: "Type de brouillon",
         .settingsDraftChars: "Caractères",
         .settingsCloudAI: "IA cloud",
+        .settingsFastUploadMode: "Mode envoi rapide",
+        .settingsFastUploadModeHelp: "Utilise une source plus petite pour l'analyse cloud afin d'envoyer plus vite. Idéal pour les longs matchs ou un Wi-Fi lent.",
         .settingsOnDevice: "Sur cet iPhone",
         .settingsHistory: "Historique",
         .settingsEngine: "Moteur",
