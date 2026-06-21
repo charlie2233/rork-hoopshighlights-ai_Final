@@ -161,6 +161,7 @@ struct ContentView: View {
         .onAppear {
             LaunchTelemetry.shared.recordLifecycleState("active", screen: selectedTabTelemetryName)
             recordRuntimeStateBreadcrumb(reason: "appear")
+            resumeCloudAnalysisAfterForegroundIfNeeded()
         }
         .onChange(of: scenePhase) { _, phase in
             LaunchTelemetry.shared.recordLifecycleState(phase.hoopsTelemetryName, screen: selectedTabTelemetryName)
