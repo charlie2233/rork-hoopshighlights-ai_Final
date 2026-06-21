@@ -1097,6 +1097,7 @@ struct CloudAnalysisService {
             request.setValue(value, forHTTPHeaderField: header)
         }
 
+        Self.prepareFileForBackgroundUpload(url, context: "source_upload")
         let response = try await delegate.upload(request: request, fromFile: url, using: uploadSession)
         let finalSnapshot = await tracker.snapshot()
         Self.recordLatestUploadProgressSummary(
@@ -1462,6 +1463,7 @@ struct CloudAnalysisService {
                     }
                 )
                 let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
+                Self.prepareFileForBackgroundUpload(chunkFileURL, context: "chunk_\(partTarget.partNumber)")
                 defer {
                     try? FileManager.default.removeItem(at: chunkFileURL)
                 }
@@ -1547,6 +1549,24 @@ struct CloudAnalysisService {
             metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempts=3 reason=\(Self.uploadRetryReason(for: lastError))"
         )
         throw lastError ?? CloudAnalysisError.uploadFailed
+    }
+
+    private static func prepareFileForBackgroundUpload(_ url: URL, context: String) {
+        do {
+            try FileManager.default.setAttributes(
+                [FileAttributeKey.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: url.path
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "background_upload_file_protection_ready",
+                metadata: "context=\(safeUploadPlanComponent(context))"
+            )
+        } catch {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "background_upload_file_protection_unavailable",
+                metadata: "context=\(safeUploadPlanComponent(context)) reason=\(uploadRetryReason(for: error))"
+            )
+        }
     }
 
     private static func uploadRetryReason(for error: Error?) -> String {
