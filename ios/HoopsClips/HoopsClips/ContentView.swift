@@ -181,6 +181,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             LaunchTelemetry.shared.recordMemoryWarning(screen: selectedTabTelemetryName)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .hoopClipsAnalysisNotificationTapped)) { notification in
+            handleAnalysisNotificationTap(notification)
+        }
         .environment(languageStore)
         .environment(\.locale, languageStore.selectedLanguage.locale)
     }
@@ -1091,6 +1094,32 @@ struct ContentView: View {
     private func openPlayerFromReviewRecovery() {
         dismissReviewRecoveryNotice()
         selectTab(.player)
+    }
+
+    private func handleAnalysisNotificationTap(_ notification: Notification) {
+        let event = notification.userInfo?["event"] as? String ?? "unknown"
+        let context = notification.userInfo?["completionContext"] as? String ?? "unknown"
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "notification.opened",
+            metadata: "event=\(telemetryValue(event)) context=\(telemetryValue(context))"
+        )
+
+        dismissReviewRecoveryNotice()
+        if event == "background_upload_completed" || context == AnalysisNotificationService.CompletionContext.backgroundUploadResume.rawValue {
+            selectTab(.player)
+            resumeCloudAnalysisAfterForegroundIfNeeded()
+            HoopsAccessibility.announce("Upload finished. Continuing from Player.")
+            return
+        }
+
+        if event == "analysis_completed", hasCurrentReviewableClips {
+            selectTab(.review)
+            HoopsAccessibility.announce("Review is ready.")
+            return
+        }
+
+        selectTab(.player)
+        resumeCloudAnalysisAfterForegroundIfNeeded()
     }
 
     private func resumeCloudAnalysisAfterForegroundIfNeeded() {

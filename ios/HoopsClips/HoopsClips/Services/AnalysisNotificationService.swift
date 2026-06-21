@@ -2,6 +2,10 @@ import Foundation
 import UIKit
 import UserNotifications
 
+extension Notification.Name {
+    static let hoopClipsAnalysisNotificationTapped = Notification.Name("hoopclips.analysisNotificationTapped")
+}
+
 @MainActor
 final class AnalysisNotificationService: NSObject {
     enum CompletionContext: String {
@@ -165,5 +169,38 @@ extension AnalysisNotificationService: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let userInfo = response.notification.request.content.userInfo
+        let event = userInfo["event"] as? String ?? "unknown"
+        let context = userInfo["completionContext"] as? String ?? "unknown"
+
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .hoopClipsAnalysisNotificationTapped,
+                object: nil,
+                userInfo: [
+                    "event": event,
+                    "completionContext": context
+                ]
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "analysis_notification_tapped",
+                metadata: "event=\(Self.safeNotificationComponent(event)) context=\(Self.safeNotificationComponent(context))"
+            )
+        }
+    }
+
+    private nonisolated static func safeNotificationComponent(_ value: String) -> String {
+        let compact = value
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else { return "unknown" }
+        return String(compact.prefix(48))
     }
 }
