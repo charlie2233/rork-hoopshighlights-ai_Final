@@ -148,7 +148,7 @@ struct ExportView: View {
     private var emptyState: some View {
         HoopsEmptyStateCard(
             title: "No AI Edit Candidates",
-            message: "Run analysis first. HoopClips can make the reel from cloud candidates, so manual clip keeping is optional.",
+            message: "Run AI Analysis first. Review is optional; AI Edit can still build your reel.",
             icon: "square.and.arrow.up.fill"
         )
     }
@@ -159,8 +159,8 @@ struct ExportView: View {
                 title: "Tell HoopClips what reel you want",
                 icon: "sparkles.tv.fill",
                 subtitle: viewModel.keptClips.isEmpty
-                    ? "Use AI Edit below: my highlights, defense, recap, or longer reel."
-                    : "Your kept clips stay included; AI Edit below fills the story."
+                    ? "Pick a vibe below, then make the reel."
+                    : "Kept clips stay in. Pick a vibe, then make the reel."
             )
 
             LazyVGrid(columns: summaryMetricGridColumns, alignment: .leading, spacing: 10) {
