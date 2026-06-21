@@ -354,15 +354,98 @@ struct ReviewView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            HoopsEmptyStateCard(
-                title: reviewEmptyStateTitle,
-                message: reviewEmptyStateMessage,
-                icon: reviewEmptyStateIcon
-            )
+            if reviewIsWaitingForImportOrAnalysis {
+                reviewActiveWaitingState
+            } else {
+                HoopsEmptyStateCard(
+                    title: reviewEmptyStateTitle,
+                    message: reviewEmptyStateMessage,
+                    icon: reviewEmptyStateIcon
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var reviewIsWaitingForImportOrAnalysis: Bool {
+        viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing
+    }
+
+    private var reviewActiveWaitingState: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: reviewEmptyStateIcon)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.neonPurple)
+                    .frame(width: 38, height: 38)
+                    .background(AppTheme.neonPurple.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reviewWaitingTitle)
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.white)
+                    Text(reviewWaitingFirstSentence(reviewEmptyStateMessage))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                }
+                .layoutPriority(1)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                ProgressView(value: reviewWaitingProgressValue)
+                    .tint(AppTheme.neonPurple)
+                    .accessibilityLabel("Analysis progress")
+                    .accessibilityValue(reviewWaitingProgressLabel)
+
+                HStack(spacing: 8) {
+                    Text(reviewWaitingProgressLabel)
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.white.opacity(0.88))
+                    Spacer(minLength: 8)
+                    if let eta = reviewWaitingCompactETA {
+                        Text(eta)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(1)
+                    }
+                }
+            }
 
             reviewWaitingFactsView
         }
-        .padding(.horizontal, 16)
+        .padding(18)
+        .rorkCard(
+            cornerRadius: 22,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.78)),
+            stroke: AppTheme.accentPurple.opacity(0.20),
+            glow: AppTheme.neonPurple,
+            glowOpacity: 0.08
+        )
+        .accessibilityIdentifier("review.activeWaitingState")
+    }
+
+    private var reviewWaitingTitle: String {
+        if viewModel.isVideoImportInProgress {
+            return "Uploading video"
+        }
+        if reviewWaitingProgressValue >= 0.92 {
+            return "Review is almost ready"
+        }
+        return "Analyzing plays"
+    }
+
+    private var reviewWaitingProgressValue: Double {
+        min(max(viewModel.analysisService.progress, 0), 1)
+    }
+
+    private var reviewWaitingProgressLabel: String {
+        let percent = Int((reviewWaitingProgressValue * 100).rounded())
+        guard percent > 0 else {
+            return viewModel.isVideoImportInProgress ? "Getting upload ready" : "Starting analysis"
+        }
+        return "\(percent)% done"
     }
 
     private var reviewEmptyStateTitle: String {
@@ -412,14 +495,6 @@ struct ReviewView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .rorkCard(
-                cornerRadius: 16,
-                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.68)),
-                stroke: AppTheme.accentPurple.opacity(0.18),
-                glow: AppTheme.accentPurple,
-                glowOpacity: 0.04
-            )
             .accessibilityIdentifier("review.waitingFacts")
         }
     }
