@@ -2499,23 +2499,41 @@ struct VideoPlayerView: View {
         return String(compact.prefix(720))
     }
 
+    private var backgroundUploadSurvivalDetected: Bool {
+        let proof = CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased()
+        return proof.contains("completedwhileaway=true")
+            || proof.contains("wakereceived=true")
+            || proof.contains("relaunchcompletion=true")
+            || proof.contains("inferredsourcecompletion=true")
+    }
+
     private var backgroundUploadProofCopyButton: some View {
-        Button {
-            copyBackgroundUploadProof()
-        } label: {
-            Label(didCopyUploadProof ? "Copied upload proof" : "Copy upload proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Color.cyan)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+        VStack(spacing: 8) {
+            Button {
+                copyBackgroundUploadProof()
+            } label: {
+                Label(didCopyUploadProof ? "Copied upload proof" : "Copy upload proof", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.cyan)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("analysis.copyBackgroundUploadProofButton")
+
+            if backgroundUploadSurvivalDetected {
+                Label("Upload survived background", systemImage: "checkmark.circle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.green)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("analysis.backgroundUploadSurvivedBadge")
                 }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("analysis.copyBackgroundUploadProofButton")
     }
 
     private var backgroundUploadProofSendButton: some View {
