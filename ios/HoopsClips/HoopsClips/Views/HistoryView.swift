@@ -123,8 +123,8 @@ struct HistoryView: View {
 
     private var emptyState: some View {
         HoopsEmptyStateCard(
-            title: "No Project History Yet",
-            message: "Import a video and HoopClips will keep the project, timeline, and saved export here.",
+            title: "Projects save here",
+            message: "Start on Player. After you import and analyze a video, your project will appear here.",
             icon: "clock.arrow.circlepath"
         )
         .accessibilityIdentifier("history.emptyState")
