@@ -50,6 +50,19 @@ privacyScanPassed: true
 
 If the checker reports `blocked`, fix the listed evidence gap before calling background upload done.
 
+To combine backend smoke evidence and phone proof into one sanitized end-to-end JSON bundle, run:
+
+```bash
+python3 scripts/assemble_background_upload_evidence_bundle.py --backend-evidence /path/to/backend-smoke-evidence.json --phone-proof /path/to/background-upload-proof.txt --commit <git-sha> --build <testflight-build> --out /path/to/background-upload-evidence-bundle.json
+```
+
+Expected ready shape:
+
+```text
+backgroundUploadEvidenceReady: true
+privacyScanPassed: true
+```
+
 ### 1. Staging backend proof
 
 Capture one fresh current-tip backend proof after deploying the current Worker/control-plane changes:
