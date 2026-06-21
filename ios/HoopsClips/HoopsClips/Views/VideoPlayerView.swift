@@ -700,6 +700,15 @@ struct VideoPlayerView: View {
     }
 
     private func startAnalysisFromButton() {
+        if hasPendingUploadResume {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "upload.resume.primary_requested",
+                metadata: "source=analysis_primary_button"
+            )
+            HoopsAccessibility.announce("Resuming saved upload.")
+            viewModel.resumePendingBackgroundUploadFromPlayer()
+            return
+        }
         guard !viewModel.isVideoImportInProgress else {
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "analysis.start.blocked",
@@ -1174,6 +1183,9 @@ struct VideoPlayerView: View {
     }
 
     private var analysisPrimaryButtonTitle: String {
+        if hasPendingUploadResume {
+            return "Resume saved upload"
+        }
         if viewModel.isVideoImportInProgress {
             return "Wait for import"
         }
@@ -1187,10 +1199,16 @@ struct VideoPlayerView: View {
     }
 
     private var analysisPrimaryButtonSubtitle: String {
+        if hasPendingUploadResume {
+            return "Skip finished chunks and keep going."
+        }
         analysisStartUnavailableReason ?? analysisButtonSubtitle
     }
 
     private var isAnalysisStartDisabled: Bool {
+        if hasPendingUploadResume {
+            return false
+        }
         viewModel.isVideoImportInProgress
             || !viewModel.isVideoLoaded
             || viewModel.videoURL == nil
@@ -1280,7 +1298,7 @@ struct VideoPlayerView: View {
                 .disabled(isAnalysisStartDisabled)
                 .opacity(isAnalysisStartDisabled ? 0.72 : 1)
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
-                .accessibilityIdentifier("analysis.startButton")
+                .accessibilityIdentifier(hasPendingUploadResume ? "analysis.resumePendingBackgroundUploadButton" : "analysis.startButton")
 
                 if AppConstants.requiresCloudVideoPipeline {
                 }
@@ -2328,23 +2346,6 @@ struct VideoPlayerView: View {
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
-
-            Button {
-                viewModel.resumePendingBackgroundUploadFromPlayer()
-            } label: {
-                Label("Resume saved upload", systemImage: "play.circle.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.cyan.opacity(0.18), in: .rect(cornerRadius: 14))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.cyan.opacity(0.30), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("analysis.resumePendingBackgroundUploadButton")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
@@ -2491,9 +2492,13 @@ struct VideoPlayerView: View {
             .first { $0.hasPrefix("completed=") }
             .map { String($0.dropFirst("completed=".count)) }
         if let completedSummary, completedSummary != "0/1" {
-            return "Saved background upload found. Resume it and HoopClips will skip completed chunks (\(completedSummary))."
+            return "Saved upload ready. The main button will skip finished chunks (\(completedSummary))."
         }
-        return "Saved background upload found. Resume it instead of starting over."
+        return "Saved upload ready. The main button resumes instead of restarting."
+    }
+
+    private var hasPendingUploadResume: Bool {
+        pendingUploadResumePromptText != nil
     }
 
     private var analysisRecoveredUploadProofPromptText: String? {
@@ -2829,6 +2834,9 @@ struct VideoPlayerView: View {
     }
 
     private var analysisButtonIcon: String {
+        if hasPendingUploadResume {
+            return "arrow.clockwise.icloud.fill"
+        }
         if requiresProForCurrentVideo {
             return "lock.fill"
         }
