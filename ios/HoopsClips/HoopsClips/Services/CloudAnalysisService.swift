@@ -1819,7 +1819,20 @@ private enum CloudUploadChunkFileStore {
         )
         let directory = base.appendingPathComponent("CloudUploadChunks", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        prepareChunkDirectoryForBackgroundUpload(directory)
         return directory
+    }
+
+    private static func prepareChunkDirectoryForBackgroundUpload(_ directory: URL) {
+        do {
+            try FileManager.default.setAttributes(
+                [FileAttributeKey.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: directory.path
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof("background_upload_chunk_directory_ready")
+        } catch {
+            LaunchTelemetry.shared.recordBackgroundUploadProof("background_upload_chunk_directory_protection_unavailable")
+        }
     }
 
     private static func sanitizedComponent(_ value: String) -> String {
