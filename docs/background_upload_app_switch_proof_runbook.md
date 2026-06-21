@@ -93,6 +93,7 @@ Required evidence:
 - Copied proof fields:
   - `backgroundUploadWakeReceived`
   - `backgroundUploadRuntimePolicy`
+  - `backgroundUploadCompletionProof`
   - `backgroundUploadMultipartCompleteIdempotent` or `serverMultipartCompleteIdempotent`
   - `pendingBackgroundUploadManifest`
   - `latestUploadProgress`

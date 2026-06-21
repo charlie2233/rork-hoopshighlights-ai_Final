@@ -911,6 +911,7 @@ struct SettingsView: View {
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
         let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
+        let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
@@ -938,6 +939,7 @@ struct SettingsView: View {
             "backgroundUploadMultipartCompleteIdempotent=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
+            "backgroundUploadCompletionProof=\(proofTextValue(backgroundUploadCompletionProof))",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(pendingBackgroundUploadManifest)",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
@@ -972,6 +974,7 @@ struct SettingsView: View {
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
+        let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
         let backgroundUploadWakeReceived = backgroundUploadWakeReceivedFlag(
@@ -996,6 +999,7 @@ struct SettingsView: View {
             "backgroundUploadMultipartCompleteIdempotent=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
+            "backgroundUploadCompletionProof=\(proofTextValue(backgroundUploadCompletionProof))",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
             "latestUploadProgress=\(proofTextValue(latestProgress))",

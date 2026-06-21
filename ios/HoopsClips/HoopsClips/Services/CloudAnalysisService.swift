@@ -177,6 +177,24 @@ struct CloudAnalysisService {
         ].joined(separator: " ")
     }
 
+    static func backgroundUploadCompletionProofSummary() -> String {
+        let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? ""
+        let recentTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? ""
+        let combinedProof = "\(latestProof) \(recentTrail)".lowercased()
+        let wakeReceived = combinedProof.contains("background_urlsession_events_received")
+        let relaunchCompletion = combinedProof.contains("resume_manifest_relaunch_upload_completed")
+        let inferredSourceCompletion = combinedProof.contains("resume_manifest_source_completion_inferred")
+        let completedWhileAway = wakeReceived && (relaunchCompletion || inferredSourceCompletion)
+
+        return [
+            "completedWhileAway=\(completedWhileAway)",
+            "wakeReceived=\(wakeReceived)",
+            "relaunchCompletion=\(relaunchCompletion)",
+            "inferredSourceCompletion=\(inferredSourceCompletion)",
+            "privacy=no_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: " ")
+    }
+
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
         safeVisibleMessage(stage, fallback: fallback, maxCharacters: maxVisibleProgressStageCharacters)
     }

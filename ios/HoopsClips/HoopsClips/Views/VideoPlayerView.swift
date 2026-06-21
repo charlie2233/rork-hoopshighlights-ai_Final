@@ -2415,6 +2415,7 @@ struct VideoPlayerView: View {
             "clientChunkedUploadCompatible=true",
             "serverMultipartCompleteIdempotent=true",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
+            "backgroundUploadCompletionProof=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
