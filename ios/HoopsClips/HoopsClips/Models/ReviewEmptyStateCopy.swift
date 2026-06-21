@@ -17,27 +17,26 @@ nonisolated enum ReviewEmptyStateCopy {
         guard isWaitingForReviewClips else {
             return ReviewEmptyStateContent(
                 title: "Review opens after analysis",
-                message: "Go to Player, import a video, then tap AI Analysis. Your best plays will show here ready to keep or skip.",
+                message: "Go to Player, import a video, then tap Get Highlights. Clips will show here ready to keep or skip.",
                 icon: "film.stack.fill"
             )
         }
 
+        let title = isUploading(isVideoImportInProgress: isVideoImportInProgress, statusMessage: statusMessage)
+            ? "Uploading video"
+            : "Finding highlights"
         let progressText = progressLabel(for: progress).map { " \($0) done." } ?? ""
-        let sanitizedStatus = sanitizedStatusMessage(statusMessage)
-        let statusText = sanitizedStatus.map { " \($0)" } ?? ""
+        let statusText = sanitizedStatusMessage(statusMessage).map { " Now: \($0)" } ?? ""
         return ReviewEmptyStateContent(
-            title: "Analyzing, please wait",
-            message: "HoopClips is \(workLabel(isVideoImportInProgress: isVideoImportInProgress, statusMessage: statusMessage)).\(progressText)\(statusText) Review opens automatically when clips are ready.",
+            title: title,
+            message: "Please wait. Review opens automatically when clips are ready.\(progressText)\(statusText)",
             icon: "brain.head.profile.fill"
         )
     }
 
-    private static func workLabel(isVideoImportInProgress: Bool, statusMessage: String) -> String {
+    private static func isUploading(isVideoImportInProgress: Bool, statusMessage: String) -> Bool {
         let status = statusMessage.lowercased()
-        if isVideoImportInProgress || status.contains("upload") {
-            return "uploading your video"
-        }
-        return "scanning your video"
+        return isVideoImportInProgress || status.contains("upload")
     }
 
     private static func progressLabel(for progress: Double) -> String? {
@@ -50,6 +49,12 @@ nonisolated enum ReviewEmptyStateCopy {
     private static func sanitizedStatusMessage(_ statusMessage: String) -> String? {
         let status = statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !status.isEmpty else { return nil }
-        return status.hasSuffix(".") ? status : "\(status)."
+        let firstStatus = status
+            .components(separatedBy: " · ")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? status
+        let compactStatus = String(firstStatus.prefix(72)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compactStatus.isEmpty else { return nil }
+        return compactStatus.hasSuffix(".") ? compactStatus : "\(compactStatus)."
     }
 }
