@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var feedbackBanner: FeedbackBanner?
     @State private var expandedFAQIDs: Set<String> = []
     @State private var smokeProofCopied = false
+    @State private var uploadStateProofCopied = false
     @State private var isSendingSmokeProof = false
     @State private var smokeProofSendSucceeded = false
     @State private var smokeProofSendFailed = false
@@ -489,6 +490,7 @@ struct SettingsView: View {
             }
 
             settingsBackgroundUploadStatusRow
+            copyUploadStateProofButton
 
             Button {
                 copySmokeProof()
@@ -578,6 +580,39 @@ struct SettingsView: View {
                 .stroke(status.tint.opacity(0.20), lineWidth: 1)
         }
         .accessibilityIdentifier("settings.backgroundUpload.status")
+    }
+
+    private var copyUploadStateProofButton: some View {
+        Button {
+            copyUploadStateProof()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: uploadStateProofCopied ? "checkmark.circle.fill" : "arrow.up.doc.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(uploadStateProofCopied ? "Upload state copied" : "Copy upload state")
+                        .font(.caption.weight(.bold))
+                    Text("Small proof for app-switch and background upload debugging.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(uploadStateProofCopied ? .black.opacity(0.72) : AppTheme.subtleText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(uploadStateProofCopied ? .black : .white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                uploadStateProofCopied ? AppTheme.successGreen : Color.cyan.opacity(0.16),
+                in: .rect(cornerRadius: 14)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke((uploadStateProofCopied ? AppTheme.successGreen : Color.cyan).opacity(0.28), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.backgroundUpload.copyStateButton")
     }
 
     private var backgroundUploadStatusPreview: (icon: String, title: String, detail: String, tint: Color) {
@@ -771,6 +806,43 @@ struct SettingsView: View {
         ].joined(separator: "\n")
     }
 
+    private var uploadStateProofText: String {
+        let generatedAt = ISO8601DateFormatter().string(from: Date())
+        let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
+        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
+        let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
+        let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
+        let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
+        let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
+
+        return [
+            "HoopClips Background Upload State",
+            "generatedAt=\(generatedAt)",
+            "appVersion=\(appVersionString)",
+            "build=\(appBuildNumber)",
+            "environment=\(AppConstants.environmentName)",
+            "cloudLaunchMode=\(AppConstants.cloudLaunchMode.rawValue)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "videoDurationSeconds=\(Int(viewModel.videoDuration.rounded()))",
+            "analysisIsAnalyzing=\(viewModel.analysisService.isAnalyzing)",
+            "analysisProgressPercent=\(analysisProgressPercent)",
+            "analysisStatus=\(proofTextValue(viewModel.analysisService.statusMessage))",
+            "backgroundUploadMode=ios_background_urlsession",
+            "backgroundUploadChunkedCompatible=true",
+            "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
+            "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
+            "latestUploadProgress=\(proofTextValue(latestProgress))",
+            "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
+            "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
+            "deployedUploadCapability=\(proofTextValue(latestDeployedUploadCapability))",
+            "latestBackgroundUploadProof=\(proofTextValue(latestBackgroundUploadProof))",
+            "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
+            "privacy=no secrets, presigned URLs, object keys, or local file paths included"
+        ].joined(separator: "\n")
+    }
+
     private func proofValue(_ value: String) -> String {
         value.isEmpty ? "none" : value
     }
@@ -790,6 +862,16 @@ struct SettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             smokeProofCopied = false
+        }
+    }
+
+    private func copyUploadStateProof() {
+        UIPasteboard.general.string = uploadStateProofText
+        uploadStateProofCopied = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("background_upload_state.copied", metadata: "build=\(appBuildNumber)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            uploadStateProofCopied = false
         }
     }
 
