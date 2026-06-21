@@ -450,11 +450,21 @@ async function handleMultipartComplete(
       return jobOrResponse;
     }
 
-    await completeMultipartUpload(env, {
-      objectKey: jobOrResponse.sourceObjectKey,
-      uploadId: body.uploadId,
-      parts
-    });
+    let uploadAlreadyAssembled = (await env.R2_UPLOADS.head(jobOrResponse.sourceObjectKey)) != null;
+    if (!uploadAlreadyAssembled) {
+      try {
+        await completeMultipartUpload(env, {
+          objectKey: jobOrResponse.sourceObjectKey,
+          uploadId: body.uploadId,
+          parts
+        });
+      } catch (error) {
+        uploadAlreadyAssembled = (await env.R2_UPLOADS.head(jobOrResponse.sourceObjectKey)) != null;
+        if (!uploadAlreadyAssembled) {
+          throw error;
+        }
+      }
+    }
 
     const now = new Date().toISOString();
     const patched = await updateJobState(
@@ -469,9 +479,12 @@ async function handleMultipartComplete(
         requestId,
         traceId: jobOrResponse.traceId,
         eventType: "job.multipart_upload.completed",
-        message: "Resumable upload parts assembled.",
+        message: uploadAlreadyAssembled
+          ? "Resumable upload was already assembled."
+          : "Resumable upload parts assembled.",
         payload: {
           partCount: parts.length,
+          alreadyAssembled: uploadAlreadyAssembled,
           uploadTraceId: jobOrResponse.uploadTraceId ?? null
         }
       }
