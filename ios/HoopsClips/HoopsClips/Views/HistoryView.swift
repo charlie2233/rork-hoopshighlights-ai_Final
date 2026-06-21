@@ -179,6 +179,9 @@ struct HistoryView: View {
 
     private var currentWorkSubtitle: String {
         if viewModel.canRetryUploadAfterCancel {
+            if let savedUploadProgressText = currentWorkSavedUploadProgressText {
+                return "Your video is still here. \(savedUploadProgressText). Tap Retry when ready."
+            }
             return "Your video is still here. Go back to Player and tap Retry upload when ready."
         }
         if let importStatus = viewModel.videoImportStatusMessage, !importStatus.isEmpty {
@@ -191,6 +194,35 @@ struct HistoryView: View {
             return viewModel.analysisService.statusMessage
         }
         return "HoopClips is keeping this project alive while work continues."
+    }
+
+    private var currentWorkSavedUploadProgressText: String? {
+        uploadResumeProgressSummary(from: CloudAnalysisService.pendingBackgroundUploadManifestSummary())
+    }
+
+    private func uploadResumeProgressSummary(from summary: String) -> String? {
+        var values: [String: String] = [:]
+        for token in summary.split(separator: " ") {
+            let parts = token.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            values[String(parts[0])] = String(parts[1])
+        }
+
+        if let progress = Int(values["progressPercent"] ?? "") {
+            let boundedProgress = min(max(progress, 0), 100)
+            guard boundedProgress > 0 else { return nil }
+            return "\(boundedProgress)% saved"
+        }
+
+        guard let completedBytes = Int64(values["completedBytes"] ?? ""),
+              let totalBytes = Int64(values["totalBytes"] ?? ""),
+              totalBytes > 0 else {
+            return nil
+        }
+
+        let percent = min(100, max(0, Int((Double(completedBytes) / Double(totalBytes) * 100).rounded())))
+        guard percent > 0 else { return nil }
+        return "\(percent)% saved"
     }
 
     private var currentWorkTint: Color {
@@ -256,7 +288,7 @@ struct HistoryView: View {
                 .accessibilityLabel(currentWorkTitle)
                 .accessibilityValue("\(Int(currentWorkProgress * 100)) percent")
 
-            Text(viewModel.canRetryUploadAfterCancel ? "Nothing was deleted." : "Active work stays saved.")
+            Text(viewModel.canRetryUploadAfterCancel ? currentWorkRetryNote : "Active work stays saved.")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(currentWorkTint)
                 .fixedSize(horizontal: false, vertical: true)
@@ -298,6 +330,13 @@ struct HistoryView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("history.currentWorkStatusCard")
+    }
+
+    private var currentWorkRetryNote: String {
+        if let currentWorkSavedUploadProgressText {
+            return "\(currentWorkSavedUploadProgressText). Nothing was deleted."
+        }
+        return "Nothing was deleted."
     }
 
     private func projectSection(
