@@ -425,16 +425,10 @@ struct SettingsView: View {
             accent: AppTheme.rimOrange,
             stats: [
                 SettingsPreviewStat(
-                    icon: feedbackType.icon,
-                    value: languageStore.text(feedbackType.textKey),
-                    label: languageStore.text(.settingsDraftType),
+                    icon: "envelope.fill",
+                    value: languageStore.text(.email),
+                    label: languageStore.text(.settingsContactSubtitle),
                     tint: AppTheme.rimOrange
-                ),
-                SettingsPreviewStat(
-                    icon: "text.alignleft",
-                    value: "\(feedbackCharacterCount)",
-                    label: languageStore.text(.settingsDraftChars),
-                    tint: feedbackCharacterCount >= 8 ? AppTheme.successGreen : AppTheme.subtleText
                 )
             ]
         ) {
