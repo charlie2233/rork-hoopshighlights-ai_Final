@@ -2413,6 +2413,7 @@ struct VideoPlayerView: View {
             "cloudAnalysisEndpoint=\(cloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "clientChunkedUploadCompatible=true",
+            "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
             "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
@@ -2965,6 +2966,8 @@ enum VideoImportPolicy {
 }
 
 struct VideoImportPreflightSummary: Equatable, Sendable {
+    private static let defaultResumableUploadThresholdBytes: Int64 = 256 * 1024 * 1024
+
     let fileSizeBytes: Int64
     let durationSeconds: Double?
     let dimensions: CGSize?
@@ -2985,7 +2988,7 @@ struct VideoImportPreflightSummary: Equatable, Sendable {
     }
 
     func shouldExpectResumableBackgroundUpload(capabilities: CloudAnalysisCapabilitiesResponse?) -> Bool {
-        let thresholdBytes = max(capabilities?.resumableUploadThresholdBytes ?? 256 * 1024 * 1024, 1)
+        let thresholdBytes = resumableUploadThresholdBytes(capabilities: capabilities)
         return fileSizeBytes >= thresholdBytes
     }
 
@@ -2999,7 +3002,7 @@ struct VideoImportPreflightSummary: Equatable, Sendable {
         source: String,
         capabilities: CloudAnalysisCapabilitiesResponse?
     ) -> String {
-        let thresholdBytes = max(capabilities?.resumableUploadThresholdBytes ?? 256 * 1024 * 1024, 1)
+        let thresholdBytes = resumableUploadThresholdBytes(capabilities: capabilities)
         let durationText = durationSeconds.map { String(Int($0.rounded())) } ?? "unknown"
         return [
             "source=\(source)",
@@ -3011,6 +3014,10 @@ struct VideoImportPreflightSummary: Equatable, Sendable {
             "next=ios_background_urlsession",
             "privacy=no_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: " ")
+    }
+
+    private func resumableUploadThresholdBytes(capabilities: CloudAnalysisCapabilitiesResponse?) -> Int64 {
+        max(capabilities?.resumableUploadThresholdBytes ?? Self.defaultResumableUploadThresholdBytes, Int64(1))
     }
 }
 
