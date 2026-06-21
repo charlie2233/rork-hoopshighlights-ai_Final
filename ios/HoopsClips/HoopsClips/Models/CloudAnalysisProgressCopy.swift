@@ -69,6 +69,13 @@ nonisolated enum CloudAnalysisProgressCopy {
             return "Reconnecting to saved upload. Finished chunks stay saved."
         }
 
+        if status.contains("upload") && status.contains("retry") {
+            if let retryProgress = uploadRetryProgressSummary(from: statusMessage) {
+                return "Retrying upload: \(retryProgress). Finished chunks stay saved."
+            }
+            return "Retrying upload. Finished chunks stay saved; HoopClips will keep trying before you restart."
+        }
+
         if status.contains("upload") && isSlowUploadStatus(status) {
             if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
                 return "Slow connection, still uploading \(chunkProgress). Switch apps if needed; reopen for fresh progress."
@@ -137,6 +144,13 @@ nonisolated enum CloudAnalysisProgressCopy {
             return "Resuming saved upload. Completed chunks are preserved."
         }
 
+        if status.contains("upload") && status.contains("retry") {
+            if let retryProgress = uploadRetryProgressSummary(from: statusMessage) {
+                return "Retrying upload: \(retryProgress). Completed chunks are preserved."
+            }
+            return "Retrying saved upload. Completed chunks are preserved."
+        }
+
         if status.contains("upload") && isSlowUploadStatus(status) {
             if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
                 return "Slow upload, still on \(chunkProgress). Wi-Fi helps most; switching apps is OK."
@@ -190,8 +204,12 @@ nonisolated enum CloudAnalysisProgressCopy {
             return lowercasedSegment.hasPrefix("about ") && lowercasedSegment.contains(" left")
         }
         let chunkProgress = uploadChunkProgressSummary(from: statusMessage)
+        let retryProgress = uploadRetryProgressSummary(from: statusMessage)
 
         var parts: [String] = []
+        if let retryProgress {
+            parts.append(retryProgress)
+        }
         if let chunkProgress {
             parts.append(chunkProgress)
         }
@@ -215,6 +233,29 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
+    }
+
+    private static func uploadRetryProgressSummary(from statusMessage: String) -> String? {
+        let lowercasedStatus = statusMessage.lowercased()
+        guard lowercasedStatus.contains("retry") else { return nil }
+
+        let segments = statusMessage
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let retrySegment = segments.first { $0.lowercased().contains("retry") } ?? statusMessage
+        var compact = retrySegment
+            .replacingOccurrences(of: " after try ", with: ", try ", options: [.caseInsensitive])
+            .replacingOccurrences(of: "retrying in ", with: "Retry in ", options: [.caseInsensitive])
+            .replacingOccurrences(of: "retrying after ", with: "Retrying after ", options: [.caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !compact.localizedCaseInsensitiveContains("retry") {
+            compact = "Retrying saved chunk"
+        }
+
+        return String(compact.prefix(72))
     }
 
     static func slowUploadHelp(
