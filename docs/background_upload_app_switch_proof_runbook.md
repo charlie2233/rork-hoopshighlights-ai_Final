@@ -116,7 +116,19 @@ Fail examples:
 
 ## Gate 4: backend interrupted-upload smoke
 
-Use a safe test video or generated test file large enough to produce at least two multipart parts.
+Use either a safe test video or the script's synthetic payload generator. The synthetic payload proves upload transport/resume behavior only; it does not prove basketball analysis quality.
+
+Synthetic payload option:
+
+```bash
+python3 scripts/resumable_upload_interrupt_smoke.py \
+  --worker-url "$WORKER_BASE_URL" \
+  --state-path artifacts/resumable_upload_interrupt_state.json \
+  --mode interrupt-after-first \
+  --generate-test-file-mb 160
+```
+
+This creates a local sparse `.mp4` payload under `artifacts/` if no `--file` is supplied. Increase the size if the Worker's current multipart threshold/chunk sizing requires a larger file to produce at least two parts.
 
 First interruption:
 
@@ -150,6 +162,7 @@ python3 scripts/resumable_upload_interrupt_smoke.py \
 Required evidence:
 
 - Sanitized JSON stdout from all three runs.
+- Whether the run used a real video or `--generate-test-file-mb`.
 - `partCount`.
 - `completedParts` after each run.
 - `stateUpdated=true` during resume.
