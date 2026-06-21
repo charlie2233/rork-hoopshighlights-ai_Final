@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var isRookieGuideVisible = false
     @State private var rookieGuideStepIndex = 0
     @State private var reviewRecoveryNotice: ReviewRecoveryNotice?
+    @State private var uploadResumeNotice: UploadResumeNotice?
     @State private var showingPipelineCancelConfirmation = false
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
@@ -109,6 +110,11 @@ struct ContentView: View {
                 && lhs.clipCount == rhs.clipCount
                 && lhs.reviewableClipCount == rhs.reviewableClipCount
         }
+    }
+
+    private struct UploadResumeNotice: Identifiable, Equatable {
+        let id = UUID()
+        let message: String
     }
 
     private var needsVerification: Bool {
@@ -281,6 +287,17 @@ struct ContentView: View {
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(5)
+            }
+
+            if let uploadResumeNotice, !isRookieGuideVisible {
+                VStack {
+                    UploadResumeNoticeToast(message: uploadResumeNotice.message)
+                        .padding(.horizontal, 16)
+                        .padding(.top, shouldShowGlobalPipelineBanner ? 86 : 12)
+                    Spacer(minLength: 0)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(6)
             }
 
             if selectedTab == AppTab.settings.rawValue, !isRookieGuideVisible {
@@ -1087,9 +1104,31 @@ struct ContentView: View {
             reviewRecoveryNotice = nil
         } else {
             withAnimation(tabSelectionAnimation) {
-                reviewRecoveryNotice = nil
+            reviewRecoveryNotice = nil
+        }
+    }
+
+    private func showUploadResumeNotice(_ message: String) {
+        let notice = UploadResumeNotice(message: message)
+        if reduceMotion {
+            uploadResumeNotice = notice
+        } else {
+            withAnimation(tabSelectionAnimation) {
+                uploadResumeNotice = notice
             }
         }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
+            guard uploadResumeNotice == notice else { return }
+            if reduceMotion {
+                uploadResumeNotice = nil
+            } else {
+                withAnimation(tabSelectionAnimation) {
+                    uploadResumeNotice = nil
+                }
+            }
+        }
+    }
     }
 
     private func openPlayerFromReviewRecovery() {
@@ -1108,6 +1147,7 @@ struct ContentView: View {
         dismissReviewRecoveryNotice()
         if event == "background_upload_completed" || context == AnalysisNotificationService.CompletionContext.backgroundUploadResume.rawValue {
             selectTab(.player)
+            showUploadResumeNotice("Upload finished. Continuing from Player.")
             resumeCloudAnalysisAfterForegroundIfNeeded()
             HoopsAccessibility.announce("Upload finished. Continuing from Player.")
             return
@@ -1124,6 +1164,10 @@ struct ContentView: View {
     }
 
     private func resumeCloudAnalysisAfterForegroundIfNeeded() {
+        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        if pendingManifest.contains("pending=true") {
+            showUploadResumeNotice("Resuming saved upload...")
+        }
         Task { @MainActor in
             await viewModel.resumeInFlightCloudAnalysisIfNeeded()
         }
@@ -1639,6 +1683,37 @@ private struct GlobalImportProgressBanner: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(stage.cancelTitle)
+    }
+}
+
+private struct UploadResumeNoticeToast: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.clockwise.icloud.fill")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.cyan)
+                .accessibilityHidden(true)
+
+            Text(message)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .background(AppTheme.cardBg.opacity(0.96), in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.cyan.opacity(0.30), lineWidth: 1)
+        }
+        .shadow(color: Color.cyan.opacity(0.14), radius: 18, x: 0, y: 9)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("upload.resume.noticeToast")
     }
 }
 
