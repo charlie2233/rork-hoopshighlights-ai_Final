@@ -193,7 +193,12 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
 
     private static func shouldReplaceGeneratedTitle(_ title: String, sourceBasename: String) -> Bool {
         let trimmedSource = sourceBasename.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard title == trimmedSource || title.hasPrefix("YTDown_") || title.hasPrefix("VID_") || title.hasPrefix("IMG_") else {
+        let lowerTitle = title.lowercased()
+        guard title == trimmedSource
+                || lowerTitle.hasPrefix("ytdown_")
+                || lowerTitle.hasPrefix("vid_")
+                || lowerTitle.hasPrefix("img_")
+                || looksLikeGenericSourceTitle(cleanedTitleTokens(title)) else {
             return looksLikeRandomCode(title)
         }
         return true
@@ -221,7 +226,8 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
 
         let tokens = cleanedTitleTokens(value)
         guard !tokens.isEmpty,
-              !looksLikeCameraRollTitle(tokens) else {
+              !looksLikeCameraRollTitle(tokens),
+              !looksLikeGenericSourceTitle(tokens) else {
             return ""
         }
 
@@ -274,6 +280,65 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         guard !rest.isEmpty else { return true }
         let digitCount = rest.filter(\.isNumber).count
         return digitCount >= max(3, rest.count / 2)
+    }
+
+    private static func looksLikeGenericSourceTitle(_ tokens: [String]) -> Bool {
+        let lowerTokens = tokens
+            .map { $0.lowercased() }
+            .filter { !$0.isEmpty }
+        guard !lowerTokens.isEmpty else { return true }
+
+        let joined = lowerTokens.joined(separator: " ")
+        let exactGenericTitles: Set<String> = [
+            "clip",
+            "download",
+            "downloaded video",
+            "file",
+            "import",
+            "imported",
+            "imported video",
+            "movie",
+            "new project",
+            "source",
+            "source video",
+            "temp",
+            "temporary video",
+            "tmp",
+            "video"
+        ]
+        if exactGenericTitles.contains(joined) {
+            return true
+        }
+
+        if lowerTokens.first?.hasPrefix("fullsizeoutput") == true {
+            return true
+        }
+
+        let meaningfulTokens = lowerTokens.filter { token in
+            token.range(of: #"^\d+$"#, options: .regularExpression) == nil
+        }
+        guard !meaningfulTokens.isEmpty else { return true }
+
+        let genericWords: Set<String> = [
+            "clip",
+            "copy",
+            "download",
+            "downloaded",
+            "edited",
+            "file",
+            "import",
+            "imported",
+            "movie",
+            "new",
+            "project",
+            "source",
+            "temp",
+            "temporary",
+            "tmp",
+            "trim",
+            "video"
+        ]
+        return meaningfulTokens.allSatisfy { genericWords.contains($0) }
     }
 
     private static func isLikelyYear(_ value: String) -> Bool {

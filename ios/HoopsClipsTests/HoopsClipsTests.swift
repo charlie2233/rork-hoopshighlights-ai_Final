@@ -1695,6 +1695,48 @@ struct HoopsClipsTests {
         #expect(project.historyExportBadgeText == "Saved reel")
     }
 
+    @Test func testFriendlyProjectTitleFallsBackForGenericImportedNames() {
+        let title = PersistedProjectRecord.friendlyProjectTitle(
+            sourceFilename: "imported_video_1234.mp4",
+            sourceDuration: 210,
+            createdAt: Date(timeIntervalSince1970: 1_777_100_000)
+        )
+
+        #expect(title.hasPrefix("HoopClips "))
+        #expect(title.hasSuffix(" - 4 min"))
+        #expect(!title.localizedCaseInsensitiveContains("imported"))
+        #expect(!title.localizedCaseInsensitiveContains("1234"))
+    }
+
+    @Test func testProjectHistoryDisplayTitleReplacesOldGenericGeneratedTitles() {
+        let now = Date(timeIntervalSince1970: 1_777_100_000)
+        let project = PersistedProjectRecord(
+            title: "Imported Video",
+            sourceFilename: "imported_video_1234.mp4",
+            sourceRelativePath: "projects/source.mp4",
+            sourceDuration: 210,
+            thumbnailRelativePath: "projects/thumb.jpg",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now
+        )
+
+        #expect(project.displayTitle.hasPrefix("HoopClips "))
+        #expect(project.displayTitle.hasSuffix(" - 4 min"))
+        #expect(!project.displayTitle.localizedCaseInsensitiveContains("imported"))
+        #expect(!project.displayTitle.localizedCaseInsensitiveContains("1234"))
+    }
+
+    @Test func testFriendlyProjectTitleKeepsReadableGameNames() {
+        let title = PersistedProjectRecord.friendlyProjectTitle(
+            sourceFilename: "YTDown_YouTube_Troy-vs-El-Dorado-Jan-28-2026_Media_fbLnRi6_0ao_001_1080p.mp4",
+            sourceDuration: 3_420,
+            createdAt: Date(timeIntervalSince1970: 1_777_100_000)
+        )
+
+        #expect(title == "Troy vs El Dorado Jan 28 2026")
+    }
+
     @Test func testHistoryProjectActionsUseShortReadableCopy() {
         let actionCopy = [
             HistoryProjectActionCopy.emptyPreviewHint,
