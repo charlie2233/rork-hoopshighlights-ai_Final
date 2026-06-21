@@ -56,6 +56,33 @@ enum PreviewAudioCopy {
     }
 }
 
+struct PreviewAudioStatusChip: View {
+    let isMuted: Bool
+    let hasAudioTrack: Bool?
+    let accessibilityIdentifier: String
+
+    var body: some View {
+        Label(
+            PreviewAudioCopy.statusText(isMuted: isMuted, hasAudioTrack: hasAudioTrack),
+            systemImage: PreviewAudioCopy.statusIcon(isMuted: isMuted, hasAudioTrack: hasAudioTrack)
+        )
+        .font(.caption2.weight(.bold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            PreviewAudioCopy.statusTint(isMuted: isMuted, hasAudioTrack: hasAudioTrack).opacity(0.82),
+            in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .stroke(.white.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityLabel(PreviewAudioCopy.statusText(isMuted: isMuted, hasAudioTrack: hasAudioTrack))
+    }
+}
+
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
     var onOpenHistory: () -> Void = {}
@@ -1172,9 +1199,10 @@ struct VideoPlayerView: View {
                         .accessibilityHint("Use playback controls to review the imported video.")
 
                     VStack(alignment: .trailing, spacing: 8) {
-                        previewAudioStatusChip(
+                        PreviewAudioStatusChip(
                             isMuted: previewAudioMuted,
-                            hasAudioTrack: sourcePreviewHasAudioTrack
+                            hasAudioTrack: sourcePreviewHasAudioTrack,
+                            accessibilityIdentifier: "source.preview.audioStatus"
                         )
 
                         Button {
@@ -2698,27 +2726,6 @@ struct VideoPlayerView: View {
             return "Upload is still running in the background. Send proof so we can confirm the handoff."
         }
         return "Upload recovered after app switch. Send proof so we can confirm resume worked."
-    }
-
-    private func previewAudioStatusChip(isMuted: Bool, hasAudioTrack: Bool?) -> some View {
-        Label(
-            PreviewAudioCopy.statusText(isMuted: isMuted, hasAudioTrack: hasAudioTrack),
-            systemImage: PreviewAudioCopy.statusIcon(isMuted: isMuted, hasAudioTrack: hasAudioTrack)
-        )
-        .font(.caption2.weight(.bold))
-        .foregroundStyle(.white)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(
-            PreviewAudioCopy.statusTint(isMuted: isMuted, hasAudioTrack: hasAudioTrack).opacity(0.82),
-            in: Capsule()
-        )
-        .overlay(
-            Capsule()
-                .stroke(.white.opacity(0.16), lineWidth: 1)
-        )
-        .accessibilityIdentifier("source.preview.audioStatus")
-        .accessibilityLabel(PreviewAudioCopy.statusText(isMuted: isMuted, hasAudioTrack: hasAudioTrack))
     }
 
     private var analysisSlowUploadHelp: CloudAnalysisSlowUploadHelp? {

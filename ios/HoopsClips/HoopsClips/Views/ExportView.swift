@@ -1257,6 +1257,12 @@ struct ExportView: View {
 
     private func exportPreviewMuteButton(accessibilityIdentifier: String) -> some View {
         VStack(alignment: .trailing, spacing: 8) {
+            PreviewAudioStatusChip(
+                isMuted: previewAudioMuted,
+                hasAudioTrack: exportPreviewHasAudioTrack,
+                accessibilityIdentifier: accessibilityIdentifier.replacingOccurrences(of: "muteToggle", with: "audioStatus")
+            )
+
             Button {
                 previewAudioMuted.toggle()
                 applyExportPreviewAudioMute()
@@ -1270,16 +1276,6 @@ struct ExportView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier(accessibilityIdentifier)
             .accessibilityLabel(previewAudioMuted ? "Unmute export preview" : "Mute export preview")
-
-            if exportPreviewHasAudioTrack == false && !previewAudioMuted {
-                Text(PreviewAudioCopy.noReelAudio)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.62), in: Capsule())
-                    .accessibilityIdentifier("\(accessibilityIdentifier).noAudio")
-            }
         }
         .padding(10)
     }

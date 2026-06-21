@@ -51,6 +51,8 @@ struct AIEditView: View {
     @State private var renderHistory: [CloudEditRenderStatusResponse] = []
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var previewPlayer: AVPlayer?
+    @State private var previewHasAudioTrack: Bool?
+    @State private var previewAudioCheckTask: Task<Void, Never>?
     @State private var localShareURL: URL?
     @State private var errorMessage: String?
     @State private var lockerErrorMessage: String?
@@ -1683,6 +1685,12 @@ struct AIEditView: View {
 
                 Spacer()
 
+                PreviewAudioStatusChip(
+                    isMuted: previewAudioMuted,
+                    hasAudioTrack: previewHasAudioTrack,
+                    accessibilityIdentifier: "export.aiEdit.preview.audioStatus"
+                )
+
                 Button {
                     previewAudioMuted.toggle()
                     applyPreviewAudioMute()
@@ -1716,6 +1724,20 @@ struct AIEditView: View {
 
     private func applyPreviewAudioMute() {
         PreviewAudioCopy.applyMuted(previewAudioMuted, to: previewPlayer)
+    }
+
+    private func inspectPreviewAudioTrack(for url: URL) {
+        previewAudioCheckTask?.cancel()
+        previewHasAudioTrack = nil
+        let expectedURL = url.standardizedFileURL
+        previewAudioCheckTask = Task { @MainActor in
+            let asset = AVURLAsset(url: expectedURL)
+            let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty == false
+            let previewURL = (previewPlayer?.currentItem?.asset as? AVURLAsset)?.url.standardizedFileURL
+            guard !Task.isCancelled,
+                  previewURL == expectedURL else { return }
+            previewHasAudioTrack = hasAudio
+        }
     }
 
     private var proBenefitsSheet: some View {
@@ -3634,7 +3656,9 @@ struct AIEditView: View {
         }
         viewModel.attachCloudRenderedExport(from: temporaryURL)
         localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
-        previewPlayer = AVPlayer(url: localShareURL ?? temporaryURL)
+        let previewURL = localShareURL ?? temporaryURL
+        previewPlayer = AVPlayer(url: previewURL)
+        inspectPreviewAudioTrack(for: previewURL)
         applyPreviewAudioMute()
         previewPlayer?.play()
     }

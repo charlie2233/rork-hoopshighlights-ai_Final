@@ -890,6 +890,12 @@ private struct HistoryProjectDetailView: View {
                         .accessibilityIdentifier("history.detail.videoPreview")
 
                     VStack(alignment: .trailing, spacing: 8) {
+                        PreviewAudioStatusChip(
+                            isMuted: previewAudioMuted,
+                            hasAudioTrack: previewHasAudioTrack,
+                            accessibilityIdentifier: "history.preview.audioStatus"
+                        )
+
                         Button {
                             previewAudioMuted.toggle()
                             applyHistoryPreviewAudioMute()
@@ -903,16 +909,6 @@ private struct HistoryProjectDetailView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("history.preview.muteToggle")
                         .accessibilityLabel(previewAudioMuted ? "Unmute history preview" : "Mute history preview")
-
-                        if previewHasAudioTrack == false && !previewAudioMuted {
-                            Text(PreviewAudioCopy.noHistoryPreviewAudio)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 6)
-                                .background(.black.opacity(0.62), in: Capsule())
-                                .accessibilityIdentifier("history.preview.noAudio")
-                        }
                     }
                     .padding(10)
                 }
