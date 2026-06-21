@@ -29,7 +29,8 @@ struct HistoryView: View {
                                 currentWorkStatusCard
                             }
 
-                            if let currentProject = viewModel.currentProjectRecord {
+                            if let currentProject = viewModel.currentProjectRecord,
+                               !shouldShowCurrentWorkCard {
                                 projectSection(
                                     title: "Current Project",
                                     icon: "bolt.circle.fill",
@@ -247,23 +248,7 @@ struct HistoryView: View {
 
                 Spacer(minLength: 0)
 
-                if onReturnToPlayer != nil {
-                    Button {
-                        onReturnToPlayer?()
-                    } label: {
-                        Text(viewModel.canRetryUploadAfterCancel ? "Retry" : "Player")
-                            .font(.caption.weight(.heavy))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(currentWorkTint.opacity(0.24), in: .capsule)
-                            .overlay {
-                                Capsule().stroke(currentWorkTint.opacity(0.34), lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(viewModel.canRetryUploadAfterCancel ? "Return to Player to retry upload" : "Return to Player")
-                }
+                Spacer(minLength: 0)
             }
 
             ProgressView(value: currentWorkProgress)
@@ -271,7 +256,7 @@ struct HistoryView: View {
                 .accessibilityLabel(currentWorkTitle)
                 .accessibilityValue("\(Int(currentWorkProgress * 100)) percent")
 
-            Text(viewModel.canRetryUploadAfterCancel ? "Nothing was deleted." : "Safe to check History. Return to Player anytime; your active work stays saved.")
+            Text(viewModel.canRetryUploadAfterCancel ? "Nothing was deleted." : "Active work stays saved.")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(currentWorkTint)
                 .fixedSize(horizontal: false, vertical: true)
