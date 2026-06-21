@@ -963,7 +963,7 @@ struct ReviewView: View {
                 if expandedClipID == clip.id {
                     VStack(alignment: .leading, spacing: 12) {
                         clipScoreBreakdown(clip: clip, includeDivider: false)
-                        clipEvidenceRows(clip: clip, maxRows: 3)
+                        clipEvidenceRows(clip: clip, maxRows: 1)
                     }
                     .padding(12)
                     .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 14))
@@ -1751,39 +1751,42 @@ struct ReviewView: View {
         ]
     }
 
+    @ViewBuilder
     private var quickActionsBar: some View {
-        LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
-            reviewQuickActionButton(
-                title: "Keep Strong",
-                subtitle: highConfidencePendingSubtitle,
-                icon: "checkmark.seal.fill",
-                tint: AppTheme.successGreen,
-                isDisabled: highConfidencePendingCount == 0
-            ) {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                    viewModel.keepHighConfidenceClips()
+        if highConfidencePendingCount > 0 || lowConfidenceKeptCount > 0 {
+            LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
+                reviewQuickActionButton(
+                    title: "Keep Strong",
+                    subtitle: highConfidencePendingSubtitle,
+                    icon: "checkmark.seal.fill",
+                    tint: AppTheme.successGreen,
+                    isDisabled: highConfidencePendingCount == 0
+                ) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        viewModel.keepHighConfidenceClips()
+                    }
                 }
-            }
 
-            reviewQuickActionButton(
-                title: "Skip Weak",
-                subtitle: lowConfidenceKeptSubtitle,
-                icon: "xmark.seal.fill",
-                tint: AppTheme.dangerRed,
-                isDisabled: lowConfidenceKeptCount == 0
-            ) {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                    viewModel.discardLowConfidenceClips()
+                reviewQuickActionButton(
+                    title: "Skip Weak",
+                    subtitle: lowConfidenceKeptSubtitle,
+                    icon: "xmark.seal.fill",
+                    tint: AppTheme.dangerRed,
+                    isDisabled: lowConfidenceKeptCount == 0
+                ) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        viewModel.discardLowConfidenceClips()
+                    }
                 }
             }
+            .padding(10)
+            .rorkCard(
+                cornerRadius: 14,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+                stroke: AppTheme.softBorder,
+                glowOpacity: 0.04
+            )
         }
-        .padding(10)
-        .rorkCard(
-            cornerRadius: 14,
-            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
-            stroke: AppTheme.softBorder,
-            glowOpacity: 0.04
-        )
     }
 
     private var reviewActionGridColumns: [GridItem] {
@@ -2136,7 +2139,7 @@ struct ReviewView: View {
             if expandedClipID == clip.id {
                 VStack(spacing: 12) {
                     Divider().overlay(AppTheme.accentPurple.opacity(0.2))
-                    clipEvidenceRows(clip: clip, maxRows: 4)
+                    clipEvidenceRows(clip: clip, maxRows: 1)
                     clipScoreBreakdown(clip: clip, includeDivider: false)
                 }
                     .padding(.horizontal, 12)
