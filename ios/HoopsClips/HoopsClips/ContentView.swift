@@ -588,6 +588,10 @@ struct ContentView: View {
             return videoImportStatusMessage
         }
 
+        if isBackgroundUploadStillRunning {
+            return "Still uploading in background. Safe to switch apps."
+        }
+
         let status = viewModel.analysisService.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         return status.isEmpty ? "Preparing upload..." : status
     }
@@ -601,6 +605,17 @@ struct ContentView: View {
             return .uploading
         }
         return .analyzing
+    }
+
+    private var isBackgroundUploadStillRunning: Bool {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [status, latestProof, recentProof].joined(separator: " ")
+
+        return combined.contains("background upload still running")
+            || combined.contains("source_still_uploading")
+            || combined.contains("active_sessions_pending")
     }
 
     private var activeTab: AppTab {
@@ -693,7 +708,7 @@ struct ContentView: View {
                 ReviewAnalysisWaitingView(
                     title: languageStore.text(.tabReview),
                     progress: viewModel.analysisService.progress,
-                    statusMessage: viewModel.analysisService.statusMessage,
+                    statusMessage: pipelineStatusMessage,
                     detailText: reviewAnalysisDetailText,
                     approximateRemainingText: reviewAnalysisApproximateRemainingText,
                     pipelineStage: pipelineStage,
