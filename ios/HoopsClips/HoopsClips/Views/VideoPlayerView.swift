@@ -39,6 +39,8 @@ struct VideoPlayerView: View {
     @State private var isSendingUploadProof = false
     @State private var didSendUploadProof = false
     @State private var uploadProofSendFailed = false
+    @State private var sourcePreviewHasAudioTrack: Bool?
+    @State private var sourcePreviewAudioCheckTask: Task<Void, Never>?
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
@@ -818,6 +820,9 @@ struct VideoPlayerView: View {
         guard let url else {
             player?.pause()
             player = nil
+            sourcePreviewAudioCheckTask?.cancel()
+            sourcePreviewAudioCheckTask = nil
+            sourcePreviewHasAudioTrack = nil
             return
         }
 
@@ -828,7 +833,21 @@ struct VideoPlayerView: View {
 
         player?.pause()
         player = AVPlayer(url: url)
+        inspectSourcePreviewAudioTrack(for: url)
         applySourcePreviewAudioMute()
+    }
+
+    private func inspectSourcePreviewAudioTrack(for url: URL) {
+        sourcePreviewAudioCheckTask?.cancel()
+        sourcePreviewHasAudioTrack = nil
+        let expectedURL = url.standardizedFileURL
+        sourcePreviewAudioCheckTask = Task { @MainActor in
+            let asset = AVURLAsset(url: expectedURL)
+            let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty == false
+            guard !Task.isCancelled,
+                  viewModel.videoURL?.standardizedFileURL == expectedURL else { return }
+            sourcePreviewHasAudioTrack = hasAudio
+        }
     }
 
     private func applySourcePreviewAudioMute() {
@@ -1100,20 +1119,32 @@ struct VideoPlayerView: View {
                         .accessibilityLabel("Source video preview")
                         .accessibilityHint("Use playback controls to review the imported video.")
 
-                    Button {
-                        previewAudioMuted.toggle()
-                        applySourcePreviewAudioMute()
-                    } label: {
-                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(9)
-                            .background(.black.opacity(0.58), in: Circle())
+                    VStack(alignment: .trailing, spacing: 8) {
+                        Button {
+                            previewAudioMuted.toggle()
+                            applySourcePreviewAudioMute()
+                        } label: {
+                            Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(9)
+                                .background(.black.opacity(0.58), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("source.preview.muteToggle")
+                        .accessibilityLabel(previewAudioMuted ? "Unmute source preview" : "Mute source preview")
+
+                        if sourcePreviewHasAudioTrack == false && !previewAudioMuted {
+                            Text("No source audio")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.62), in: Capsule())
+                                .accessibilityIdentifier("source.preview.noAudio")
+                        }
                     }
-                    .buttonStyle(.plain)
                     .padding(10)
-                    .accessibilityIdentifier("source.preview.muteToggle")
-                    .accessibilityLabel(previewAudioMuted ? "Unmute source preview" : "Mute source preview")
                 }
             } else if let thumbnail = viewModel.videoThumbnail {
                 Image(decorative: thumbnail, scale: 1.0)
