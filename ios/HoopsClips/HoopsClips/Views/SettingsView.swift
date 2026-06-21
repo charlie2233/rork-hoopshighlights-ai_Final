@@ -25,7 +25,9 @@ struct SettingsView: View {
     @State private var phoneSmokeIssueNote = ""
     @State private var smokeProofCopied = false
     @State private var uploadStateProofCopied = false
-    @State private var issueBundleCopied = false
+    @State private var isSendingIssueBundle = false
+    @State private var issueBundleSent = false
+    @State private var issueBundleSendFailed = false
     @State private var isSendingSmokeProof = false
     @State private var smokeProofSendSucceeded = false
     @State private var smokeProofSendFailed = false
@@ -515,7 +517,7 @@ struct SettingsView: View {
                 settingsBackgroundUploadStatusRow
                 phoneSmokeResultPicker
                 copyUploadStateProofButton
-                copyIssueBundleButton
+                sendIssueBundleButton
                 copyBuildSummaryButton
                 copyTestFlightSmokeChecklistButton
 
@@ -928,38 +930,89 @@ struct SettingsView: View {
         .accessibilityIdentifier("settings.backgroundUpload.copyStateButton")
     }
 
-    private var copyIssueBundleButton: some View {
+    private var sendIssueBundleButton: some View {
         Button {
-            copyIssueBundleProof()
+            sendIssueBundleProof()
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: issueBundleCopied ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill")
+                Image(systemName: issueBundleSendIcon)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(issueBundleCopied ? "Issue bundle copied" : "Copy issue bundle")
+                    Text(issueBundleSendTitle)
                         .font(.caption.weight(.bold))
-                    Text("Build + upload + crash state.")
+                    Text(issueBundleSendDetail)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(issueBundleCopied ? .black.opacity(0.72) : AppTheme.subtleText)
+                        .foregroundStyle(issueBundleSent ? .black.opacity(0.72) : AppTheme.subtleText)
                         .lineLimit(2)
                         .minimumScaleFactor(0.84)
                 }
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(issueBundleCopied ? .black : .white)
+            .foregroundStyle(issueBundleSent ? .black : .white)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
-                issueBundleCopied ? AppTheme.successGreen : AppTheme.warningYellow.opacity(0.18),
+                issueBundleSendBackground,
                 in: .rect(cornerRadius: 14)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke((issueBundleCopied ? AppTheme.successGreen : AppTheme.warningYellow).opacity(0.30), lineWidth: 1)
+                    .stroke(issueBundleSendStroke.opacity(0.30), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("settings.smokeProof.copyIssueBundleButton")
-        .accessibilityHint("Copies one sanitized issue bundle with build, upload, and crash state.")
+        .disabled(isSendingIssueBundle)
+        .accessibilityIdentifier("settings.smokeProof.sendIssueBundleButton")
+        .accessibilityHint("Sends one sanitized issue bundle with build, upload, and crash state. The bundle is also copied for fallback.")
+    }
+
+    private var issueBundleSendTitle: String {
+        if isSendingIssueBundle {
+            return "Sending issue bundle"
+        }
+        if issueBundleSent {
+            return "Issue bundle sent"
+        }
+        if issueBundleSendFailed {
+            return "Queued retry"
+        }
+        return "Send issue bundle"
+    }
+
+    private var issueBundleSendDetail: String {
+        if issueBundleSendFailed {
+            return "Copied too, just in case."
+        }
+        return "Build + upload + crash state."
+    }
+
+    private var issueBundleSendIcon: String {
+        if isSendingIssueBundle {
+            return "paperplane.circle.fill"
+        }
+        if issueBundleSent {
+            return "checkmark.circle.fill"
+        }
+        if issueBundleSendFailed {
+            return "arrow.clockwise.circle.fill"
+        }
+        return "wrench.and.screwdriver.fill"
+    }
+
+    private var issueBundleSendBackground: Color {
+        if issueBundleSent {
+            return AppTheme.successGreen
+        }
+        if issueBundleSendFailed {
+            return AppTheme.warningYellow.opacity(0.24)
+        }
+        return AppTheme.warningYellow.opacity(0.18)
+    }
+
+    private var issueBundleSendStroke: Color {
+        if issueBundleSent {
+            return AppTheme.successGreen
+        }
+        return AppTheme.warningYellow
     }
 
     private var backgroundUploadStatusPreview: (icon: String, title: String, detail: String, tint: Color) {
@@ -1338,13 +1391,25 @@ struct SettingsView: View {
         }
     }
 
-    private func copyIssueBundleProof() {
-        UIPasteboard.general.string = issueBundleProofText
-        issueBundleCopied = true
-        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.issue_bundle_copied", metadata: "build=\(appBuildNumber)")
+    private func sendIssueBundleProof() {
+        guard !isSendingIssueBundle else { return }
+        let proof = issueBundleProofText
+        UIPasteboard.general.string = proof
+        isSendingIssueBundle = true
+        issueBundleSent = false
+        issueBundleSendFailed = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.issue_bundle_send_requested", metadata: "build=\(appBuildNumber)")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            issueBundleCopied = false
+        Task { @MainActor in
+            let sent = await LaunchTelemetry.shared.sendManualCrashProof(proof)
+            isSendingIssueBundle = false
+            issueBundleSent = sent
+            issueBundleSendFailed = !sent
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
+                issueBundleSent = false
+                issueBundleSendFailed = false
+            }
         }
     }
 
