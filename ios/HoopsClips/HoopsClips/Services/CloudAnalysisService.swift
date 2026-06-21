@@ -235,6 +235,7 @@ struct CloudAnalysisService {
             "sessionSendsLaunchEvents=true",
             "multipartCompleteIdempotent=true",
             "cancellationPolicy=background_sessions_finish_after_task_cancel",
+            "chunkFileCleanup=terminal_response_or_manifest_clear",
             "isDiscretionary=false",
             "privacy=no_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: " ")
@@ -1962,9 +1963,6 @@ struct CloudAnalysisService {
                 )
                 let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
                 Self.prepareFileForBackgroundUpload(chunkFileURL, context: "chunk_\(partTarget.partNumber)")
-                defer {
-                    try? FileManager.default.removeItem(at: chunkFileURL)
-                }
 
                 await CloudUploadResumeStore.shared.recordSession(
                     jobID: partTarget.jobId,
@@ -1988,6 +1986,7 @@ struct CloudAnalysisService {
                 }
 
                 let response = try await delegate.upload(request: request, fromFile: chunkFileURL, using: uploadSession)
+                try? FileManager.default.removeItem(at: chunkFileURL)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw CloudAnalysisError.uploadFailed
                 }
