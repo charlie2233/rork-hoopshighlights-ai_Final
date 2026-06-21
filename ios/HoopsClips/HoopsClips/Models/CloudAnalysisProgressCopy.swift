@@ -19,9 +19,9 @@ nonisolated enum CloudAnalysisProgressCopy {
         let totalRange = approximateAnalysisRangeMinutes(for: durationSeconds)
         if status.contains("upload") {
             if let liveEstimateSummary = liveUploadEstimateSummary(from: statusMessage) {
-                return "Upload \(liveEstimateSummary). Safe to switch apps; analysis after upload is about \(formatMinuteRange(totalRange))."
+                return "Upload \(liveEstimateSummary). Safe to switch apps. Wi-Fi is fastest; analysis after upload is about \(formatMinuteRange(totalRange))."
             }
-            return "Upload speed depends on connection. Safe to switch apps; after upload, analysis is about \(formatMinuteRange(totalRange))."
+            return "Upload speed depends on connection; Wi-Fi is fastest. Safe to switch apps; after upload, analysis is about \(formatMinuteRange(totalRange))."
         }
 
         if status.contains("queued") || status.contains("waiting") {
@@ -104,7 +104,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if status.contains("upload") {
-            return "Background upload active. Safe to switch apps; reopen HoopClips to refresh ETA and progress."
+            return "Background upload active. Wi-Fi is fastest for huge videos; safe to switch apps and reopen HoopClips to refresh ETA and progress."
         }
 
         if status.contains("queued")
