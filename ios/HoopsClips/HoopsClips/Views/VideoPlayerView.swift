@@ -1177,7 +1177,7 @@ struct VideoPlayerView: View {
             return "Finding teams. If none are clear, HoopClips uses All teams."
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Pick a team below, or choose All teams."
+            return "Solo? Choose All teams. Otherwise pick a team."
         }
         return nil
     }
@@ -1496,7 +1496,7 @@ struct VideoPlayerView: View {
             return viewModel.cloudTeamScanStatusMessage ?? "Scanning jersey colors before analysis."
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Choose one team or All teams. Rename it if helpful."
+            return "Solo? Use All teams. Team reel? Pick a team."
         }
         if !viewModel.cloudDetectedTeams.isEmpty {
             return "Uncertain team plays stay in Review so you can decide."
@@ -1505,7 +1505,7 @@ struct VideoPlayerView: View {
             return statusMessage
         }
         return cloudVideoConsentAccepted
-            ? "For solo or personal highlights, use All teams. Team scan falls back quickly if no jersey colors are found."
+            ? "Solo highlights? Use All teams. Team scan falls back fast if colors are unclear."
             : "First scan asks before uploading video to the HoopClips cloud."
     }
 
@@ -2813,7 +2813,7 @@ struct VideoPlayerView: View {
             return viewModel.cloudTeamScanStatusMessage ?? "Scanning teams first"
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Choose a team or All teams first"
+            return "Solo? Use All teams first"
         }
         return languageStore.text(.analysisButtonSubtitle)
     }
