@@ -132,16 +132,17 @@ struct ReviewView: View {
             .toolbar {
                 if !viewModel.clips.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button(sortByScore ? "Sort by Time" : "Sort by Score", systemImage: sortByScore ? "clock" : "chart.bar") {
-                                sortByScore.toggle()
-                            }
+                        Button {
+                            sortByScore.toggle()
                         } label: {
-                            Image(systemName: "ellipsis.circle.fill")
+                            Image(systemName: sortByScore ? "clock.fill" : "chart.bar.fill")
                                 .foregroundStyle(AppTheme.neonPurple)
+                                .padding(8)
+                                .background(AppTheme.neonPurple.opacity(0.12), in: Circle())
                         }
-                        .accessibilityLabel("More review actions")
-                        .accessibilityHint("Change clip sorting. Bulk keep and skip actions are in the Review context card.")
+                        .accessibilityLabel(sortByScore ? "Sort by time" : "Sort by score")
+                        .accessibilityValue(sortByScore ? "Currently sorted by score" : "Currently sorted by time")
+                        .accessibilityHint("Changes how review clips are ordered.")
                     }
                 }
             }
