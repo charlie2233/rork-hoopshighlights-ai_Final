@@ -63,6 +63,14 @@ backgroundUploadEvidenceReady: true
 privacyScanPassed: true
 ```
 
+Safe sample fixtures exist only to rehearse the tooling contract:
+
+```bash
+python3 scripts/run_background_upload_evidence_workflow.py --commit sample-commit --build sample-build --out-dir /tmp/hoopclips-bg-upload-sample --phone-proof docs/fixtures/background_upload_phone_proof_pass_sample.txt --backend-evidence docs/fixtures/background_upload_backend_smoke_pass_sample.json
+```
+
+Do not use the sample fixture output as launch proof. Real proof must come from the current staging backend and a current TestFlight build on a real iPhone.
+
 ### 1. Staging backend proof
 
 Capture one fresh current-tip backend proof after deploying the current Worker/control-plane changes:

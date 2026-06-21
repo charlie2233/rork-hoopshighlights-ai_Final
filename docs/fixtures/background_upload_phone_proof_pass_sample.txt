@@ -1,0 +1,35 @@
+# SAMPLE ONLY - not real launch proof.
+# This file is a sanitized contract fixture for the background-upload proof tools.
+# Do not use it as evidence that a real TestFlight upload survived app switching.
+
+label: sample-background-upload-phone-proof
+appVersion: 1.0.0
+buildVersion: sample-build
+gitCommit: sample-commit
+deviceModel: sample-iPhone
+iOSVersion: sample-iOS
+sourceVideoLength: sample-long-video
+sourceVideoApproxSize: sample-large-file
+
+beforeSwitch.pipelineStage: Uploading
+beforeSwitch.uploadProgress: 0.42
+beforeSwitch.nextAction: wait_for_background_session
+beforeSwitch.uploadComplete: false
+beforeSwitch.activeUploadSessions: true
+
+pipelineStage: Analyzing
+uploadProgress: 1.0
+nextAction: start_cloud_analysis
+uploadComplete: true
+activeUploadSessions: false
+staleWithoutActiveSession: false
+
+backgroundedDuringUpload: true
+completedWhileAway: true
+wakeReceived: true
+relaunchCompletion: false
+inferredSourceCompletion: false
+
+analysisStatus: Analyzing
+reviewReady: false
+privacyNote: No secrets, presigned URLs, object keys, upload IDs, job IDs, upload headers, or local file paths are included.
