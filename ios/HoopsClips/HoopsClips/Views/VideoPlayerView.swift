@@ -1680,7 +1680,7 @@ struct VideoPlayerView: View {
                 if let analysisRecoveredUploadProofPromptText {
                     recoveredUploadProofPrompt(analysisRecoveredUploadProofPromptText)
                 } else {
-                    backgroundUploadProofActionButtons
+                    backgroundUploadDiagnosticsTray
                 }
             }
 
@@ -2105,6 +2105,33 @@ struct VideoPlayerView: View {
         return "Cloud keeps working"
     }
 
+    private var backgroundUploadDiagnosticsTray: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Only open this if you are sending upload proof or support asks for it.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                backgroundUploadProofActionButtons
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Upload proof tools", systemImage: "wrench.and.screwdriver.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.cyan)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(Color.cyan.opacity(0.08), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.cyan.opacity(0.20), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.backgroundUploadDiagnosticsTray")
+    }
+
     @ViewBuilder
     private var backgroundUploadProofActionButtons: some View {
         ViewThatFits(in: .horizontal) {
@@ -2164,7 +2191,7 @@ struct VideoPlayerView: View {
                 }
             }
 
-            backgroundUploadProofActionButtons
+            backgroundUploadDiagnosticsTray
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
