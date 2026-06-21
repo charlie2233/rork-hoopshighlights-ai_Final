@@ -628,8 +628,10 @@ struct ContentView: View {
 
     private var pipelineDetailMessage: String? {
         guard pipelineStage == .uploading else { return nil }
-        return uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
-            ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
+        return uploadOptimizationPipelineDetail(
+            uploadDetail: uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
+                ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
+        )
     }
 
     private var canResumePipelineUpload: Bool {
@@ -668,6 +670,23 @@ struct ContentView: View {
 
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " -> ")
+    }
+
+    private func uploadOptimizationPipelineDetail(uploadDetail: String?) -> String? {
+        let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(
+            from: CloudAnalysisService.latestUploadSourceOptimizationSummary()
+        )
+
+        switch (savingsFact, uploadDetail) {
+        case let (savings?, detail?) where !detail.localizedCaseInsensitiveContains("saved "):
+            return "\(savings) -> \(detail)"
+        case let (savings?, _):
+            return savings
+        case (_, let detail?):
+            return detail
+        default:
+            return nil
+        }
     }
 
     private func uploadProgressField(_ field: String, in summary: String) -> String? {
@@ -1117,6 +1136,7 @@ struct ContentView: View {
             "analysisStatus=\(safePipelineProofValue(pipelineStatusMessage))",
             "uploadDetail=\(safePipelineProofValue(pipelineDetailMessage ?? "none"))",
             "latestUploadProgress=\(safePipelineProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
+            "latestUploadSourceOptimization=\(safePipelineProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
             "pendingBackgroundUploadManifest=\(safePipelineProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "backgroundUploadRuntimePolicy=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
             "backgroundUploadCompletionProof=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
