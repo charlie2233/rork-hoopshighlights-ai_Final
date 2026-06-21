@@ -2524,7 +2524,9 @@ struct VideoPlayerView: View {
                     }
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("analysis.copyBackgroundUploadProofButton")
+            $1
+            .accessibilityLabel("Copy background upload proof")
+            .accessibilityHint("Copies timestamped upload proof for the app-switch background upload test.")
 
             if backgroundUploadSurvivalDetected {
                 Label("Upload survived background", systemImage: "checkmark.circle.fill")
