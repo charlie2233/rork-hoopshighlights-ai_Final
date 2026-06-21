@@ -515,6 +515,7 @@ struct SettingsView: View {
         DisclosureGroup(isExpanded: $showingSmokeProofTools) {
             VStack(alignment: .leading, spacing: 12) {
                 settingsBackgroundUploadStatusRow
+                pendingProofRetryStatusRow
                 phoneSmokeResultPicker
                 copyUploadStateProofButton
                 sendIssueBundleButton
@@ -928,6 +929,40 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings.backgroundUpload.copyStateButton")
+    }
+
+    @ViewBuilder
+    private var pendingProofRetryStatusRow: some View {
+        let retrySummary = LaunchTelemetry.shared.pendingCrashReportRetrySummary
+        if retrySummary != "none" {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "arrow.clockwise.icloud.fill")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Proof retry queued")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.white)
+                    Text(compactUploadStatusDetail(retrySummary))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(AppTheme.warningYellow.opacity(0.12), in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+            }
+            .accessibilityIdentifier("settings.smokeProof.pendingRetryStatus")
+        }
     }
 
     private var sendIssueBundleButton: some View {

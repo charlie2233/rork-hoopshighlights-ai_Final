@@ -53,6 +53,16 @@ final class LaunchTelemetry {
         UserDefaults.standard.string(forKey: latestCrashReportDeliveryKey)
     }
 
+    var pendingCrashReportRetryCount: Int {
+        Self.loadPendingCrashReports(from: pendingCrashReportsKey).count
+    }
+
+    var pendingCrashReportRetrySummary: String {
+        let count = pendingCrashReportRetryCount
+        guard count > 0 else { return "none" }
+        return "pending_retry_count=\(count) endpoint=formspree"
+    }
+
     func configure() {
         recordPreviousSessionIfNeeded()
         retryPendingCrashReportsIfNeeded()
