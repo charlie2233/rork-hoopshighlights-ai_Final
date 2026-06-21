@@ -752,6 +752,10 @@ struct SettingsView: View {
         let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
+        let backgroundUploadWakeReceived = backgroundUploadWakeReceivedFlag(
+            latestProof: latestBackgroundUploadProof,
+            proofTrail: recentBackgroundUploadProofTrail
+        )
         let latestUploadProgress = CloudAnalysisService.latestUploadProgressSummary()
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
@@ -784,6 +788,7 @@ struct SettingsView: View {
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
+            "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(pendingBackgroundUploadManifest)",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
@@ -819,6 +824,10 @@ struct SettingsView: View {
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
+        let backgroundUploadWakeReceived = backgroundUploadWakeReceivedFlag(
+            latestProof: latestBackgroundUploadProof,
+            proofTrail: recentBackgroundUploadProofTrail
+        )
 
         return [
             "HoopClips Background Upload State",
@@ -836,6 +845,7 @@ struct SettingsView: View {
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
+            "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
             "latestUploadProgress=\(proofTextValue(latestProgress))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
@@ -845,6 +855,11 @@ struct SettingsView: View {
             "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
             "privacy=no secrets, presigned URLs, object keys, or local file paths included"
         ].joined(separator: "\n")
+    }
+
+    private func backgroundUploadWakeReceivedFlag(latestProof: String, proofTrail: String) -> String {
+        let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
+        return combinedProof.contains("background_urlsession_events_received") ? "true" : "false"
     }
 
     private func proofValue(_ value: String) -> String {
