@@ -771,10 +771,19 @@ struct CloudAnalysisService {
         }
 
         let sourceURL = URL(fileURLWithPath: manifest.sourceFilePath)
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+        let sourceFileExists = FileManager.default.fileExists(atPath: sourceURL.path)
+        let isSingleSourceUpload = manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix)
+        let uploadPartsCompleted = manifest.completedParts.count >= manifest.partCount
+        guard sourceFileExists || uploadPartsCompleted else {
             await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_missing")
             return nil
+        }
+        if !sourceFileExists {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_source_missing_but_upload_complete",
+                metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount) singleSource=\(isSingleSourceUpload)"
+            )
         }
 
         let stage = manifest.purpose == .teamScan ? "Resuming team scan upload" : "Resuming cloud upload"
@@ -864,7 +873,7 @@ struct CloudAnalysisService {
                 )
             }
         }
-        if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
+        if isSingleSourceUpload {
             guard !manifest.completedParts.isEmpty else {
                 LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_still_uploading")
                 return .pendingUpload
@@ -877,6 +886,28 @@ struct CloudAnalysisService {
                 didInferCompletedSingleSourceUpload
                     ? "source upload session finished; checking cloud"
                     : "source upload saved"
+            )
+        } else if !sourceFileExists, uploadPartsCompleted {
+            let uploadedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
+            try await completeMultipartUpload(
+                baseURL: baseURL,
+                jobID: manifest.jobID,
+                installID: manifest.installID,
+                uploadID: manifest.uploadID,
+                parts: uploadedParts
+            )
+            await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
+            let snapshot = await tracker.snapshot()
+            reportUploadProgress(snapshot, false, "saved chunks assembled; checking cloud")
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: snapshot,
+                transferContext: "saved chunks assembled",
+                stalled: false
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_completed_chunks_assembled_without_source",
+                metadata: "partCount=\(manifest.partCount)"
             )
         } else {
             try await resumeUploadManifest(
