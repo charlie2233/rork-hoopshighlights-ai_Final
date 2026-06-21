@@ -216,6 +216,7 @@ struct CloudAnalysisService {
         let recentTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? ""
         let combinedProof = "\(latestProof) \(recentTrail)".lowercased()
         let wakeReceived = combinedProof.contains("background_urlsession_events_received")
+            || combinedProof.contains("events_received")
         let relaunchCompletion = combinedProof.contains("resume_manifest_relaunch_upload_completed")
         let inferredSourceCompletion = combinedProof.contains("resume_manifest_source_completion_inferred")
         let completedWhileAway = wakeReceived && (relaunchCompletion || inferredSourceCompletion)

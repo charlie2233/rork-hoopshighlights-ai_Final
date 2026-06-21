@@ -2617,7 +2617,9 @@ struct VideoPlayerView: View {
         let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let proofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
         let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
-        return combinedProof.contains("background_urlsession_events_received") ? "true" : "false"
+        let didWake = combinedProof.contains("background_urlsession_events_received")
+            || combinedProof.contains("events_received")
+        return didWake ? "true" : "false"
     }
 
     private var uploadProofScenePhase: String {

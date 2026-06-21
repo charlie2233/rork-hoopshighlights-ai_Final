@@ -644,6 +644,7 @@ struct SettingsView: View {
         let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
         let hasProgress = latestProgress.trimmingCharacters(in: .whitespacesAndNewlines) != "none"
         let didWake = combinedProof.contains("background_urlsession_events_received")
+            || combinedProof.contains("events_received")
         let didReattach = combinedProof.contains("reattached_session")
             || combinedProof.contains("events_received")
         let didFinish = combinedProof.contains("events_completed")
@@ -1043,7 +1044,9 @@ struct SettingsView: View {
 
     private func backgroundUploadWakeReceivedFlag(latestProof: String, proofTrail: String) -> String {
         let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
-        return combinedProof.contains("background_urlsession_events_received") ? "true" : "false"
+        let didWake = combinedProof.contains("background_urlsession_events_received")
+            || combinedProof.contains("events_received")
+        return didWake ? "true" : "false"
     }
 
     private func proofValue(_ value: String) -> String {
