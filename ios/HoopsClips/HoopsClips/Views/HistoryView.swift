@@ -18,16 +18,20 @@ struct HistoryView: View {
             ZStack {
                 HoopsMotionBackdrop(glowOpacity: 0.18)
 
-                if viewModel.historyProjects.isEmpty {
+                if viewModel.historyProjects.isEmpty && !shouldShowCurrentWorkCard {
                     emptyState
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
+                            if shouldShowCurrentWorkCard {
+                                currentWorkStatusCard
+                            }
+
                             if let currentProject = viewModel.currentProjectRecord {
                                 projectSection(
                                     title: "Current Project",
                                     icon: "bolt.circle.fill",
-                                    subtitle: "Your active session is saved automatically",
+                                    subtitle: currentProjectSectionSubtitle,
                                     accent: AppTheme.rimOrange,
                                     accessibilityIdentifier: "history.section.currentProject",
                                     projects: [currentProject]
@@ -123,6 +127,153 @@ struct HistoryView: View {
             icon: "clock.arrow.circlepath"
         )
         .accessibilityIdentifier("history.emptyState")
+    }
+
+    private var shouldShowCurrentWorkCard: Bool {
+        viewModel.isVideoImportInProgress
+            || viewModel.analysisService.isAnalyzing
+            || viewModel.isCloudTeamScanInProgress
+            || viewModel.canRetryUploadAfterCancel
+    }
+
+    private var currentProjectSectionSubtitle: String {
+        shouldShowCurrentWorkCard
+            ? "This is still saved while HoopClips works"
+            : "Your active session is saved automatically"
+    }
+
+    private var currentWorkProgress: Double {
+        if viewModel.analysisService.isAnalyzing {
+            return min(max(viewModel.analysisService.progress, 0.03), 0.98)
+        }
+        if viewModel.isVideoImportInProgress {
+            return 0.06
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return 0.18
+        }
+        if viewModel.canRetryUploadAfterCancel {
+            return 0
+        }
+        return 0
+    }
+
+    private var currentWorkTitle: String {
+        if viewModel.canRetryUploadAfterCancel {
+            return "Upload paused"
+        }
+        if viewModel.isVideoImportInProgress {
+            return "Importing video"
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return "Checking teams"
+        }
+        if viewModel.analysisService.statusMessage.lowercased().contains("upload") {
+            return "Uploading to cloud"
+        }
+        return "Analyzing video"
+    }
+
+    private var currentWorkSubtitle: String {
+        if viewModel.canRetryUploadAfterCancel {
+            return "Your video is still here. Go back to Player and tap Retry upload when ready."
+        }
+        if let importStatus = viewModel.videoImportStatusMessage, !importStatus.isEmpty {
+            return importStatus
+        }
+        if viewModel.isCloudTeamScanInProgress, let teamStatus = viewModel.cloudTeamScanStatusMessage, !teamStatus.isEmpty {
+            return teamStatus
+        }
+        if !viewModel.analysisService.statusMessage.isEmpty {
+            return viewModel.analysisService.statusMessage
+        }
+        return "HoopClips is keeping this project alive while work continues."
+    }
+
+    private var currentWorkTint: Color {
+        if viewModel.canRetryUploadAfterCancel {
+            return AppTheme.warningYellow
+        }
+        if viewModel.isVideoImportInProgress || viewModel.analysisService.statusMessage.lowercased().contains("upload") {
+            return Color.cyan
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return AppTheme.rimOrange
+        }
+        return AppTheme.neonPurple
+    }
+
+    private var currentWorkIcon: String {
+        if viewModel.canRetryUploadAfterCancel {
+            return "arrow.clockwise.icloud.fill"
+        }
+        if viewModel.isVideoImportInProgress {
+            return "square.and.arrow.down.fill"
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return "person.3.sequence.fill"
+        }
+        if viewModel.analysisService.statusMessage.lowercased().contains("upload") {
+            return "icloud.and.arrow.up.fill"
+        }
+        return "sparkles.tv.fill"
+    }
+
+    private var currentWorkStatusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: currentWorkIcon)
+                    .font(.title3.weight(.heavy))
+                    .foregroundStyle(currentWorkTint)
+                    .frame(width: 36, height: 36)
+                    .background(currentWorkTint.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(currentWorkTitle)
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(currentWorkSubtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            ProgressView(value: currentWorkProgress)
+                .tint(currentWorkTint)
+                .accessibilityLabel(currentWorkTitle)
+                .accessibilityValue("\(Int(currentWorkProgress * 100)) percent")
+
+            Text(viewModel.canRetryUploadAfterCancel ? "Nothing was deleted." : "Safe to check History. Return to Player anytime; your active work stays saved.")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(currentWorkTint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [
+                    currentWorkTint.opacity(0.18),
+                    AppTheme.surfaceBg.opacity(0.74)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: .rect(cornerRadius: 18)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(currentWorkTint.opacity(0.24), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("history.currentWorkStatusCard")
     }
 
     private func projectSection(
