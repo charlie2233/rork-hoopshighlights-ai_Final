@@ -1218,30 +1218,32 @@ struct VideoPlayerView: View {
                     failedUploadProofPrompt(failedUploadProofPromptText)
                 }
 
-                teamTargetControl
-                targetHighlightLengthControl
+                if viewModel.isVideoLoaded, viewModel.videoURL != nil, !viewModel.isVideoImportInProgress {
+                    teamTargetControl
+                    targetHighlightLengthControl
 
-                if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .foregroundStyle(AppTheme.warningYellow)
-                            .padding(.top, 1)
-                        Text(analysisBannerText)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(AppTheme.warningYellow)
-                            .lineLimit(3)
-                            .minimumScaleFactor(0.84)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .layoutPriority(1)
-                        Spacer()
-                        if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
-                            Button(languageStore.text(.goPro)) { showingPaywall = true }
-                                .font(.caption.bold())
-                                .foregroundStyle(AppTheme.neonPurple)
+                    if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(AppTheme.warningYellow)
+                                .padding(.top, 1)
+                            Text(analysisBannerText)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(AppTheme.warningYellow)
+                                .lineLimit(3)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
+                            Spacer()
+                            if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
+                                Button(languageStore.text(.goPro)) { showingPaywall = true }
+                                    .font(.caption.bold())
+                                    .foregroundStyle(AppTheme.neonPurple)
+                            }
                         }
+                        .padding(12)
+                        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
                     }
-                    .padding(12)
-                    .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
                 }
 
                 Button {
