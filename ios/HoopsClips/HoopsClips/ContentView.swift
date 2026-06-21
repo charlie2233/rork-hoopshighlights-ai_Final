@@ -1138,7 +1138,7 @@ struct ContentView: View {
                 selectedTab = AppTab.player.rawValue
             }
         }
-        HoopsAccessibility.announce("Review unavailable. Re-run analysis from Player.")
+        HoopsAccessibility.announce("Review needs clips first. Back to Player.")
     }
 
     private func showReviewRecoveryNotice() {
@@ -1587,20 +1587,29 @@ private struct ReviewUnavailableRecoveryCard: View {
     }
 
     private var titleCopy: String {
-        notice.reason == "no_clips" ? "Review needs clips first" : "Review unavailable"
+        switch notice.reason {
+        case "video_not_loaded", "missing_source_url":
+            return "Review needs a video"
+        case "no_clips":
+            return "Review needs clips first"
+        default:
+            return "Review needs safe clips"
+        }
     }
 
     private var messageCopy: String {
         switch notice.reason {
+        case "video_not_loaded", "missing_source_url":
+            return "Go back to Player and import a video first."
         case "no_clips":
-            return "Start analysis on Player. Review will open once HoopClips finds safe clips."
+            return "Start AI Analysis on Player. Review opens when clips are ready."
         default:
-            return "Go back to Player and run a fresh analysis pass before reviewing."
+            return "Some clips are not safe to preview yet. Back to Player and run AI Analysis again."
         }
     }
 
     private var actionTitle: String {
-        notice.reason == "no_clips" ? "Back to Player" : "Repair on Player"
+        "Back to Player"
     }
 
     var body: some View {
@@ -1661,7 +1670,7 @@ private struct ReviewUnavailableRecoveryCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("review.unavailable.rerunAnalysis")
-            .accessibilityHint("Opens Player so you can run analysis again.")
+            .accessibilityHint("Opens Player so you can import, wait for, or rerun analysis.")
         }
         .padding(18)
         .background(
