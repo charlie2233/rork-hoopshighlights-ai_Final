@@ -133,13 +133,6 @@ struct ReviewView: View {
                 if !viewModel.clips.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button("Keep All", systemImage: "checkmark.circle") {
-                                viewModel.keepAllClips()
-                            }
-                            Button("Skip All", systemImage: "xmark.circle") {
-                                viewModel.discardAllClips()
-                            }
-                            Divider()
                             Button(sortByScore ? "Sort by Time" : "Sort by Score", systemImage: sortByScore ? "clock" : "chart.bar") {
                                 sortByScore.toggle()
                             }
@@ -148,7 +141,7 @@ struct ReviewView: View {
                                 .foregroundStyle(AppTheme.neonPurple)
                         }
                         .accessibilityLabel("More review actions")
-                        .accessibilityHint("Keep all, skip all, or change sorting.")
+                        .accessibilityHint("Change clip sorting. Bulk keep and skip actions are in the Review context card.")
                     }
                 }
             }
