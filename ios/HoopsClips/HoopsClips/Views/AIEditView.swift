@@ -314,7 +314,7 @@ struct AIEditView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.section")
 
-                    Text("Cloud picks and renders your MP4.")
+                    Text("HoopClips builds the reel for you.")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
@@ -547,7 +547,7 @@ struct AIEditView: View {
     private var exportBottomDock: some View {
         HStack(spacing: 10) {
             exportDockButton(title: "Preview", icon: "play.rectangle.fill", isEnabled: downloadResponse != nil) {
-                HoopsAccessibility.announce(downloadResponse == nil ? "Preview will unlock after render." : "Preview is ready above.")
+                HoopsAccessibility.announce(downloadResponse == nil ? "Preview unlocks when the reel is ready." : "Preview is ready above.")
             }
 
             exportDockButton(title: "Save", icon: "square.and.arrow.down.fill", isEnabled: downloadResponse != nil && !isPreparingShare) {
@@ -639,7 +639,7 @@ struct AIEditView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Label("My AI Edits: rendered videos expire in \(policy.renderRetentionDays) days on \(policy.displayName).", systemImage: "externaldrive.fill")
+                    Label("Saved reels stay in My AI Edits for \(policy.renderRetentionDays) days.", systemImage: "externaldrive.fill")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(3)
