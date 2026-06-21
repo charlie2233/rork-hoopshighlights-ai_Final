@@ -45,10 +45,38 @@ nonisolated enum SmokeProofSummaryCopy {
             "needsReviewClips=\(max(0, needsReviewClips))",
             "lastAnalysisBlockReason=\(safeSummaryValue(lastAnalysisBlockReason))",
             "latestUploadProgress=\(safeSummaryValue(latestUploadProgress))",
+            "longVideoUploadEvidence=\(longVideoUploadEvidence(from: latestUploadProgress, analysisStatus: analysisStatus))",
             "latestUnexpectedExit=\(safeSummaryValue(latestUnexpectedExit))",
             "latestCrashReportDelivery=\(safeSummaryValue(latestCrashReportDelivery))",
             "privacy=no secrets, URLs, object keys, or local file paths"
         ].joined(separator: "\n")
+    }
+
+    private static func longVideoUploadEvidence(from latestUploadProgress: String, analysisStatus: String) -> String {
+        let combined = "\(latestUploadProgress) \(analysisStatus)".lowercased()
+        var evidence: [String] = []
+
+        if combined.contains("chunk") {
+            evidence.append("chunks")
+        }
+        if combined.contains("resume") || combined.contains("resum") {
+            evidence.append("resume")
+        }
+        if combined.contains("fast") || combined.contains("lane") || combined.contains("parallel") {
+            evidence.append("fast_lanes")
+        }
+        if combined.contains("saved") || combined.contains("completed=") || combined.contains("progresspercent=") {
+            evidence.append("saved_progress")
+        }
+        if combined.contains("/s") || combined.contains("mb/s") || combined.contains("kb/s") {
+            evidence.append("speed")
+        }
+        if combined.contains("left") || combined.contains("eta") {
+            evidence.append("eta")
+        }
+
+        guard !evidence.isEmpty else { return "none" }
+        return safeSummaryValue(evidence.joined(separator: "+"))
     }
 
     private static func safeSummaryValue(_ value: String) -> String {
