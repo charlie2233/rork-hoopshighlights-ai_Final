@@ -1186,7 +1186,7 @@ struct ReviewView: View {
     }
 
     private var primaryFilterOptions: Set<FilterOption> {
-        [.all, .priority, .selectedTeam, .teamUncertain, .needsReview]
+        [.all, .priority, .selectedTeam]
     }
 
     private func shouldShowFilter(_ option: FilterOption) -> Bool {
@@ -1479,18 +1479,21 @@ struct ReviewView: View {
         .accessibilityHint(isDisabled ? "No matching clips for this action." : "Applies this action to matching clips.")
     }
 
+    @ViewBuilder
     private var filterBar: some View {
-        LazyVGrid(columns: filterGridColumns, alignment: .leading, spacing: 8) {
-            ForEach(visibleFilterOptions, id: \.self) { option in
-                filterChip(option)
-            }
+        if availableFilterOptions.count > 1 {
+            LazyVGrid(columns: filterGridColumns, alignment: .leading, spacing: 8) {
+                ForEach(visibleFilterOptions, id: \.self) { option in
+                    filterChip(option)
+                }
 
-            if !hiddenFilterOptions.isEmpty || showAllFilterChips {
-                moreFiltersChip
+                if !hiddenFilterOptions.isEmpty || showAllFilterChips {
+                    moreFiltersChip
+                }
             }
+            .padding(10)
+            .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
         }
-        .padding(10)
-        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
     }
 
     private func filterChip(_ option: FilterOption) -> some View {
