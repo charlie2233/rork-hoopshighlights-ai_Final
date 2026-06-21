@@ -1951,7 +1951,7 @@ struct AIEditView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Revise Edit")
+                    Text("Change reel")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .accessibilityIdentifier("export.aiEdit.revision.card")
@@ -1985,7 +1985,7 @@ struct AIEditView: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier(command.accessibilityIdentifier)
                     .accessibilityLabel(command.title)
-                    .accessibilityHint("Asks the cloud AI edit agent to revise the current edit plan.")
+                    .accessibilityHint("Asks HoopClips to adjust the current reel.")
                 }
             }
 
@@ -2741,30 +2741,30 @@ struct AIEditView: View {
 
     private var revisionStatusText: String {
         if let pendingRevisionCommand, revisionResponse != nil, downloadResponse == nil {
-            return "\(pendingRevisionCommand.title) revision is ready. Make the new video when you are ready."
+            return "\(pendingRevisionCommand.title) is ready. Make the revised reel when you are ready."
         }
         if let pendingRevisionCommand {
-            return "Last revision: \(pendingRevisionCommand.title). Pick another change or make it again."
+            return "Last change: \(pendingRevisionCommand.title). Pick another tweak or make it again."
         }
-        return "Ask HoopClips for a cleaner edit, then make the revised video."
+        return "Pick a quick tweak, then make the revised reel."
     }
 
     private func revisionPlannerText(for response: CloudEditRevisionResponse) -> String? {
         if response.gptRevisionPatchApplied == true {
-            return "HoopClips planned this revision and is ready to render it."
+            return "HoopClips planned this tweak and is ready to make it."
         }
         switch response.gptRevisionPatchStatus {
         case "fallback":
             if let reason = response.gptRevisionPatchFallbackReason, !reason.isEmpty {
-                return "HoopClips used the safe revision path: \(reason.replacingOccurrences(of: "_", with: " "))."
+                return "HoopClips used the safe edit path: \(reason.replacingOccurrences(of: "_", with: " "))."
             }
-            return "HoopClips used the safe revision path."
+            return "HoopClips used the safe edit path."
         case "disabled":
-            return "HoopClips used the standard revision path."
+            return "HoopClips used the standard edit path."
         case "rejected":
-            return "HoopClips could not safely apply that revision."
+            return "HoopClips could not safely apply that tweak."
         case "not_requested":
-            return "Deterministic revision patch."
+            return "HoopClips used the safe preset tweak."
         default:
             return nil
         }
