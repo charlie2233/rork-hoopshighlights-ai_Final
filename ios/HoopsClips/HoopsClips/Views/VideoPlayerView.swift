@@ -19,6 +19,9 @@ enum PreviewAudioCopy {
         for player in players {
             player?.isMuted = isMuted
             player?.volume = isMuted ? 0 : 1
+            if !isMuted {
+                player?.currentItem?.audioMix = nil
+            }
         }
     }
 
@@ -859,6 +862,7 @@ struct VideoPlayerView: View {
 
         if let currentURL = (player?.currentItem?.asset as? AVURLAsset)?.url,
            currentURL == url {
+            applySourcePreviewAudioMute()
             return
         }
 
