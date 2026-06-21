@@ -2817,8 +2817,7 @@ struct ReviewView: View {
         playerItem.forwardPlaybackEndTime = clipEnd
 
         let player = AVPlayer(playerItem: playerItem)
-        player.isMuted = previewAudioMuted
-        player.volume = previewAudioMuted ? 0 : 1
+        PreviewAudioCopy.applyMuted(previewAudioMuted, to: player)
         clipLoopObserverToken = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
