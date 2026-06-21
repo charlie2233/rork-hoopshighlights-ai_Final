@@ -1,5 +1,11 @@
 import Foundation
 
+nonisolated struct CloudAnalysisSlowUploadHelp: Equatable, Sendable {
+    let title: String
+    let message: String
+    let icon: String
+}
+
 nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
 
@@ -181,6 +187,68 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
+    }
+
+    static func slowUploadHelp(
+        statusMessage: String,
+        latestUploadProgress: String,
+        latestBackgroundUploadProof: String?,
+        recentBackgroundUploadProofTrail: String?
+    ) -> CloudAnalysisSlowUploadHelp? {
+        let combined = [
+            statusMessage,
+            latestUploadProgress,
+            latestBackgroundUploadProof ?? "",
+            recentBackgroundUploadProofTrail ?? ""
+        ]
+            .joined(separator: " ")
+            .lowercased()
+
+        guard combined.contains("upload") else { return nil }
+        guard isSlowUploadStatus(combined)
+            || combined.contains("stalled=true")
+            || combined.contains("source_still_uploading")
+            || combined.contains("active_sessions_pending")
+            || combined.contains("connectivity")
+            || combined.contains("network") else {
+            return nil
+        }
+
+        if combined.contains("waiting for connection")
+            || combined.contains("waiting for connectivity")
+            || combined.contains("connectivity")
+            || combined.contains("network") {
+            return CloudAnalysisSlowUploadHelp(
+                title: "Waiting for connection",
+                message: "Wi-Fi helps most. HoopClips keeps the saved upload and retries chunks when the connection comes back.",
+                icon: "wifi.exclamationmark"
+            )
+        }
+
+        if combined.contains("retry") || combined.contains("retrying") {
+            return CloudAnalysisSlowUploadHelp(
+                title: "Retrying upload",
+                message: "No need to restart yet. HoopClips is retrying saved chunks; send proof if it stays stuck.",
+                icon: "arrow.clockwise.icloud.fill"
+            )
+        }
+
+        if combined.contains("stalled")
+            || combined.contains("stalled=true")
+            || combined.contains("source_still_uploading")
+            || combined.contains("active_sessions_pending") {
+            return CloudAnalysisSlowUploadHelp(
+                title: "Upload is still moving",
+                message: "Large videos can pause between iOS updates. Keep Wi-Fi on; switch apps if needed and reopen for fresh progress.",
+                icon: "speedometer"
+            )
+        }
+
+        return CloudAnalysisSlowUploadHelp(
+            title: "Slow upload",
+            message: "Wi-Fi + staying near the router helps most. Huge videos use resumable chunks when supported.",
+            icon: "tortoise.fill"
+        )
     }
 
     private static func compactTeamTitle(_ title: String) -> String {

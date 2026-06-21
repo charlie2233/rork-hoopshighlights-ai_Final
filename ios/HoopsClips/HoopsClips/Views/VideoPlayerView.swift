@@ -1810,6 +1810,10 @@ struct VideoPlayerView: View {
 
             analysisProgressQuickFacts
 
+            if let analysisSlowUploadHelp {
+                slowUploadHelpCard(analysisSlowUploadHelp)
+            }
+
             if let analysisBackgroundUploadStillRunningText {
                 backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
             }
@@ -2355,6 +2359,37 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.backgroundUploadStillRunningCard")
     }
 
+    private func slowUploadHelpCard(_ help: CloudAnalysisSlowUploadHelp) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: help.icon)
+                .font(.headline)
+                .foregroundStyle(AppTheme.warningYellow)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(help.title)
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(.white)
+                Text(help.message)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.22), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("analysis.slowUploadHelpCard")
+    }
+
     private func failedUploadProofPrompt(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(text, systemImage: "exclamationmark.triangle.fill")
@@ -2565,6 +2600,15 @@ struct VideoPlayerView: View {
             return "Upload is still running in the background. Send proof so we can confirm the handoff."
         }
         return "Upload recovered after app switch. Send proof so we can confirm resume worked."
+    }
+
+    private var analysisSlowUploadHelp: CloudAnalysisSlowUploadHelp? {
+        CloudAnalysisProgressCopy.slowUploadHelp(
+            statusMessage: viewModel.analysisService.statusMessage,
+            latestUploadProgress: CloudAnalysisService.latestUploadProgressSummary(),
+            latestBackgroundUploadProof: LaunchTelemetry.shared.latestBackgroundUploadProofSummary,
+            recentBackgroundUploadProofTrail: LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary
+        )
     }
 
     private var analysisBackgroundUploadStillRunningText: String? {

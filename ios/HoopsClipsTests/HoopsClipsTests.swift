@@ -793,6 +793,45 @@ struct HoopsClipsTests {
         )
     }
 
+    @Test func testCloudAnalysisSlowUploadHelpOnlyAppearsForBadUploadStates() {
+        #expect(
+            CloudAnalysisProgressCopy.slowUploadHelp(
+                statusMessage: "Finding candidate clips",
+                latestUploadProgress: "none",
+                latestBackgroundUploadProof: nil,
+                recentBackgroundUploadProofTrail: nil
+            ) == nil
+        )
+        #expect(
+            CloudAnalysisProgressCopy.slowUploadHelp(
+                statusMessage: "Uploading large video to cloud 42% · 300/720 MB · 8.0 MB/s",
+                latestUploadProgress: "bytes=300/720_MB speed=8.0_MB/s",
+                latestBackgroundUploadProof: nil,
+                recentBackgroundUploadProofTrail: nil
+            ) == nil
+        )
+
+        let waiting = CloudAnalysisProgressCopy.slowUploadHelp(
+            statusMessage: "Uploading large video · waiting for connectivity",
+            latestUploadProgress: "stalled=true",
+            latestBackgroundUploadProof: "event=background_upload_stalled",
+            recentBackgroundUploadProofTrail: nil
+        )
+        #expect(waiting?.title == "Waiting for connection")
+        #expect(waiting?.message.contains("Wi-Fi") == true)
+        #expect(waiting?.message.localizedCaseInsensitiveContains("thinking") == false)
+        #expect(waiting?.message.localizedCaseInsensitiveContains("ETA") == false)
+
+        let retrying = CloudAnalysisProgressCopy.slowUploadHelp(
+            statusMessage: "Uploading source video",
+            latestUploadProgress: "retrying saved upload chunks",
+            latestBackgroundUploadProof: nil,
+            recentBackgroundUploadProofTrail: nil
+        )
+        #expect(retrying?.title == "Retrying upload")
+        #expect(retrying?.message.contains("No need to restart yet") == true)
+    }
+
     @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {
         let fallback = "Cloud analysis failed. Try again."
 
