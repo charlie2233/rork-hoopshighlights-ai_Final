@@ -3,7 +3,6 @@ import Foundation
 import Network
 import UniformTypeIdentifiers
 
-private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
 private let cloudUploadSingleSourcePrefix = "single-source-"
 private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
 private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
@@ -25,7 +24,7 @@ nonisolated enum CloudUploadResumeOutcome: Sendable {
     case teamScan(PreparedCloudAnalysisJob)
 }
 
-private enum CloudUploadResumePurpose: String, Codable, Sendable {
+nonisolated private enum CloudUploadResumePurpose: String, Codable, Sendable {
     case analysis
     case teamScan
 }
@@ -2318,7 +2317,7 @@ private final class CloudUploadNetworkPolicy: @unchecked Sendable {
     }
 }
 
-private enum CloudUploadChunkFileStore {
+nonisolated private enum CloudUploadChunkFileStore {
     static func writeChunk(_ data: Data, jobID: String, partNumber: Int) throws -> URL {
         let directory = try chunkDirectory()
         let filename = "hoops-upload-\(sanitizedComponent(jobID))-part-\(partNumber)-\(UUID().uuidString).tmp"
@@ -2682,7 +2681,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
     }
 }
 
-private struct CloudUploadResumeManifest: Codable, Sendable {
+nonisolated private struct CloudUploadResumeManifest: Codable, Sendable {
     var jobID: String
     var installID: String
     var sourceFilePath: String
@@ -2703,6 +2702,7 @@ private struct CloudUploadResumeManifest: Codable, Sendable {
 private actor CloudUploadResumeStore {
     static let shared = CloudUploadResumeStore()
 
+    private nonisolated static let manifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
     private let maxStoredSessionIdentifiers = 24
     private let encoder = JSONEncoder()
 
@@ -2746,7 +2746,7 @@ private actor CloudUploadResumeStore {
 
         manifest?.updatedAt = Date()
         saveManifest(manifest)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_started",
             metadata: "partCount=\(partCount) completed=\(manifest?.completedParts.count ?? 0)"
         )
@@ -2764,7 +2764,7 @@ private actor CloudUploadResumeStore {
         manifest.activeSessionIdentifiers = Array(identifiers.suffix(maxStoredSessionIdentifiers))
         manifest.updatedAt = Date()
         saveManifest(manifest)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_session_recorded",
             metadata: "sessionCount=\(manifest.activeSessionIdentifiers.count)"
         )
@@ -2776,7 +2776,7 @@ private actor CloudUploadResumeStore {
         manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
         manifest.updatedAt = Date()
         saveManifest(manifest)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_session_completed",
             metadata: "sessionCount=\(manifest.activeSessionIdentifiers.count)"
         )
@@ -2790,7 +2790,7 @@ private actor CloudUploadResumeStore {
         manifest.activeSessionIdentifiers.removeAll { staleIdentifiers.contains($0) }
         manifest.updatedAt = Date()
         saveManifest(manifest)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_sessions_cleared",
             metadata: "reason=\(reason) before=\(beforeCount) after=\(manifest.activeSessionIdentifiers.count)"
         )
@@ -2806,7 +2806,7 @@ private actor CloudUploadResumeStore {
         manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
         manifest.updatedAt = Date()
         saveManifest(manifest)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_part_completed",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
@@ -2830,7 +2830,7 @@ private actor CloudUploadResumeStore {
         guard let sessionPart = Self.parseMultipartSessionIdentifier(sessionIdentifier),
               var manifest = loadManifest(),
               Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: sessionPart.jobID) else {
-            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_part_ignored")
+            Self.recordBackgroundUploadProof("resume_manifest_relaunch_part_ignored")
             return false
         }
 
@@ -2842,12 +2842,12 @@ private actor CloudUploadResumeStore {
         saveManifest(manifest)
         let uploadCompleted = manifest.completedParts.count == manifest.partCount
             && manifest.activeSessionIdentifiers.isEmpty
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_relaunch_part_completed",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
         )
         if uploadCompleted {
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "resume_manifest_relaunch_upload_completed",
                 metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount)"
             )
@@ -2859,7 +2859,7 @@ private actor CloudUploadResumeStore {
         guard let jobID = Self.parseSourceSessionIdentifier(sessionIdentifier),
               var manifest = loadManifest(),
               Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: jobID) else {
-            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_source_ignored")
+            Self.recordBackgroundUploadProof("resume_manifest_relaunch_source_ignored")
             return false
         }
 
@@ -2871,12 +2871,12 @@ private actor CloudUploadResumeStore {
         saveManifest(manifest)
         let uploadCompleted = manifest.completedParts.count == manifest.partCount
             && manifest.activeSessionIdentifiers.isEmpty
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_relaunch_source_completed",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
         )
         if uploadCompleted {
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
+            Self.recordBackgroundUploadProof(
                 "resume_manifest_relaunch_upload_completed",
                 metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount)"
             )
@@ -2886,9 +2886,9 @@ private actor CloudUploadResumeStore {
 
     func clear(jobID: String, uploadID: String) {
         guard let manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
-        UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: Self.manifestDefaultsKey)
         CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
@@ -2896,9 +2896,9 @@ private actor CloudUploadResumeStore {
 
     func clearAnyManifest(reason: String) {
         guard let manifest = loadManifest() else { return }
-        UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: Self.manifestDefaultsKey)
         CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "reason=\(reason) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
@@ -2909,9 +2909,9 @@ private actor CloudUploadResumeStore {
               manifest.jobID == jobID else {
             return
         }
-        UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: Self.manifestDefaultsKey)
         CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
-        LaunchTelemetry.shared.recordBackgroundUploadProof(
+        Self.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "reason=\(reason) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
@@ -2959,7 +2959,7 @@ private actor CloudUploadResumeStore {
     }
 
     static func loadPersistedManifestSnapshot() -> CloudUploadResumeManifest? {
-        guard let data = UserDefaults.standard.data(forKey: cloudUploadResumeManifestDefaultsKey) else { return nil }
+        guard let data = UserDefaults.standard.data(forKey: Self.manifestDefaultsKey) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(CloudUploadResumeManifest.self, from: data)
@@ -2968,10 +2968,16 @@ private actor CloudUploadResumeStore {
     private func saveManifest(_ manifest: CloudUploadResumeManifest?) {
         guard let manifest,
               let data = try? encoder.encode(manifest) else {
-            UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+            UserDefaults.standard.removeObject(forKey: Self.manifestDefaultsKey)
             return
         }
-        UserDefaults.standard.set(data, forKey: cloudUploadResumeManifestDefaultsKey)
+        UserDefaults.standard.set(data, forKey: Self.manifestDefaultsKey)
+    }
+
+    private nonisolated static func recordBackgroundUploadProof(_ event: String, metadata: String? = nil) {
+        Task { @MainActor in
+            LaunchTelemetry.shared.recordBackgroundUploadProof(event, metadata: metadata)
+        }
     }
 }
 
