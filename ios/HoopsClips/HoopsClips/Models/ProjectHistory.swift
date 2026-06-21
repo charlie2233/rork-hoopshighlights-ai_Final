@@ -186,9 +186,17 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         let dateTitle = formatter.string(from: createdAt)
         if sourceDuration.isFinite, sourceDuration > 0 {
             let minutes = max(1, Int((sourceDuration / 60).rounded()))
-            return "HoopClips \(dateTitle) - \(minutes) min"
+            let kind: String
+            if minutes >= 20 {
+                kind = "Full Game"
+            } else if minutes >= 6 {
+                kind = "Basketball Run"
+            } else {
+                kind = "Short Clip"
+            }
+            return "\(kind) - \(minutes) min"
         }
-        return "HoopClips \(dateTitle)"
+        return "Basketball Video \(dateTitle)"
     }
 
     private static func shouldReplaceGeneratedTitle(_ title: String, sourceBasename: String) -> Bool {
@@ -198,6 +206,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
                 || lowerTitle.hasPrefix("ytdown_")
                 || lowerTitle.hasPrefix("vid_")
                 || lowerTitle.hasPrefix("img_")
+                || lowerTitle.hasPrefix("hoopclips ")
                 || looksLikeGenericSourceTitle(cleanedTitleTokens(title)) else {
             return looksLikeRandomCode(title)
         }

@@ -339,7 +339,7 @@ struct HistoryView: View {
                         Button {
                             selectedProject = project
                         } label: {
-                            historyActionLabel(title: "Saved Project", icon: "info.circle.fill", tint: AppTheme.courtBlue)
+                            historyActionLabel(title: "Details", icon: "info.circle.fill", tint: AppTheme.courtBlue)
                                 .accessibilityLabel("Show saved project details for \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
@@ -349,9 +349,9 @@ struct HistoryView: View {
                             viewModel.openProject(id: project.id)
                         } label: {
                             historyActionLabel(
-                                title: viewModel.currentProjectID == project.id ? "Current" : "Resume",
+                                title: historyResumeActionTitle(for: project),
                                 icon: "arrow.counterclockwise.circle.fill",
-                                tint: AppTheme.successGreen
+                                tint: viewModel.canOpenProject(project) ? AppTheme.successGreen : AppTheme.warningYellow
                             )
                             .accessibilityLabel(resumeAccessibilityLabel(for: project))
                         }
@@ -462,7 +462,7 @@ struct HistoryView: View {
                 Spacer(minLength: 0)
             }
 
-            Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+            Text(historyStatusLine(for: project))
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.78))
                 .fixedSize(horizontal: false, vertical: true)
@@ -561,6 +561,50 @@ struct HistoryView: View {
             return "\(project.displayTitle) cannot be resumed because its source video is missing"
         }
         return "Resume \(project.displayTitle)"
+    }
+
+    private func historyStatusLine(for project: PersistedProjectRecord) -> String {
+        let date = project.updatedAt.formatted(date: .abbreviated, time: .shortened)
+        return "\(historyProjectStateLabel(for: project)) - Updated \(date)"
+    }
+
+    private func historyResumeActionTitle(for project: PersistedProjectRecord) -> String {
+        if viewModel.currentProjectID == project.id {
+            return "Current"
+        }
+        if !viewModel.canOpenProject(project) {
+            return "Missing source"
+        }
+        return "Resume"
+    }
+
+    private func historyProjectStateLabel(for project: PersistedProjectRecord) -> String {
+        let summary = project.analysisStatusSummary?.lowercased() ?? ""
+        if !viewModel.canOpenProject(project) {
+            return "Source missing"
+        }
+        if summary.contains("cancel") || summary.contains("paused") {
+            return "Upload paused"
+        }
+        if summary.contains("upload") {
+            return "Upload saved"
+        }
+        if summary.contains("analy") || summary.contains("preparing") || summary.contains("team scan") {
+            return "Analysis saved"
+        }
+        if project.hasLatestExport {
+            return "Reel saved"
+        }
+        if project.keptClipCount > 0 {
+            return "Ready to review"
+        }
+        if project.totalClipCount > 0 {
+            return "Clips found"
+        }
+        if project.lastAnalyzedAt != nil {
+            return "Analyzed"
+        }
+        return "Imported"
     }
 
     private var historyActionGridColumns: [GridItem] {
