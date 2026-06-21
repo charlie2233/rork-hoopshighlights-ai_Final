@@ -77,6 +77,13 @@ struct ReviewView: View {
         }
     }
 
+    private struct ReviewWaitingFact: Identifiable {
+        let id: String
+        let icon: String
+        let text: String
+        let tint: Color
+    }
+
     private var filteredClips: [Clip] {
         let base: [Clip]
         switch filterOption {
@@ -173,11 +180,16 @@ struct ReviewView: View {
     }
 
     private var emptyState: some View {
-        HoopsEmptyStateCard(
-            title: reviewEmptyStateTitle,
-            message: reviewEmptyStateMessage,
-            icon: reviewEmptyStateIcon
-        )
+        VStack(spacing: 12) {
+            HoopsEmptyStateCard(
+                title: reviewEmptyStateTitle,
+                message: reviewEmptyStateMessage,
+                icon: reviewEmptyStateIcon
+            )
+
+            reviewWaitingFactsView
+        }
+        .padding(.horizontal, 16)
     }
 
     private var reviewEmptyStateTitle: String {
@@ -207,6 +219,134 @@ struct ReviewView: View {
             return importStatus
         }
         return viewModel.analysisService.statusMessage
+    }
+
+    @ViewBuilder
+    private var reviewWaitingFactsView: some View {
+        let facts = reviewWaitingFacts
+        if !facts.isEmpty {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(facts) { fact in
+                        reviewWaitingFactPill(fact)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(facts) { fact in
+                        reviewWaitingFactPill(fact)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .rorkCard(
+                cornerRadius: 16,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.68)),
+                stroke: AppTheme.accentPurple.opacity(0.18),
+                glow: AppTheme.accentPurple,
+                glowOpacity: 0.04
+            )
+            .accessibilityIdentifier("review.waitingFacts")
+        }
+    }
+
+    private var reviewWaitingFacts: [ReviewWaitingFact] {
+        guard viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing else {
+            return []
+        }
+
+        let status = [
+            reviewEmptyStateRawStatus,
+            CloudAnalysisService.latestUploadProgressSummary()
+        ].joined(separator: " · ")
+
+        var facts: [ReviewWaitingFact] = []
+        if let uploadSummary = CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: status) {
+            facts.append(
+                ReviewWaitingFact(
+                    id: "upload",
+                    icon: "speedometer",
+                    text: uploadSummary,
+                    tint: .cyan
+                )
+            )
+        }
+
+        if let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(
+            from: CloudAnalysisService.latestUploadSourceOptimizationSummary()
+        ) {
+            facts.append(
+                ReviewWaitingFact(
+                    id: "optimized-source",
+                    icon: "arrow.down.forward.and.arrow.up.backward.circle.fill",
+                    text: savingsFact,
+                    tint: AppTheme.successGreen
+                )
+            )
+        }
+
+        if let eta = reviewWaitingCompactETA {
+            facts.append(
+                ReviewWaitingFact(
+                    id: "eta",
+                    icon: "clock.badge.checkmark",
+                    text: eta,
+                    tint: .white.opacity(0.88)
+                )
+            )
+        }
+
+        if let reminder = CloudAnalysisProgressCopy.backgroundReminder(
+            statusMessage: reviewEmptyStateRawStatus,
+            analysisMode: viewModel.analysisMode
+        ) {
+            facts.append(
+                ReviewWaitingFact(
+                    id: "background",
+                    icon: "cloud.fill",
+                    text: reviewWaitingFirstSentence(reminder),
+                    tint: AppTheme.neonPurple
+                )
+            )
+        }
+
+        return Array(facts.prefix(dynamicTypeSize.isAccessibilitySize ? 4 : 3))
+    }
+
+    private var reviewWaitingCompactETA: String? {
+        guard let eta = CloudAnalysisProgressCopy.approximateRemainingTime(
+            statusMessage: reviewEmptyStateRawStatus,
+            analysisMode: viewModel.analysisMode,
+            progress: viewModel.analysisService.progress,
+            durationSeconds: viewModel.videoDuration
+        ) else {
+            return nil
+        }
+        return reviewWaitingFirstSentence(eta)
+    }
+
+    private func reviewWaitingFirstSentence(_ text: String) -> String {
+        let firstSentence = text
+            .components(separatedBy: ". ")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? text
+        return firstSentence.hasSuffix(".") ? firstSentence : "\(firstSentence)."
+    }
+
+    private func reviewWaitingFactPill(_ fact: ReviewWaitingFact) -> some View {
+        Label(fact.text, systemImage: fact.icon)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(fact.tint)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+            .minimumScaleFactor(0.78)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(fact.tint.opacity(0.11), in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(fact.tint.opacity(0.22), lineWidth: 1)
+            }
     }
 
     @ViewBuilder
