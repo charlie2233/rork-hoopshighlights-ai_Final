@@ -25,6 +25,9 @@ struct ReviewView: View {
     @State private var reviewUndoToast: ReviewDecisionUndoToast?
     @State private var reviewUndoToastDismissTask: Task<Void, Never>?
     @State private var reviewScrubProgress = 0.0
+    @State private var isSendingReviewSmokeProof = false
+    @State private var didSendReviewSmokeProof = false
+    @State private var reviewSmokeProofSendFailed = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let tabTransitionAnimation = Animation.interactiveSpring(
         response: 0.42,
@@ -116,6 +119,7 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
+                            reviewSmokeProofShortcut
                             reviewCarousel
                             aiEditEntryCard
                             filterBar
@@ -177,6 +181,167 @@ struct ReviewView: View {
                 clipDetailSheet(clip: clip)
             }
         }
+    }
+
+    private var reviewSmokeProofShortcut: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.successGreen)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Review ready")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("Testing? Send proof.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .lineLimit(1)
+            }
+            .layoutPriority(1)
+
+            Button {
+                sendReviewSmokeProof()
+            } label: {
+                Label(reviewSmokeProofButtonTitle, systemImage: reviewSmokeProofButtonIcon)
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(reviewSmokeProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background((reviewSmokeProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen).opacity(0.12), in: .capsule)
+                    .overlay {
+                        Capsule()
+                            .stroke((reviewSmokeProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen).opacity(0.24), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .disabled(isSendingReviewSmokeProof)
+            .accessibilityIdentifier("review.smokeProof.sendButton")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppTheme.surfaceBg.opacity(0.70), in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.successGreen.opacity(0.18), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("review.smokeProofShortcut")
+    }
+
+    private var reviewSmokeProofButtonTitle: String {
+        if isSendingReviewSmokeProof {
+            return "Sending"
+        }
+        if didSendReviewSmokeProof {
+            return "Sent"
+        }
+        if reviewSmokeProofSendFailed {
+            return "Queued"
+        }
+        return "Send"
+    }
+
+    private var reviewSmokeProofButtonIcon: String {
+        if isSendingReviewSmokeProof {
+            return "paperplane"
+        }
+        if didSendReviewSmokeProof {
+            return "checkmark.circle.fill"
+        }
+        if reviewSmokeProofSendFailed {
+            return "arrow.clockwise.circle.fill"
+        }
+        return "paperplane.fill"
+    }
+
+    private var reviewSmokeProofText: String {
+        [
+            "source=HoopClips Review ready card",
+            "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
+            "build=\(reviewSmokeProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))",
+            "environment=\(reviewSmokeProofValue(AppConstants.environmentName))",
+            "cloudLaunchMode=\(reviewSmokeProofValue(AppConstants.cloudLaunchMode.rawValue))",
+            "cloudAnalysisEnabled=\(AppConstants.cloudAnalysisEnabled)",
+            "cloudAnalysisBaseURLConfigured=\(!AppConstants.cloudAnalysisBaseURL.isEmpty)",
+            "cloudEditBaseURLConfigured=\(!AppConstants.cloudEditBaseURL.isEmpty)",
+            "cloudAnalysisEndpoint=\(reviewCloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
+            "cloudEditEndpoint=\(reviewCloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
+            "analysisMode=\(reviewSmokeProofValue(String(describing: viewModel.analysisMode)))",
+            "analysisStatus=\(reviewSmokeProofValue(viewModel.analysisService.statusMessage))",
+            "reviewReady=\(!viewModel.clips.isEmpty)",
+            "clipCount=\(viewModel.clips.count)",
+            "keptClipCount=\(viewModel.keptClips.count)",
+            "skippedClipCount=\(viewModel.discardedClips.count)",
+            "filter=\(reviewSmokeProofValue(filterOption.rawValue))",
+            "latestUploadProgress=\(reviewSmokeProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
+            "latestUploadSourceOptimization=\(reviewSmokeProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
+            "latestBackgroundUploadProof=\(reviewSmokeProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
+            "backgroundUploadCompletionProof=\(reviewSmokeProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
+            "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: "\n")
+    }
+
+    private func sendReviewSmokeProof() {
+        guard !isSendingReviewSmokeProof else { return }
+        isSendingReviewSmokeProof = true
+        didSendReviewSmokeProof = false
+        reviewSmokeProofSendFailed = false
+        let proof = reviewSmokeProofText
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "review.smoke_proof.send_requested",
+            metadata: "clips=\(viewModel.clips.count) kept=\(viewModel.keptClips.count)"
+        )
+
+        Task { @MainActor in
+            let sent = await LaunchTelemetry.shared.sendManualUploadProof(proof)
+            isSendingReviewSmokeProof = false
+            didSendReviewSmokeProof = sent
+            reviewSmokeProofSendFailed = !sent
+            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+            didSendReviewSmokeProof = false
+            reviewSmokeProofSendFailed = false
+        }
+    }
+
+    private func reviewSmokeProofValue(_ value: String?) -> String {
+        let compact = (value ?? "none")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else { return "none" }
+        return String(compact.prefix(180))
+    }
+
+    private func reviewCloudEndpointProofValue(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let host = url.host?.lowercased(),
+              !host.isEmpty else {
+            return "configured=false"
+        }
+
+        let scheme = reviewSmokeProofValue(url.scheme ?? "unknown")
+        let pathDepth = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }.count
+        return [
+            "configured=true",
+            "scheme=\(scheme)",
+            "hostHash=\(reviewStableProofHash(host))",
+            "pathDepth=\(pathDepth)"
+        ].joined(separator: "_")
+    }
+
+    private func reviewStableProofHash(_ value: String) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 1_099_511_628_211
+        }
+        return String(hash, radix: 16)
     }
 
     private var emptyState: some View {
