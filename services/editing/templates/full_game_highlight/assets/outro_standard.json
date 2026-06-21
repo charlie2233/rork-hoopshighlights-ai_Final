@@ -4,5 +4,5 @@
   "renderer": "ffmpeg_generated_card",
   "title": "Hoopclips Game Recap",
   "subtitle": "Clean recap powered by cloud AI",
-  "durationSeconds": 2.0
+  "durationSeconds": 0.75
 }

@@ -672,7 +672,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         captionStyle=CaptionStyle(styleId="bold_hype", displayName="Bold Hype", density="hype", fontColor="white", boxColor="black@0.62", defaultFontSize=48),
         audioProfile=AudioProfile(profileId="hype", mode="music_plus_game_audio", musicTrackId="hype_01", musicVolume=0.82, gameAudioVolume=0.25),
         effectProfile=EffectProfile(profileId="hype_effects", slowMotionIntensity="high", allowedEffects=["punch_zoom", "speed_ramp", "slow_motion"], maxSlowMotionClips=4),
-        outroProfile=OutroProfile(profileId="free_social_outro", assetId="personal_highlight_outro_free_v1", durationSeconds=2.0, requiredForFree=True),
+        outroProfile=OutroProfile(profileId="free_social_outro", assetId="personal_highlight_outro_free_v1", durationSeconds=0.75, requiredForFree=True),
         watermarkProfile=WatermarkProfile(profileId="hoopclips_corner_mark", assetId="hoopclips_app_icon_v1", position="bottom_right", requiredForFree=True, displayText="Hoopclips"),
         assets=[
             TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/personal_highlight/assets/watermark.json", contentType="application/json"),
@@ -695,7 +695,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         captionStyle=CaptionStyle(styleId="clean_scorebug", displayName="Clean Scorebug", density="clean", fontColor="white", boxColor="black@0.48", defaultFontSize=38),
         audioProfile=AudioProfile(profileId="game_recap", mode="music_plus_game_audio", musicTrackId="cinematic_01", musicVolume=0.45, gameAudioVolume=0.62),
         effectProfile=EffectProfile(profileId="subtle_recap", slowMotionIntensity="low_medium", allowedEffects=["clean_cut", "subtle_replay", "lower_third", "slow_motion"], maxSlowMotionClips=3),
-        outroProfile=OutroProfile(profileId="standard_recap_outro", assetId="full_game_outro_v1", durationSeconds=2.0, requiredForFree=True),
+        outroProfile=OutroProfile(profileId="standard_recap_outro", assetId="full_game_outro_v1", durationSeconds=0.75, requiredForFree=True),
         watermarkProfile=WatermarkProfile(profileId="hoopclips_clean_corner_mark", assetId="hoopclips_app_icon_v1", position="bottom_right", requiredForFree=True, displayText="Hoopclips"),
         assets=[
             TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/full_game_highlight/assets/watermark.json", contentType="application/json"),
@@ -719,7 +719,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         captionStyle=CaptionStyle(styleId="plain", displayName="Plain Labels", density="minimal", fontColor="white", boxColor="black@0.35", defaultFontSize=34),
         audioProfile=AudioProfile(profileId="original_audio", mode="original_audio", musicTrackId="none", musicVolume=0.0, gameAudioVolume=1.0),
         effectProfile=EffectProfile(profileId="minimal_review", slowMotionIntensity="manual_only", allowedEffects=["slow_motion"], maxSlowMotionClips=1),
-        outroProfile=OutroProfile(profileId="minimal_review_outro", assetId="coach_review_outro_v1", durationSeconds=1.5, requiredForFree=True),
+        outroProfile=OutroProfile(profileId="minimal_review_outro", assetId="coach_review_outro_v1", durationSeconds=0.65, requiredForFree=True),
         watermarkProfile=WatermarkProfile(profileId="hoopclips_minimal_corner_mark", assetId="hoopclips_app_icon_v1", position="bottom_right", requiredForFree=True, displayText="Hoopclips"),
         assets=[
             TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/coach_review/assets/watermark.json", contentType="application/json"),
@@ -1571,8 +1571,13 @@ class EditPlan(APIModel):
         self.templateId = template.templateId
         if not self.captionStyle:
             self.captionStyle = template.captionStyle.styleId
-        if not self.outro.assetId:
-            self.outro.assetId = template.outroProfile.assetId
+        if self.outro.enabled or self.outro.durationSeconds > 0:
+            if not self.outro.assetId:
+                self.outro.assetId = template.outroProfile.assetId
+        else:
+            self.outro.durationSeconds = 0.0
+            self.outro.templateId = "none"
+            self.outro.assetId = None
         if not self.watermark.assetId:
             self.watermark.assetId = template.watermarkProfile.assetId
         return self
@@ -3045,8 +3050,8 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
     target_duration = min(choose_template_target_length(request.targetDurationSeconds, template), policy.maxRenderSeconds)
     aspect_ratio = request.aspectRatio or template.defaultAspectRatio
     theme = choose_theme(preset, request.theme)
-    intro_duration = 1.2 if preset.presetId != "coach_review" else 0.0
-    outro_duration = template.outroProfile.durationSeconds if policy.outroRequired else min(0.8, template.outroProfile.durationSeconds)
+    intro_duration = 0.0
+    outro_duration = template.outroProfile.durationSeconds if policy.outroRequired else 0.0
     outro_enabled = outro_duration > 0
     usable_duration = max(MIN_PLAN_CLIP_SECONDS, target_duration - intro_duration - outro_duration)
     selected = fit_to_duration(context.clips, usable_duration, preset)
@@ -4040,6 +4045,11 @@ def repair_edit_plan(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
         if not data["outro"]["templateId"] or data["outro"]["templateId"] == "none":
             data["outro"]["templateId"] = template.outroProfile.assetId
         data["outro"]["assetId"] = template.outroProfile.assetId
+    else:
+        data["outro"]["enabled"] = False
+        data["outro"]["durationSeconds"] = 0.0
+        data["outro"]["templateId"] = "none"
+        data["outro"]["assetId"] = None
 
     for clip in data["clips"]:
         clip["caption"] = (clip.get("caption") or "")[:MAX_CAPTION_LENGTH]
