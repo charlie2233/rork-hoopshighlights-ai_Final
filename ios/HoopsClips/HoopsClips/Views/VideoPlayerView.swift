@@ -2147,6 +2147,10 @@ struct VideoPlayerView: View {
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let analysisLiveUploadStripText {
+                liveUploadProgressStrip(analysisLiveUploadStripText)
+            }
+
             analysisProgressQuickFacts
 
             if let analysisSlowUploadHelp {
@@ -2189,6 +2193,35 @@ struct VideoPlayerView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(analysisProgressTitle)
         .accessibilityValue(analysisProgressAccessibilityValue)
+    }
+
+    private func liveUploadProgressStrip(_ text: String) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.cyan)
+                .accessibilityHidden(true)
+
+            Text(text)
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(.white)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.78)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.cyan.opacity(0.10), in: .rect(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("analysis.liveUploadProgressStrip")
     }
 
     private var analysisSmokeProofPrompt: some View {
@@ -2546,7 +2579,8 @@ struct VideoPlayerView: View {
     private var analysisProgressFacts: [AnalysisProgressFact] {
         var facts: [AnalysisProgressFact] = []
 
-        if let analysisUploadMetricText {
+        if analysisLiveUploadStripText == nil,
+           let analysisUploadMetricText {
             facts.append(
                 AnalysisProgressFact(
                     id: "upload",
@@ -2557,7 +2591,8 @@ struct VideoPlayerView: View {
             )
         }
 
-        if let analysisChunkProgressText {
+        if analysisLiveUploadStripText == nil,
+           let analysisChunkProgressText {
             facts.append(
                 AnalysisProgressFact(
                     id: "chunks",
@@ -2616,6 +2651,30 @@ struct VideoPlayerView: View {
         }
 
         return Array(facts.prefix(dynamicTypeSize.isAccessibilitySize ? 4 : 3))
+    }
+
+    private var analysisLiveUploadStripText: String? {
+        let statusMessage = viewModel.analysisService.statusMessage
+        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let combined = "\(statusMessage) \(latestProgress) \(pendingManifest)".lowercased()
+        guard combined.contains("upload")
+            || combined.contains("background")
+            || combined.contains("resume")
+            || combined.contains("chunk") else {
+            return nil
+        }
+
+        let summary = CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: statusMessage)
+            ?? CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: latestProgress)
+            ?? CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: pendingManifest)
+            ?? "Upload moving"
+
+        let fileSummary = currentVideoFileSizeShortText
+        if fileSummary == "unknown" {
+            return "Upload \(summary)"
+        }
+        return "Upload \(summary) · File \(fileSummary)"
     }
 
     private var analysisApproximateRemainingCompactText: String? {
@@ -3146,6 +3205,17 @@ struct VideoPlayerView: View {
         formatter.allowedUnits = [.useMB, .useGB]
         formatter.countStyle = .file
         return "\(formatter.string(fromByteCount: bytes)) (\(bytes) bytes)"
+    }
+
+    private var currentVideoFileSizeShortText: String {
+        guard let bytes = currentVideoFileSizeBytes, bytes > 0 else {
+            return "unknown"
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 
     private var currentVideoFileSizeBytes: Int64? {
