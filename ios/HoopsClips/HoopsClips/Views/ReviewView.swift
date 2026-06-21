@@ -125,7 +125,6 @@ struct ReviewView: View {
                             aiEditEntryCard
                             filterBar
                             priorityReviewCard
-                            reviewContextStrip
                             quickActionsBar
                         }
                         .padding(.horizontal, 16)
