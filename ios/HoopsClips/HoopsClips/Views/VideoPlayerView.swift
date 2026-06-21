@@ -1771,12 +1771,9 @@ struct VideoPlayerView: View {
             }
 
             if analysisBackgroundUploadBadgeText != nil,
-               analysisBackgroundUploadStillRunningText == nil {
-                if let analysisRecoveredUploadProofPromptText {
-                    recoveredUploadProofPrompt(analysisRecoveredUploadProofPromptText)
-                } else {
-                    backgroundUploadDiagnosticsTray
-                }
+               analysisBackgroundUploadStillRunningText == nil,
+               let analysisRecoveredUploadProofPromptText {
+                recoveredUploadProofPrompt(analysisRecoveredUploadProofPromptText)
             }
 
             Button {
