@@ -2360,9 +2360,15 @@ nonisolated private enum CloudUploadChunkFileStore {
                 [FileAttributeKey.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
                 ofItemAtPath: directory.path
             )
-            LaunchTelemetry.shared.recordBackgroundUploadProof("background_upload_chunk_directory_ready")
+            recordBackgroundUploadProof("background_upload_chunk_directory_ready")
         } catch {
-            LaunchTelemetry.shared.recordBackgroundUploadProof("background_upload_chunk_directory_protection_unavailable")
+            recordBackgroundUploadProof("background_upload_chunk_directory_protection_unavailable")
+        }
+    }
+
+    private static func recordBackgroundUploadProof(_ event: String) {
+        Task { @MainActor in
+            LaunchTelemetry.shared.recordBackgroundUploadProof(event)
         }
     }
 
