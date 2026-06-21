@@ -2640,6 +2640,17 @@ struct VideoPlayerView: View {
             )
         }
 
+        if let analysisFastResumeFactText {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "fast-resume",
+                    icon: "bolt.horizontal.circle.fill",
+                    text: analysisFastResumeFactText,
+                    tint: AppTheme.rimOrange
+                )
+            )
+        }
+
         if let quickFact = analysisUploadSourceOptimization.quickFact,
            viewModel.analysisService.statusMessage.localizedCaseInsensitiveContains("upload") {
             facts.append(
@@ -2998,6 +3009,31 @@ struct VideoPlayerView: View {
             summaryParts.append("failed")
         }
         return summaryParts.joined(separator: " · ")
+    }
+
+    private var analysisFastResumeFactText: String? {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProgress = CloudAnalysisService.latestUploadProgressSummary().lowercased()
+        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary().lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [status, latestProgress, pendingManifest, latestProof, recentProof].joined(separator: " ")
+
+        guard combined.contains("upload"),
+              combined.contains("chunk")
+                || combined.contains("resume")
+                || combined.contains("resum")
+                || combined.contains("saved")
+                || combined.contains("retry")
+                || combined.contains("background") else {
+            return nil
+        }
+
+        if combined.contains("fast") || combined.contains("lane") || combined.contains("parallel") {
+            return "Fast resume ready"
+        }
+
+        return "Saved chunks resume"
     }
 
     private var failedUploadProofPromptText: String? {
