@@ -537,13 +537,13 @@ struct SettingsView: View {
         DisclosureGroup(isExpanded: $showingSmokeProofTools) {
             VStack(alignment: .leading, spacing: 12) {
                 smokeProofStatusGrid
+                copyTestFlightSmokeChecklistButton
                 settingsBackgroundUploadStatusRow
                 pendingProofRetryStatusRow
                 phoneSmokeResultPicker
                 copyUploadStateProofButton
                 sendIssueBundleButton
                 copyBuildSummaryButton
-                copyTestFlightSmokeChecklistButton
 
                 Button {
                     copySmokeProof()
@@ -722,7 +722,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: testFlightChecklistCopied ? "checkmark.circle.fill" : "checklist.checked")
-                Text(testFlightChecklistCopied ? "Checklist copied" : "Copy TestFlight checklist")
+                Text(testFlightChecklistCopied ? "Steps copied" : "Copy smoke steps")
                     .font(.subheadline.weight(.bold))
                 Spacer(minLength: 0)
             }
@@ -736,7 +736,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings.smokeProof.copyTestFlightChecklistButton")
-        .accessibilityHint("Copies a short phone smoke checklist for the current TestFlight build.")
+        .accessibilityHint("Copies import, analysis, review, export, and share steps for this TestFlight build.")
     }
 
     private var settingsBackgroundUploadStatusRow: some View {
