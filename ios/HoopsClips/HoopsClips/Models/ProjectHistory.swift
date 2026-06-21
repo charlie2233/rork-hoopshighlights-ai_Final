@@ -128,11 +128,29 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
            !Self.shouldReplaceGeneratedTitle(trimmedTitle, sourceBasename: sourceBasename) {
             return trimmedTitle
         }
+        if let contextTitle = contextualProjectTitle {
+            return contextTitle
+        }
         return Self.friendlyProjectTitle(
             sourceFilename: sourceFilename,
             sourceDuration: sourceDuration,
             createdAt: createdAt
         )
+    }
+
+    private var contextualProjectTitle: String? {
+        guard let selection = highlightTeamSelection,
+              selection.mode == .team else {
+            return nil
+        }
+
+        let selectedTeam = Self.sanitizedContextName(selection.displayTitle)
+        guard let selectedTeam else { return nil }
+
+        if let opponent = Self.sanitizedContextName(opponentTeamName) {
+            return "\(Self.titleCased(selectedTeam)) vs \(Self.titleCased(opponent))"
+        }
+        return "\(Self.titleCased(selectedTeam)) Highlights"
     }
 
     var sourceDisplayName: String {
@@ -202,7 +220,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             } else {
                 kind = "Short Clip"
             }
-            return "\(kind) - \(minutes) min"
+            return "\(kind) - \(minutes) min, \(dateTitle)"
         }
         return "Basketball Video \(dateTitle)"
     }
@@ -279,7 +297,31 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             tokens.removeLast()
         }
 
-        return tokens
+        return tokens.filter { !shouldDropEmbeddedGeneratedToken($0) }
+    }
+
+    private static func shouldDropEmbeddedGeneratedToken(_ token: String) -> Bool {
+        let lower = token.lowercased()
+        if generatedWrapperTokens.contains(lower) {
+            return true
+        }
+        if lower.range(of: #"^\d{3,4}p$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if looksLikeRandomCode(token) {
+            return true
+        }
+        if lower.count >= 6 {
+            let alphanumeric = lower.filter { $0.isLetter || $0.isNumber }
+            let digitCount = alphanumeric.filter(\.isNumber).count
+            let letterCount = alphanumeric.filter(\.isLetter).count
+            if alphanumeric.count == lower.count,
+               digitCount > 0,
+               letterCount > 0 {
+                return true
+            }
+        }
+        return false
     }
 
     private static func shouldDropTrailingGeneratedToken(_ token: String) -> Bool {
@@ -474,6 +516,17 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             }
         }
         return false
+    }
+
+    private static func sanitizedContextName(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !looksLikeRandomCode(trimmed),
+              !looksLikeGenericSourceTitle(cleanedTitleTokens(trimmed)) else {
+            return nil
+        }
+        return trimmed
     }
 }
 
