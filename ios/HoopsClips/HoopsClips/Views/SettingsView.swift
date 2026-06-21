@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var isSendingSmokeProof = false
     @State private var smokeProofSendSucceeded = false
     @State private var smokeProofSendFailed = false
+    @State private var showingSmokeProofTools = false
 
     private enum FeedbackType: String, CaseIterable, Identifiable {
         case suggestion = "Suggestion"
@@ -489,56 +490,7 @@ struct SettingsView: View {
                 .settingsPreviewStatCard()
             }
 
-            settingsBackgroundUploadStatusRow
-            copyUploadStateProofButton
-
-            Button {
-                copySmokeProof()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: smokeProofCopied ? "checkmark.circle.fill" : "doc.on.doc.fill")
-                    Text(languageStore.text(smokeProofCopied ? .settingsSmokeProofCopied : .settingsSmokeProofCopy))
-                        .font(.subheadline.weight(.bold))
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(smokeProofCopied ? .black : .white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 13)
-                .background(
-                    smokeProofCopied ? AppTheme.successGreen : AppTheme.accentPurple.opacity(0.72),
-                    in: .rect(cornerRadius: 15)
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("settings.smokeProof.copyButton")
-            .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
-
-            Button {
-                sendSmokeProof()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: smokeProofSendIcon)
-                    Text(smokeProofSendLabel)
-                        .font(.subheadline.weight(.bold))
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(smokeProofSendSucceeded ? .black : .white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 13)
-                .background(
-                    smokeProofSendBackground,
-                    in: .rect(cornerRadius: 15)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(isSendingSmokeProof)
-            .accessibilityIdentifier("settings.smokeProof.sendButton")
-            .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
-
-            Text(languageStore.text(.settingsSmokeProofPrivacy))
-                .font(.caption2)
-                .foregroundStyle(AppTheme.subtleText)
-                .fixedSize(horizontal: false, vertical: true)
+            smokeProofToolsDrawer
         }
         .padding(16)
         .rorkCard(
@@ -548,6 +500,77 @@ struct SettingsView: View {
             glow: AppTheme.courtBlue,
             glowOpacity: 0.05
         )
+    }
+
+    private var smokeProofToolsDrawer: some View {
+        DisclosureGroup(isExpanded: $showingSmokeProofTools) {
+            VStack(alignment: .leading, spacing: 12) {
+                settingsBackgroundUploadStatusRow
+                copyUploadStateProofButton
+
+                Button {
+                    copySmokeProof()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: smokeProofCopied ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                        Text(languageStore.text(smokeProofCopied ? .settingsSmokeProofCopied : .settingsSmokeProofCopy))
+                            .font(.subheadline.weight(.bold))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(smokeProofCopied ? .black : .white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 13)
+                    .background(
+                        smokeProofCopied ? AppTheme.successGreen : AppTheme.accentPurple.opacity(0.72),
+                        in: .rect(cornerRadius: 15)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.smokeProof.copyButton")
+                .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
+
+                Button {
+                    sendSmokeProof()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: smokeProofSendIcon)
+                        Text(smokeProofSendLabel)
+                            .font(.subheadline.weight(.bold))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(smokeProofSendSucceeded ? .black : .white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 13)
+                    .background(
+                        smokeProofSendBackground,
+                        in: .rect(cornerRadius: 15)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isSendingSmokeProof)
+                .accessibilityIdentifier("settings.smokeProof.sendButton")
+                .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
+
+                Text(languageStore.text(.settingsSmokeProofPrivacy))
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 10)
+        } label: {
+            Label("Proof tools", systemImage: "wrench.and.screwdriver.fill")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(AppTheme.courtBlue)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppTheme.courtBlue.opacity(0.09), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.courtBlue.opacity(0.20), lineWidth: 1)
+        }
+        .accessibilityIdentifier("settings.smokeProof.toolsDrawer")
     }
 
     private var settingsBackgroundUploadStatusRow: some View {
