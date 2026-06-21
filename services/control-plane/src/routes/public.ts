@@ -647,6 +647,21 @@ async function handleFinalizeJob(
 
     const uploadExists = await env.R2_UPLOADS.head(job.sourceObjectKey);
     if (!uploadExists) {
+      if (isOpenUploadStatus(job.status) && isUploadWindowExpired(job)) {
+        return jsonResponse(
+          {
+            requestId,
+            schemaVersion,
+            confidence: null,
+            modelVersion: job.modelVersion ?? null,
+            errorCode: "upload_expired",
+            errorMessage: "This upload expired. Start a fresh cloud analysis upload.",
+            failureReason: "This upload expired. Start a fresh cloud analysis upload."
+          },
+          { status: 410 },
+          requestId
+        );
+      }
       return jsonResponse(
         {
           requestId,
@@ -1204,6 +1219,21 @@ async function getUploadOwnedJob(
       requestId
     );
   }
+  if (isOpenUploadStatus(job.status) && isUploadWindowExpired(job)) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "upload_expired",
+        errorMessage: "This upload expired. Start a fresh cloud analysis upload.",
+        failureReason: "This upload expired. Start a fresh cloud analysis upload."
+      },
+      { status: 410 },
+      requestId
+    );
+  }
   if (isTerminal(job.status) || job.status === "queued" || job.status === "processing") {
     return jsonResponse(
       {
@@ -1221,6 +1251,19 @@ async function getUploadOwnedJob(
   }
 
   return job;
+}
+
+function isOpenUploadStatus(status: JobStatus): boolean {
+  return status === "created" || status === "upload_pending";
+}
+
+function isUploadWindowExpired(job: JobRecord): boolean {
+  if (!job.expiresAt) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(job.expiresAt);
+  return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
 }
 
 function normalizeTeamSelection(value: unknown): TeamSelection | null {
