@@ -15,6 +15,7 @@ nonisolated struct CloudAnalysisUploadSourceOptimization: Equatable, Sendable {
 nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
     private static let fastUploadModeDefaultsKey = "hoopsclips.cloudUpload.fastUploadMode.v1"
+    private static let compactUploadFallbackWindow = "fallback to original in about 4 min"
 
     static func isFastUploadModeEnabled() -> Bool {
         UserDefaults.standard.bool(forKey: fastUploadModeDefaultsKey)
@@ -436,22 +437,22 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         if status.contains("preparing smaller") {
             if let sizeText {
-                return "Preparing smaller upload from \(sizeText)"
+                return "Preparing smaller upload from \(sizeText); \(compactUploadFallbackWindow)"
             }
             if durationMinutes > 0 {
-                return "Preparing smaller upload for \(durationMinutes) min video"
+                return "Preparing smaller upload for \(durationMinutes) min video; \(compactUploadFallbackWindow)"
             }
-            return "Preparing smaller upload"
+            return "Preparing smaller upload; \(compactUploadFallbackWindow)"
         }
 
         if prefersCompactSource {
             if durationMinutes > 0 {
-                return "Preparing compact upload for \(durationMinutes) min video"
+                return "Preparing compact upload for \(durationMinutes) min video; \(compactUploadFallbackWindow)"
             }
             if let sizeText {
-                return "Preparing compact upload from \(sizeText)"
+                return "Preparing compact upload from \(sizeText); \(compactUploadFallbackWindow)"
             }
-            return "Preparing compact upload"
+            return "Preparing compact upload; \(compactUploadFallbackWindow)"
         }
 
         if isHugeSource, let sizeText {
