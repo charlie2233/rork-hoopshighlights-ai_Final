@@ -286,6 +286,10 @@ enum AppTextKey {
     case settingsSmokeProofSending
     case settingsSmokeProofSent
     case settingsSmokeProofSendFailed
+    case settingsUploadProofSend
+    case settingsUploadProofSending
+    case settingsUploadProofSent
+    case settingsUploadProofSendFailed
     case settingsSmokeProofPrivacy
     case settingsSmokeProofBuild
     case settingsSmokeProofCloud
@@ -586,6 +590,10 @@ extension AppLanguage {
         .settingsSmokeProofSending: "Sending crash proof...",
         .settingsSmokeProofSent: "Crash proof sent",
         .settingsSmokeProofSendFailed: "Send failed. Copy proof instead.",
+        .settingsUploadProofSend: "Send upload proof",
+        .settingsUploadProofSending: "Sending upload proof...",
+        .settingsUploadProofSent: "Upload proof sent",
+        .settingsUploadProofSendFailed: "Send failed. Copy upload proof.",
         .settingsSmokeProofPrivacy: "No secrets, object paths, or presigned URLs are included.",
         .settingsSmokeProofBuild: "Build",
         .settingsSmokeProofCloud: "Cloud",
@@ -850,6 +858,10 @@ extension AppLanguage {
         .settingsSmokeProofSending: "正在发送崩溃凭证...",
         .settingsSmokeProofSent: "崩溃凭证已发送",
         .settingsSmokeProofSendFailed: "发送失败，请先复制凭证。",
+        .settingsUploadProofSend: "发送上传凭证",
+        .settingsUploadProofSending: "正在发送上传凭证...",
+        .settingsUploadProofSent: "上传凭证已发送",
+        .settingsUploadProofSendFailed: "发送失败，请复制上传凭证。",
         .settingsSmokeProofPrivacy: "不会包含密钥、对象路径或预签名链接。",
         .settingsSmokeProofBuild: "版本",
         .settingsSmokeProofCloud: "云端",
@@ -1114,6 +1126,10 @@ extension AppLanguage {
         .settingsSmokeProofSending: "Enviando prueba...",
         .settingsSmokeProofSent: "Prueba enviada",
         .settingsSmokeProofSendFailed: "No se pudo enviar. Copia la prueba.",
+        .settingsUploadProofSend: "Enviar prueba de subida",
+        .settingsUploadProofSending: "Enviando prueba de subida...",
+        .settingsUploadProofSent: "Prueba de subida enviada",
+        .settingsUploadProofSendFailed: "No se pudo enviar. Copia la prueba de subida.",
         .settingsSmokeProofPrivacy: "No incluye secretos, rutas de objetos ni URLs prefirmadas.",
         .settingsSmokeProofBuild: "Build",
         .settingsSmokeProofCloud: "Nube",
@@ -1378,6 +1394,10 @@ extension AppLanguage {
         .settingsSmokeProofSending: "Envoi de la preuve...",
         .settingsSmokeProofSent: "Preuve envoyée",
         .settingsSmokeProofSendFailed: "Envoi impossible. Copie la preuve.",
+        .settingsUploadProofSend: "Envoyer la preuve d'envoi",
+        .settingsUploadProofSending: "Envoi de la preuve d'envoi...",
+        .settingsUploadProofSent: "Preuve d'envoi envoyée",
+        .settingsUploadProofSendFailed: "Envoi impossible. Copie la preuve d'envoi.",
         .settingsSmokeProofPrivacy: "Aucun secret, chemin d'objet ni URL présignée n'est inclus.",
         .settingsSmokeProofBuild: "Build",
         .settingsSmokeProofCloud: "Cloud",

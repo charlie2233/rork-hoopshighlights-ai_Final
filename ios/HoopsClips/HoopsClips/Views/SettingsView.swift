@@ -33,6 +33,9 @@ struct SettingsView: View {
     @State private var smokeProofSendFailed = false
     @State private var showingSmokeProofTools = false
     @AppStorage("hoopsclips.cloudUpload.fastUploadMode.v1") private var fastUploadModeEnabled = false
+    @State private var isSendingUploadStateProof = false
+    @State private var uploadStateProofSendSucceeded = false
+    @State private var uploadStateProofSendFailed = false
 
     private var settingsPrimaryAccent: Color { AppTheme.rimOrange }
     private var settingsSecondaryAccent: Color { AppTheme.neonPurple.opacity(0.86) }
@@ -601,6 +604,7 @@ struct SettingsView: View {
                 pendingProofRetryStatusRow
                 phoneSmokeResultPicker
                 copyUploadStateProofButton
+                sendUploadStateProofButton
                 sendIssueBundleButton
                 copyBuildSummaryButton
 
@@ -1541,6 +1545,88 @@ struct SettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             uploadStateProofCopied = false
+        }
+    }
+
+    private var sendUploadStateProofButton: some View {
+        Button {
+            sendUploadStateProof()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: uploadStateProofSendIcon)
+                Text(uploadStateProofSendLabel)
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(uploadStateProofSendSucceeded ? .black : .white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(
+                uploadStateProofSendBackground,
+                in: .rect(cornerRadius: 15)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isSendingUploadStateProof)
+        .accessibilityIdentifier("settings.smokeProof.sendUploadStateButton")
+        .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
+    }
+
+    private var uploadStateProofSendLabel: String {
+        if isSendingUploadStateProof {
+            return languageStore.text(.settingsUploadProofSending)
+        }
+        if uploadStateProofSendSucceeded {
+            return languageStore.text(.settingsUploadProofSent)
+        }
+        if uploadStateProofSendFailed {
+            return languageStore.text(.settingsUploadProofSendFailed)
+        }
+        return languageStore.text(.settingsUploadProofSend)
+    }
+
+    private var uploadStateProofSendIcon: String {
+        if isSendingUploadStateProof {
+            return "arrow.triangle.2.circlepath"
+        }
+        if uploadStateProofSendSucceeded {
+            return "checkmark.circle.fill"
+        }
+        if uploadStateProofSendFailed {
+            return "exclamationmark.triangle.fill"
+        }
+        return "paperplane.fill"
+    }
+
+    private var uploadStateProofSendBackground: Color {
+        if uploadStateProofSendSucceeded {
+            return AppTheme.successGreen
+        }
+        if uploadStateProofSendFailed {
+            return AppTheme.dangerRed.opacity(0.78)
+        }
+        return AppTheme.courtBlue.opacity(0.72)
+    }
+
+    private func sendUploadStateProof() {
+        guard !isSendingUploadStateProof else { return }
+        let proof = recoveredUploadStateProofText
+        UIPasteboard.general.string = proof
+        isSendingUploadStateProof = true
+        uploadStateProofSendSucceeded = false
+        uploadStateProofSendFailed = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint("background_upload_state.send_requested", metadata: "build=\(appBuildNumber)")
+
+        Task { @MainActor in
+            let sent = await LaunchTelemetry.shared.sendManualCrashProof(proof)
+            isSendingUploadStateProof = false
+            uploadStateProofSendSucceeded = sent
+            uploadStateProofSendFailed = !sent
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
+                uploadStateProofSendSucceeded = false
+                uploadStateProofSendFailed = false
+            }
         }
     }
 
