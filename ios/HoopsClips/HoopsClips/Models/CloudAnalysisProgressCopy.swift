@@ -301,7 +301,15 @@ nonisolated enum CloudAnalysisProgressCopy {
         let reason = reasons.isEmpty ? "none" : reasons
         let sourceSizeMB = fileSizeBytes.map { max(0, Int((Double($0) / 1_048_576.0).rounded())) }
         let durationMinutes = durationSeconds.isFinite ? max(0, Int((durationSeconds / 60.0).rounded())) : 0
-        let quickFact = shouldOptimize ? "Smaller source suggested" : nil
+        let quickFact = uploadSourceOptimizationQuickFact(
+            shouldOptimize: shouldOptimize,
+            status: status,
+            isLongSource: isLongSource,
+            isHugeSource: isHugeSource,
+            isUploadStruggling: isUploadStruggling,
+            durationMinutes: durationMinutes,
+            sourceSizeMB: sourceSizeMB
+        )
         let proof = [
             "recommended=\(shouldOptimize)",
             "reason=\(reason)",
@@ -316,6 +324,43 @@ nonisolated enum CloudAnalysisProgressCopy {
             quickFact: quickFact,
             proof: proof
         )
+    }
+
+    private static func uploadSourceOptimizationQuickFact(
+        shouldOptimize: Bool,
+        status: String,
+        isLongSource: Bool,
+        isHugeSource: Bool,
+        isUploadStruggling: Bool,
+        durationMinutes: Int,
+        sourceSizeMB: Int?
+    ) -> String? {
+        guard shouldOptimize else { return nil }
+
+        let sizeText = sourceSizeMB.map { "\($0) MB" }
+        if status.contains("preparing smaller") {
+            if let sizeText {
+                return "Preparing smaller upload from \(sizeText)"
+            }
+            if durationMinutes > 0 {
+                return "Preparing smaller upload for \(durationMinutes) min video"
+            }
+            return "Preparing smaller upload"
+        }
+
+        if isHugeSource, let sizeText {
+            return "Reducing \(sizeText) upload before cloud"
+        }
+
+        if isLongSource, durationMinutes > 0 {
+            return "Optimizing \(durationMinutes) min video before upload"
+        }
+
+        if isUploadStruggling {
+            return "Trying smaller upload path"
+        }
+
+        return "Preparing smaller upload"
     }
 
     private static func compactTeamTitle(_ title: String) -> String {
