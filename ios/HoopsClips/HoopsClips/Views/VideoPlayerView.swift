@@ -2413,6 +2413,7 @@ struct VideoPlayerView: View {
             "cloudAnalysisEndpoint=\(cloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "clientChunkedUploadCompatible=true",
+            "serverMultipartCompleteIdempotent=true",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",

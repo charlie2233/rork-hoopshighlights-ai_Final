@@ -171,6 +171,7 @@ struct CloudAnalysisService {
             "fileProtection=\(cloudUploadFileProtectionName)",
             "waitsForConnectivity=true",
             "sessionSendsLaunchEvents=true",
+            "multipartCompleteIdempotent=true",
             "isDiscretionary=false",
             "privacy=no_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: " ")

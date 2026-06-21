@@ -93,6 +93,7 @@ Required evidence:
 - Copied proof fields:
   - `backgroundUploadWakeReceived`
   - `backgroundUploadRuntimePolicy`
+  - `backgroundUploadMultipartCompleteIdempotent` or `serverMultipartCompleteIdempotent`
   - `pendingBackgroundUploadManifest`
   - `latestUploadProgress`
   - `latestBackgroundUploadProof`
@@ -187,6 +188,7 @@ Pass criteria:
 Part 1 is uploaded and saved.
 Resume uploads at least one more part and saves progress again.
 Final resume skips completed parts and completes multipart upload.
+Duplicate multipart completion is safe if iOS resume calls complete again.
 Final output has status=pass and interruptionProven=true.
 ```
 
