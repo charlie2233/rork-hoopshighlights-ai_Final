@@ -299,7 +299,7 @@ struct CloudAnalysisService {
         return parts.joined(separator: " · ")
     }
 
-    private static func formatUploadElapsedTime(_ elapsedSeconds: TimeInterval) -> String {
+    private nonisolated static func formatUploadElapsedTime(_ elapsedSeconds: TimeInterval) -> String {
         let totalSeconds = max(0, Int(elapsedSeconds.rounded(.down)))
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
@@ -314,7 +314,7 @@ struct CloudAnalysisService {
         return "\(seconds)s"
     }
 
-    private static func formatUploadByteProgress(uploadedBytes: Int64, totalBytes: Int64) -> String {
+    private nonisolated static func formatUploadByteProgress(uploadedBytes: Int64, totalBytes: Int64) -> String {
         let uploadedMB = Double(max(uploadedBytes, 0)) / 1_048_576.0
         let totalMB = Double(max(totalBytes, 1)) / 1_048_576.0
         if totalMB >= 100 {
@@ -323,7 +323,7 @@ struct CloudAnalysisService {
         return String(format: "%.1f/%.1f MB", uploadedMB, totalMB)
     }
 
-    private static func formatUploadSpeed(bytesPerSecond: Double) -> String {
+    private nonisolated static func formatUploadSpeed(bytesPerSecond: Double) -> String {
         let mbPerSecond = max(bytesPerSecond, 0) / 1_048_576.0
         if mbPerSecond >= 1 {
             return String(format: "%.1f MB/s", mbPerSecond)
@@ -333,7 +333,7 @@ struct CloudAnalysisService {
         return "\(Int(kbPerSecond.rounded())) KB/s"
     }
 
-    private static func formatUploadRemainingTime(uploadedBytes: Int64, totalBytes: Int64, bytesPerSecond: Double) -> String {
+    private nonisolated static func formatUploadRemainingTime(uploadedBytes: Int64, totalBytes: Int64, bytesPerSecond: Double) -> String {
         guard bytesPerSecond > 0 else {
             return "calculating"
         }
@@ -365,7 +365,7 @@ struct CloudAnalysisService {
         return fields.joined(separator: " ")
     }
 
-    private static func recordLatestUploadProgressSummary(
+    private nonisolated static func recordLatestUploadProgressSummary(
         stage: String,
         snapshot: CloudUploadProgressSnapshot,
         transferContext: String?,
@@ -493,7 +493,7 @@ struct CloudAnalysisService {
         )
     }
 
-    private static func safeUploadPlanComponent(_ value: String) -> String {
+    private nonisolated static func safeUploadPlanComponent(_ value: String) -> String {
         let compact = value
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: "_")
@@ -1157,6 +1157,14 @@ struct CloudAnalysisService {
         }
     }
 
+    private final class OptimizedUploadExportSessionBox: @unchecked Sendable {
+        let exporter: AVAssetExportSession
+
+        init(_ exporter: AVAssetExportSession) {
+            self.exporter = exporter
+        }
+    }
+
     private static func exportOptimizedUploadSource(from sourceURL: URL) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
         let preset = AVAssetExportSession.exportPresets(compatibleWith: asset)
@@ -1174,24 +1182,25 @@ struct CloudAnalysisService {
         exporter.outputURL = outputURL
         exporter.outputFileType = .mp4
         exporter.shouldOptimizeForNetworkUse = true
+        let exportBox = OptimizedUploadExportSessionBox(exporter)
 
         try await withTaskCancellationHandler(operation: {
-            try await withCheckedThrowingContinuation { continuation in
-                exporter.exportAsynchronously {
-                    switch exporter.status {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                exportBox.exporter.exportAsynchronously {
+                    switch exportBox.exporter.status {
                     case .completed:
                         continuation.resume(returning: ())
                     case .cancelled:
                         continuation.resume(throwing: CancellationError())
                     case .failed:
-                        continuation.resume(throwing: exporter.error ?? CloudAnalysisError.uploadFailed)
+                        continuation.resume(throwing: exportBox.exporter.error ?? CloudAnalysisError.uploadFailed)
                     default:
                         continuation.resume(throwing: CloudAnalysisError.uploadFailed)
                     }
                 }
             }
         }, onCancel: {
-            exporter.cancelExport()
+            exportBox.exporter.cancelExport()
         })
 
         return outputURL
@@ -1251,7 +1260,7 @@ struct CloudAnalysisService {
         return fileSize.int64Value
     }
 
-    private static func recordUploadSourceOptimizationSummary(
+    private nonisolated static func recordUploadSourceOptimizationSummary(
         result: String,
         reason: String,
         originalBytes: Int64,
@@ -1271,7 +1280,7 @@ struct CloudAnalysisService {
         UserDefaults.standard.set(summary, forKey: cloudUploadSourceOptimizationSummaryDefaultsKey)
     }
 
-    private static func megabytes(_ bytes: Int64) -> Int {
+    private nonisolated static func megabytes(_ bytes: Int64) -> Int {
         max(0, Int((Double(max(bytes, 0)) / 1_048_576.0).rounded()))
     }
 
