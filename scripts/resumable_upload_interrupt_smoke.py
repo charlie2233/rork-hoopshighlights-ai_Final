@@ -91,6 +91,14 @@ def parse_args() -> argparse.Namespace:
             "Use this to prove repeated interruptions keep durable completedParts state."
         ),
     )
+    parser.add_argument(
+        "--verify-duplicate-complete",
+        action="store_true",
+        help=(
+            "After the final multipart completion succeeds, call complete again and require success. "
+            "Use this to prove duplicate-safe completion for iOS background resume races."
+        ),
+    )
     args = parser.parse_args()
 
     if not args.worker_url:
@@ -317,12 +325,20 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
                 "privacy": "no_secrets_no_presigned_urls_no_object_keys",
             }
 
-    complete_multipart_upload(base_url, args, job_id, install_id, upload_id, completed_parts)
+    complete_result = complete_multipart_upload(base_url, args, job_id, install_id, upload_id, completed_parts)
+    duplicate_complete_result: dict[str, Any] | None = None
+    if args.verify_duplicate_complete:
+        duplicate_complete_result = complete_multipart_upload(base_url, args, job_id, install_id, upload_id, completed_parts)
     persist_resume_state(
         args.state_path,
         state,
         completed_parts,
         status="completed",
+    )
+    duplicate_complete_proven = (
+        duplicate_complete_result is not None
+        and duplicate_complete_result.get("httpStatus") is not None
+        and 200 <= int(duplicate_complete_result["httpStatus"]) < 300
     )
     return {
         "status": "pass",
@@ -336,6 +352,12 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
         "newlyCompletedParts": newly_completed_count,
         "stateUpdated": True,
         "interruptionProven": True,
+        "multipartCompleteHttpStatus": complete_result.get("httpStatus"),
+        "multipartCompleteJobStatus": complete_result.get("jobStatus"),
+        "duplicateCompleteAttempted": args.verify_duplicate_complete,
+        "duplicateCompleteProven": duplicate_complete_proven if args.verify_duplicate_complete else None,
+        "duplicateCompleteHttpStatus": duplicate_complete_result.get("httpStatus") if duplicate_complete_result else None,
+        "duplicateCompleteJobStatus": duplicate_complete_result.get("jobStatus") if duplicate_complete_result else None,
         "privacy": "no_secrets_no_presigned_urls_no_object_keys",
     }
 
@@ -428,7 +450,7 @@ def complete_multipart_upload(
     install_id: str,
     upload_id: str,
     completed_parts: list[dict[str, Any]],
-) -> None:
+) -> dict[str, Any]:
     payload = {
         "jobId": job_id,
         "installId": install_id,
@@ -447,6 +469,10 @@ def complete_multipart_upload(
             "errorCode": decoded.get("errorCode"),
             "failureReason": decoded.get("failureReason"),
         })
+    return {
+        "httpStatus": status,
+        "jobStatus": decoded.get("status"),
+    }
 
 
 def request_json_get(url: str, timeout_seconds: float) -> tuple[int, dict[str, Any]]:

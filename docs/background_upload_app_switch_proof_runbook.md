@@ -169,7 +169,8 @@ Final resume:
 python3 scripts/resumable_upload_interrupt_smoke.py \
   --worker-url "$WORKER_BASE_URL" \
   --state-path artifacts/resumable_upload_interrupt_state.json \
-  --mode resume
+  --mode resume \
+  --verify-duplicate-complete
 ```
 
 Required evidence:
@@ -180,6 +181,8 @@ Required evidence:
 - `completedParts` after each run.
 - `stateUpdated=true` during resume.
 - Final `status=pass`.
+- Final `duplicateCompleteAttempted=true`.
+- Final `duplicateCompleteProven=true`.
 - No presigned URLs, object keys, or secrets in shared output.
 
 Pass criteria:
@@ -189,7 +192,7 @@ Part 1 is uploaded and saved.
 Resume uploads at least one more part and saves progress again.
 Final resume skips completed parts and completes multipart upload.
 Duplicate multipart completion is safe if iOS resume calls complete again.
-Final output has status=pass and interruptionProven=true.
+Final output has status=pass, interruptionProven=true, and duplicateCompleteProven=true.
 ```
 
 ## Completion checklist
