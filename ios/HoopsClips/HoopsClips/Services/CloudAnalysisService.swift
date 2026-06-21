@@ -34,6 +34,7 @@ struct CloudAnalysisService {
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
     private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
+    private static let maxConcurrentMultipartUploads = 2
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -85,7 +86,7 @@ struct CloudAnalysisService {
         let sessionIdentifiers = manifest.activeSessionIdentifiers
         for identifier in sessionIdentifiers {
             let session = URLSession(
-                configuration: uploadSessionConfiguration(backgroundIdentifier: identifier)
+                configuration: Self.uploadSessionConfiguration(backgroundIdentifier: identifier)
             )
             session.getAllTasks { tasks in
                 tasks.forEach { $0.cancel() }
@@ -1189,7 +1190,7 @@ struct CloudAnalysisService {
             stalled: false
         )
         let uploadSession = URLSession(
-            configuration: uploadSessionConfiguration(
+            configuration: Self.uploadSessionConfiguration(
                 backgroundIdentifier: sourceSessionIdentifier
             ),
             delegate: delegate,
@@ -1346,45 +1347,83 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes
         )
         var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
+        let initialCompletedBytes = Self.completedUploadBytes(
+            completedParts: uploadedParts,
+            chunkSizeBytes: safeChunkSize,
+            totalFileSizeBytes: totalBytes
+        )
+        await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
+        let maxConcurrentUploads = Self.multipartUploadConcurrency(partCount: resumableUpload.partCount)
+        let progressAggregator = CloudMultipartUploadProgressAggregator(
+            completedBytes: initialCompletedBytes,
+            totalBytes: totalBytes,
+            tracker: tracker
+        )
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "multipart_parallel_upload_selected",
+            metadata: "lanes=\(maxConcurrentUploads) partCount=\(resumableUpload.partCount)"
+        )
 
-        for partNumber in 1...resumableUpload.partCount {
-            try Task.checkCancellation()
-            let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
-            if completedPartNumbers.contains(partNumber) {
-                await tracker.update(uploadedBytes: min(Int64(offset) + Int64(safeChunkSize), totalBytes), totalBytes: totalBytes)
-                let snapshot = await tracker.snapshot()
-                reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(resumableUpload.partCount) saved")
-                continue
-            }
-            try fileHandle.seek(toOffset: offset)
-            guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
-                break
-            }
+        try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
+            var nextPartNumber = 1
+            var inFlightUploads = 0
 
-            let partTarget = try await createMultipartPart(
-                baseURL: baseURL,
-                jobID: job.jobId,
-                installID: installID,
-                uploadID: resumableUpload.uploadId,
-                partNumber: partNumber
-            )
-            let etag = try await uploadMultipartChunk(
-                partTarget,
-                chunk: chunk,
-                alreadyUploadedBytes: min(Int64(offset), totalBytes),
-                totalBytes: totalBytes,
-                uploadID: resumableUpload.uploadId,
-                partCount: resumableUpload.partCount,
-                tracker: tracker,
-                reportUploadProgress: reportUploadProgress
-            )
-            uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
-                jobID: job.jobId,
-                uploadID: resumableUpload.uploadId,
-                partNumber: partNumber,
-                etag: etag
-            )
-            completedPartNumbers.insert(partNumber)
+            while nextPartNumber <= resumableUpload.partCount || inFlightUploads > 0 {
+                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= resumableUpload.partCount {
+                    try Task.checkCancellation()
+                    let partNumber = nextPartNumber
+                    nextPartNumber += 1
+                    let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
+                    if completedPartNumbers.contains(partNumber) {
+                        let snapshot = await tracker.snapshot()
+                        reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(resumableUpload.partCount) saved")
+                        continue
+                    }
+                    try fileHandle.seek(toOffset: offset)
+                    guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
+                        nextPartNumber = resumableUpload.partCount + 1
+                        break
+                    }
+
+                    let partTarget = try await createMultipartPart(
+                        baseURL: baseURL,
+                        jobID: job.jobId,
+                        installID: installID,
+                        uploadID: resumableUpload.uploadId,
+                        partNumber: partNumber
+                    )
+                    group.addTask {
+                        let etag = try await Self.uploadMultipartChunk(
+                            partTarget,
+                            chunk: chunk,
+                            alreadyUploadedBytes: min(Int64(offset), totalBytes),
+                            totalBytes: totalBytes,
+                            uploadID: resumableUpload.uploadId,
+                            partCount: resumableUpload.partCount,
+                            tracker: tracker,
+                            progressAggregator: progressAggregator,
+                            reportUploadProgress: reportUploadProgress
+                        )
+                        return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
+                    }
+                    inFlightUploads += 1
+                }
+
+                guard inFlightUploads > 0 else {
+                    break
+                }
+
+                if let completedPart = try await group.next() {
+                    uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                        jobID: job.jobId,
+                        uploadID: resumableUpload.uploadId,
+                        partNumber: completedPart.partNumber,
+                        etag: completedPart.etag
+                    )
+                    completedPartNumbers.insert(completedPart.partNumber)
+                    inFlightUploads -= 1
+                }
+            }
         }
 
         guard uploadedParts.count == resumableUpload.partCount else {
@@ -1482,7 +1521,7 @@ struct CloudAnalysisService {
                 uploadID: manifest.uploadID,
                 partNumber: partNumber
             )
-            let etag = try await uploadMultipartChunk(
+            let etag = try await Self.uploadMultipartChunk(
                 partTarget,
                 chunk: chunk,
                 alreadyUploadedBytes: min(Int64(offset), manifest.totalFileSizeBytes),
@@ -1523,7 +1562,7 @@ struct CloudAnalysisService {
         )
     }
 
-    private func uploadMultipartChunk(
+    private static func uploadMultipartChunk(
         _ partTarget: CloudMultipartPartResponse,
         chunk: Data,
         alreadyUploadedBytes: Int64,
@@ -1531,6 +1570,7 @@ struct CloudAnalysisService {
         uploadID: String,
         partCount: Int,
         tracker: CloudUploadProgressTracker,
+        progressAggregator: CloudMultipartUploadProgressAggregator? = nil,
         reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws -> String {
         guard let uploadURL = URL(string: partTarget.uploadUrl) else {
@@ -1556,8 +1596,16 @@ struct CloudAnalysisService {
                 let delegate = CloudUploadProgressDelegate(
                     onProgress: { sentBytes, _ in
                         Task {
-                            await tracker.update(uploadedBytes: alreadyUploadedBytes + sentBytes, totalBytes: totalBytes)
-                            let snapshot = await tracker.snapshot()
+                            let snapshot: CloudUploadProgressSnapshot
+                            if let progressAggregator {
+                                snapshot = await progressAggregator.recordPartProgress(
+                                    partNumber: partTarget.partNumber,
+                                    sentBytes: sentBytes
+                                )
+                            } else {
+                                await tracker.update(uploadedBytes: alreadyUploadedBytes + sentBytes, totalBytes: totalBytes)
+                                snapshot = await tracker.snapshot()
+                            }
                             reportUploadProgress(snapshot, false, transferContext)
                         }
                     },
@@ -1591,7 +1639,7 @@ struct CloudAnalysisService {
                 )
 
                 let uploadSession = URLSession(
-                    configuration: uploadSessionConfiguration(
+                    configuration: Self.uploadSessionConfiguration(
                         backgroundIdentifier: backgroundIdentifier
                     ),
                     delegate: delegate,
@@ -1612,8 +1660,16 @@ struct CloudAnalysisService {
                 guard let etag = Self.headerValue("ETag", from: http), !etag.isEmpty else {
                     throw CloudAnalysisError.invalidResponse
                 }
-                await tracker.update(uploadedBytes: alreadyUploadedBytes + Int64(chunk.count), totalBytes: totalBytes)
-                let snapshot = await tracker.snapshot()
+                let snapshot: CloudUploadProgressSnapshot
+                if let progressAggregator {
+                    snapshot = await progressAggregator.recordPartCompleted(
+                        partNumber: partTarget.partNumber,
+                        partBytes: Int64(chunk.count)
+                    )
+                } else {
+                    await tracker.update(uploadedBytes: alreadyUploadedBytes + Int64(chunk.count), totalBytes: totalBytes)
+                    snapshot = await tracker.snapshot()
+                }
                 reportUploadProgress(snapshot, false, transferContext)
                 Self.recordLatestUploadProgressSummary(
                     stage: "Uploading video chunk",
@@ -1678,6 +1734,10 @@ struct CloudAnalysisService {
         guard !cloudUploadChunkRetryBackoffSeconds.isEmpty else { return 0 }
         let index = min(max(attemptNumber - 1, 0), cloudUploadChunkRetryBackoffSeconds.count - 1)
         return cloudUploadChunkRetryBackoffSeconds[index]
+    }
+
+    private static func multipartUploadConcurrency(partCount: Int) -> Int {
+        min(max(partCount, 1), maxConcurrentMultipartUploads)
     }
 
     private static func prepareFileForBackgroundUpload(_ url: URL, context: String) {
@@ -1779,7 +1839,7 @@ struct CloudAnalysisService {
         return result.isEmpty ? UUID().uuidString : result
     }
 
-    private func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
+    private static func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
         let configuration: URLSessionConfiguration
         if let backgroundIdentifier {
             configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
@@ -2629,6 +2689,40 @@ private actor CloudUploadProgressTracker {
         guard !didSendStallProof else { return false }
         didSendStallProof = true
         return true
+    }
+}
+
+private actor CloudMultipartUploadProgressAggregator {
+    private let totalBytes: Int64
+    private let tracker: CloudUploadProgressTracker
+    private var completedBytes: Int64
+    private var activePartBytes: [Int: Int64] = [:]
+
+    init(completedBytes: Int64, totalBytes: Int64, tracker: CloudUploadProgressTracker) {
+        self.completedBytes = max(completedBytes, 0)
+        self.totalBytes = max(totalBytes, 0)
+        self.tracker = tracker
+    }
+
+    func recordPartProgress(partNumber: Int, sentBytes: Int64) async -> CloudUploadProgressSnapshot {
+        let currentPartBytes = activePartBytes[partNumber] ?? 0
+        activePartBytes[partNumber] = max(currentPartBytes, sentBytes, 0)
+        return await pushProgress()
+    }
+
+    func recordPartCompleted(partNumber: Int, partBytes: Int64) async -> CloudUploadProgressSnapshot {
+        activePartBytes[partNumber] = nil
+        completedBytes = min(totalBytes, completedBytes + max(partBytes, 0))
+        return await pushProgress()
+    }
+
+    private func pushProgress() async -> CloudUploadProgressSnapshot {
+        let activeBytes = activePartBytes.values.reduce(Int64(0)) { partial, sentBytes in
+            partial + max(sentBytes, 0)
+        }
+        let uploadedBytes = min(totalBytes, completedBytes + activeBytes)
+        await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
+        return await tracker.snapshot()
     }
 }
 
