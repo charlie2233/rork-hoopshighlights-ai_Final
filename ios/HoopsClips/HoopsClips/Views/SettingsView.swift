@@ -552,7 +552,7 @@ struct SettingsView: View {
             }
             .padding(.top, 10)
         } label: {
-            Label("Proof tools", systemImage: "wrench.and.screwdriver.fill")
+            Label("Share app status", systemImage: "square.and.arrow.up.fill")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(AppTheme.courtBlue)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -755,9 +755,9 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 Image(systemName: uploadStateProofCopied ? "checkmark.circle.fill" : "arrow.up.doc.fill")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(uploadStateProofCopied ? "Upload state copied" : "Copy upload state")
+                    Text(uploadStateProofCopied ? "Upload status copied" : "Copy upload status")
                         .font(.caption.weight(.bold))
-                    Text("Small proof for app-switch and background upload debugging.")
+                    Text("Use this if upload feels stuck.")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(uploadStateProofCopied ? .black.opacity(0.72) : AppTheme.subtleText)
                         .lineLimit(2)
@@ -818,7 +818,7 @@ struct SettingsView: View {
         if latestProof != "none" {
             return (
                 icon: "doc.text.magnifyingglass",
-                title: "Upload proof available",
+                title: "Upload status saved",
                 detail: compactUploadStatusDetail(latestProof),
                 tint: AppTheme.courtBlue
             )
@@ -826,8 +826,8 @@ struct SettingsView: View {
 
         return (
             icon: "icloud.and.arrow.up.fill",
-            title: "Background upload ready",
-            detail: "Start cloud analysis to capture upload progress, resumable status, and proof.",
+            title: "Upload tracking ready",
+            detail: "Start AI Analysis to track upload progress.",
             tint: AppTheme.subtleText
         )
     }
