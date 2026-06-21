@@ -147,7 +147,7 @@ struct ExportView: View {
 
     private var emptyState: some View {
         HoopsEmptyStateCard(
-            title: "No AI Edit Candidates",
+            title: "Analyze first",
             message: "Run AI Analysis first. Review is optional; AI Edit can still build your reel.",
             icon: "square.and.arrow.up.fill"
         )
@@ -1030,12 +1030,12 @@ struct ExportView: View {
         if hasLockedSelections {
             return "Unlock Pro to Export"
         }
-        return isCloudRequired ? "Use AI Edit to Render" : "Export Highlight Reel"
+        return isCloudRequired ? "Make AI Reel" : "Export Highlight Reel"
     }
 
     private func exportButtonSubtitle(isCloudRequired: Bool) -> String {
         if isCloudRequired {
-            return "Cloud rendering handles final MP4 output"
+            return "HoopClips makes the final video for you"
         }
         return "\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedFormat.rawValue)"
     }
@@ -1044,7 +1044,7 @@ struct ExportView: View {
         if hasLockedSelections {
             return "Unlock Pro to export"
         }
-        return isCloudRequired ? "Use AI Edit to render" : "Export highlight reel"
+        return isCloudRequired ? "Make AI reel" : "Export highlight reel"
     }
 
     private func exportButtonAccessibilityHint(isCloudRequired: Bool) -> String {

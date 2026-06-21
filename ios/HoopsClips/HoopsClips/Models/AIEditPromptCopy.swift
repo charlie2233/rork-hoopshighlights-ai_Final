@@ -7,7 +7,7 @@ enum AIEditPromptCopy {
     static let quickFocusTitle = "Tap a focus"
     static let clearNoteTitle = "Clear note"
     static let accessibilityLabel = "AI Edit note"
-    static let accessibilityHint = "Type a short editing focus. HoopClips sends the note to the cloud editor and validates it before rendering."
+    static let accessibilityHint = "Type a short editing focus. HoopClips uses it to shape the reel."
     static let clearNoteAccessibilityHint = "Clears the editing note without changing selected export options."
 }
 
@@ -17,11 +17,11 @@ enum AIEditBackgroundJobCopy {
 
         switch phase {
         case .planning:
-            return "Cloud source is ready. Start AI Edit; after the cloud job starts, you can switch apps."
+            return "Video is ready. Start AI Edit; after it starts, you can switch apps."
         case .planReady:
-            return "The plan is ready. Start cloud render and return later for the finished video."
+            return "The reel plan is ready. Start it and come back for the finished video."
         case .renderRequested, .created, .queued, .rendering:
-            return "Safe to switch apps now. HoopClips keeps the cloud job running; reopen the app to refresh."
+            return "Safe to switch apps now. HoopClips keeps making the reel; reopen the app to refresh."
         case .rendered, .failed, .failedTimeout, .cancelled:
             return nil
         }
