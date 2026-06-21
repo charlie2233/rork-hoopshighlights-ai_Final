@@ -186,7 +186,9 @@ struct ReviewView: View {
     }
 
     private var shouldShowReviewSmokeProofShortcut: Bool {
-        AppConstants.cloudLaunchMode.rawValue == "internal_only" && !viewModel.clips.isEmpty
+        AppConstants.cloudLaunchMode.rawValue == "internal_only"
+            && !viewModel.clips.isEmpty
+            && (!didSendReviewSmokeProof || reviewSmokeProofSendFailed || isSendingReviewSmokeProof)
     }
 
     private var reviewSmokeProofShortcut: some View {
