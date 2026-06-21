@@ -817,32 +817,57 @@ struct ReviewView: View {
     }
 
     private func reviewCarouselEvidenceChips(_ clip: Clip) -> some View {
-        LazyVGrid(columns: reviewCarouselChipColumns, alignment: .leading, spacing: 8) {
-            RorkMetricChip(
-                icon: "chart.bar.fill",
-                value: "\(Int(clip.combinedScore * 100))%",
-                label: "Score",
-                tint: AppTheme.neonPurple
+        DisclosureGroup(
+            isExpanded: Binding(
+                get: { expandedClipID == clip.id },
+                set: { isExpanded in
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        expandedClipID = isExpanded ? clip.id : nil
+                    }
+                }
             )
-            RorkMetricChip(
-                icon: "scope",
-                value: "\(Int(clip.confidence * 100))%",
-                label: "Confidence",
-                tint: actionColor(for: clip.action)
-            )
-            RorkMetricChip(
-                icon: "timer",
-                value: clip.formattedDuration,
-                label: "Length",
-                tint: AppTheme.warningYellow
-            )
-            RorkMetricChip(
-                icon: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "checkmark.seal.fill",
-                value: clipNeedsTeamReview(clip) ? "Check" : "Ready",
-                label: "Review",
-                tint: clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.successGreen
-            )
+        ) {
+            LazyVGrid(columns: reviewCarouselChipColumns, alignment: .leading, spacing: 8) {
+                RorkMetricChip(
+                    icon: "chart.bar.fill",
+                    value: "\(Int(clip.combinedScore * 100))%",
+                    label: "Score",
+                    tint: AppTheme.neonPurple
+                )
+                RorkMetricChip(
+                    icon: "scope",
+                    value: "\(Int(clip.confidence * 100))%",
+                    label: "Confidence",
+                    tint: actionColor(for: clip.action)
+                )
+                RorkMetricChip(
+                    icon: "timer",
+                    value: clip.formattedDuration,
+                    label: "Length",
+                    tint: AppTheme.warningYellow
+                )
+                RorkMetricChip(
+                    icon: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "checkmark.seal.fill",
+                    value: clipNeedsTeamReview(clip) ? "Check" : "Ready",
+                    label: "Review",
+                    tint: clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.successGreen
+                )
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Why?", systemImage: "checkmark.seal.fill")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(AppTheme.neonPurple)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(AppTheme.neonPurple.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.neonPurple.opacity(0.20), lineWidth: 1)
+        )
+        .accessibilityIdentifier("review.carousel.whyDrawer")
     }
 
     private func settleFocusedClipIfNeeded() {
