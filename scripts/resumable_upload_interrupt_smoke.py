@@ -64,6 +64,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--analysis-version", default=os.getenv("HOOPS_UPLOAD_SMOKE_ANALYSIS_VERSION", "resumable-upload-smoke"))
     parser.add_argument("--duration-seconds", type=float, default=float(os.getenv("HOOPS_UPLOAD_SMOKE_DURATION_SECONDS", "60")))
     parser.add_argument("--content-type", default=None)
+    parser.add_argument(
+        "--stop-after-new-parts",
+        type=int,
+        default=0,
+        help=(
+            "In resume mode, intentionally stop after this many newly uploaded parts. "
+            "Use this to prove repeated interruptions keep durable completedParts state."
+        ),
+    )
     args = parser.parse_args()
 
     if not args.worker_url:
@@ -74,6 +83,8 @@ def parse_args() -> argparse.Namespace:
         raise ResumableUploadSmokeError("--file is required for this mode.")
     if args.file_path and not args.file_path.is_file():
         raise ResumableUploadSmokeError("Upload source file does not exist.", {"file": str(args.file_path)})
+    if args.stop_after_new_parts < 0:
+        raise ResumableUploadSmokeError("--stop-after-new-parts must be zero or positive.")
     return args
 
 
@@ -89,7 +100,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         state = load_state(args.state_path)
         resumed = resume_from_state(base_url, args, state)
         result = {
-            "status": "pass" if first.get("status") == "interrupted" and resumed.get("status") == "pass" else "fail",
+            "status": "pass" if first.get("status") == "interrupted" and resumed.get("status") == "pass" else resumed.get("status", "fail"),
             "mode": "roundtrip",
             "worker": sanitized_worker(base_url),
             "firstPhase": first,
@@ -170,6 +181,7 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
     part_count = require_int(state, "partCount")
     completed_parts = normalize_completed_parts(state.get("completedParts"))
     completed_numbers = {part["partNumber"] for part in completed_parts}
+    newly_completed_count = 0
 
     for part_number in range(1, part_count + 1):
         if part_number in completed_numbers:
@@ -177,12 +189,28 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
         completed_part = upload_part(base_url, args, source_path, job_id, upload_id, chunk_size, part_number, install_id=install_id)
         completed_parts.append(completed_part)
         completed_numbers.add(part_number)
+        newly_completed_count += 1
         persist_resume_state(
             args.state_path,
             state,
             completed_parts,
             status="resuming",
         )
+        if args.stop_after_new_parts > 0 and newly_completed_count >= args.stop_after_new_parts:
+            return {
+                "status": "interrupted",
+                "mode": "resume",
+                "worker": sanitized_worker(base_url),
+                "jobIdHash": stable_hash(job_id),
+                "uploadIdHash": stable_hash(upload_id),
+                "chunkSizeBytes": chunk_size,
+                "partCount": part_count,
+                "completedParts": len(completed_parts),
+                "newlyCompletedParts": newly_completed_count,
+                "stateUpdated": True,
+                "nextAction": "rerun_with_mode_resume",
+                "privacy": "no_secrets_no_presigned_urls_no_object_keys",
+            }
 
     complete_multipart_upload(base_url, args, job_id, install_id, upload_id, completed_parts)
     persist_resume_state(
@@ -200,6 +228,7 @@ def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, 
         "chunkSizeBytes": chunk_size,
         "partCount": part_count,
         "completedParts": len(completed_parts),
+        "newlyCompletedParts": newly_completed_count,
         "stateUpdated": True,
         "interruptionProven": True,
         "privacy": "no_secrets_no_presigned_urls_no_object_keys",
