@@ -52,6 +52,14 @@ sanitizedEvidencePrivacyCheck=true
 
 Do not include presigned URLs, object keys, upload IDs, job IDs, headers, or local paths.
 
+If copied proof accidentally includes private values, create a redacted copy before sharing:
+
+```bash
+python3 scripts/redact_background_upload_phone_proof.py /path/to/raw-proof.txt --out /path/to/redacted-proof.txt --report /path/to/redaction-report.json
+```
+
+Then run the proof checker on the redacted file before using it as evidence.
+
 ## Step 2: TestFlight proof
 
 Do not trigger a new workflow just for proof. Inspect an existing upload run.
