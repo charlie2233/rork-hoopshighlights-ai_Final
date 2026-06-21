@@ -34,16 +34,16 @@ enum AIEditQuickPromptLibrary {
             icon: "timer"
         ),
         AIEditQuickPrompt(
-            id: "clear-outcomes",
-            title: "Full",
-            prompt: "Full plays: action-to-result, visible outcome; unsure clips stay for review.",
-            icon: "scope"
+            id: "recruiting",
+            title: "Recruit",
+            prompt: "Recruiting reel: keep full plays with clear outcomes, strong scoring, assists, defense, hustle, and no weak or unclear clips.",
+            icon: "star.circle.fill"
         ),
         AIEditQuickPrompt(
-            id: "crowd-pop",
-            title: "Crowd",
-            prompt: "Use loud crowd pops as nearby highlight clues; keep only clear plays.",
-            icon: "waveform"
+            id: "recap",
+            title: "Recap",
+            prompt: "NBA-style recap: story flow, best makes, stops, assists, crowd pops, clean pacing, and clear outcomes.",
+            icon: "sparkles"
         ),
         AIEditQuickPrompt(
             id: "team-recap",
