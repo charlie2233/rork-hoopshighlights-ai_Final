@@ -2727,14 +2727,46 @@ struct VideoPlayerView: View {
             return nil
         }
 
+        let progressSummary = uploadResumeProgressSummary(from: summary)
         let completedSummary = summary
             .split(separator: " ")
             .first { $0.hasPrefix("completed=") }
             .map { String($0.dropFirst("completed=".count)) }
         if let completedSummary, completedSummary != "0/1" {
+            if let progressSummary {
+                return "Saved upload ready: \(progressSummary). The main button skips finished chunks (\(completedSummary))."
+            }
             return "Saved upload ready. The main button will skip finished chunks (\(completedSummary))."
         }
+        if let progressSummary {
+            return "Saved upload ready: \(progressSummary). The main button resumes instead of restarting."
+        }
         return "Saved upload ready. The main button resumes instead of restarting."
+    }
+
+    private func uploadResumeProgressSummary(from summary: String) -> String? {
+        var values: [String: String] = [:]
+        for token in summary.split(separator: " ") {
+            let parts = token.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            values[String(parts[0])] = String(parts[1])
+        }
+
+        if let progress = Int(values["progressPercent"] ?? "") {
+            let boundedProgress = min(max(progress, 0), 100)
+            guard boundedProgress > 0 else { return nil }
+            return "\(boundedProgress)% saved"
+        }
+
+        guard let completedBytes = Int64(values["completedBytes"] ?? ""),
+              let totalBytes = Int64(values["totalBytes"] ?? ""),
+              totalBytes > 0 else {
+            return nil
+        }
+
+        let percent = min(100, max(0, Int((Double(completedBytes) / Double(totalBytes) * 100).rounded())))
+        guard percent > 0 else { return nil }
+        return "\(percent)% saved"
     }
 
     private var hasPendingUploadResume: Bool {
