@@ -1941,6 +1941,10 @@ struct VideoPlayerView: View {
                 backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
             }
 
+            if shouldShowSlowUploadProofTools {
+                backgroundUploadDiagnosticsTray
+            }
+
             if analysisBackgroundUploadBadgeText != nil,
                analysisBackgroundUploadStillRunningText == nil,
                let analysisRecoveredUploadProofPromptText {
@@ -2432,7 +2436,7 @@ struct VideoPlayerView: View {
     private var backgroundUploadDiagnosticsTray: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Only open this if you are sending upload proof or support asks for it.")
+                Text("Only use this if upload seems stuck or support asks.")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
@@ -2441,7 +2445,7 @@ struct VideoPlayerView: View {
             }
             .padding(.top, 8)
         } label: {
-            Label("Upload proof tools", systemImage: "wrench.and.screwdriver.fill")
+            Label("Stuck? Send proof", systemImage: "wrench.and.screwdriver.fill")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.cyan)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2786,6 +2790,11 @@ struct VideoPlayerView: View {
             latestBackgroundUploadProof: LaunchTelemetry.shared.latestBackgroundUploadProofSummary,
             recentBackgroundUploadProofTrail: LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary
         )
+    }
+
+    private var shouldShowSlowUploadProofTools: Bool {
+        (analysisSlowUploadHelp != nil || analysisBackgroundUploadStillRunningText != nil)
+            && analysisRecoveredUploadProofPromptText == nil
     }
 
     private var analysisUploadSourceOptimization: CloudAnalysisUploadSourceOptimization {
