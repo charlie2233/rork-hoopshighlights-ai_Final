@@ -1308,6 +1308,7 @@ struct SettingsView: View {
     }
 
     private var testFlightSmokeChecklistText: String {
+        let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
         TestFlightSmokeChecklistCopy.checklist(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             appVersion: appVersionString,
@@ -1315,7 +1316,18 @@ struct SettingsView: View {
             environment: AppConstants.environmentName,
             cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue,
             phoneSmokeResult: phoneSmokeResult.rawValue,
-            phoneSmokeIssueNote: phoneSmokeIssueNoteForProof
+            phoneSmokeIssueNote: phoneSmokeIssueNoteForProof,
+            videoLoaded: viewModel.isVideoLoaded,
+            videoDurationSeconds: Int(viewModel.videoDuration.rounded()),
+            analysisIsAnalyzing: viewModel.analysisService.isAnalyzing,
+            analysisProgressPercent: analysisProgressPercent,
+            analysisStatus: proofTextValue(viewModel.analysisService.statusMessage),
+            reviewReady: !viewModel.clips.isEmpty && !viewModel.analysisService.isAnalyzing,
+            clipCount: viewModel.clips.count,
+            keptClipCount: viewModel.keptClips.count,
+            needsReviewClipCount: viewModel.needsReviewClips.count,
+            pendingUploadSummary: proofTextValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()),
+            latestUploadProgress: proofTextValue(CloudAnalysisService.latestUploadProgressSummary())
         )
     }
 
