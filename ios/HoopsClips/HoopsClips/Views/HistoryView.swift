@@ -566,7 +566,30 @@ struct HistoryView: View {
 
     private func historyStatusLine(for project: PersistedProjectRecord) -> String {
         let date = project.updatedAt.formatted(date: .abbreviated, time: .shortened)
-        return "\(historyProjectStateLabel(for: project)) - Updated \(date)"
+        let duration = historyDurationLabel(for: project.sourceDuration)
+        return "\(historyProjectStateLabel(for: project)) - \(duration) - Updated \(date)"
+    }
+
+    private func historyDurationLabel(for seconds: Double) -> String {
+        guard seconds.isFinite, seconds > 0 else {
+            return "video"
+        }
+
+        let totalSeconds = max(1, Int(seconds.rounded()))
+        let minutes = totalSeconds / 60
+        let remainingSeconds = totalSeconds % 60
+
+        if minutes >= 60 {
+            let hours = minutes / 60
+            let extraMinutes = minutes % 60
+            return extraMinutes > 0 ? "\(hours)h \(extraMinutes)m" : "\(hours)h"
+        }
+
+        if minutes > 0 {
+            return remainingSeconds > 0 ? "\(minutes)m \(remainingSeconds)s" : "\(minutes)m"
+        }
+
+        return "\(remainingSeconds)s"
     }
 
     private func historyResumeActionTitle(for project: PersistedProjectRecord) -> String {
@@ -842,7 +865,7 @@ private struct HistoryProjectDetailView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                detailLine(label: "Source", value: project.sourceFilename)
+                detailLine(label: "Source", value: project.sourceDisplayName)
                 detailLine(label: "Created", value: project.createdAt.formatted(date: .abbreviated, time: .shortened))
                 detailLine(label: "Updated", value: project.updatedAt.formatted(date: .abbreviated, time: .shortened))
                 if let lastExportedAt = project.lastExportedAt {

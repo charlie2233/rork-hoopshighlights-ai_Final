@@ -135,6 +135,14 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         )
     }
 
+    var sourceDisplayName: String {
+        Self.friendlyProjectTitle(
+            sourceFilename: sourceFilename,
+            sourceDuration: sourceDuration,
+            createdAt: createdAt
+        )
+    }
+
     var hasLatestExport: Bool {
         latestExportRelativePath != nil
     }
@@ -219,6 +227,12 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .replacingOccurrences(of: "YTDown_", with: "")
             .replacingOccurrences(of: "_YouTube_", with: " ")
             .replacingOccurrences(of: "_Media_", with: " ")
+            .replacingOccurrences(of: "yt1s.com - ", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: "youtube video", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: "video download", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: "downloaded video", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: "screenrecording", with: "screen recording", options: [.caseInsensitive])
+            .replacingOccurrences(of: "videoplayback", with: "", options: [.caseInsensitive])
 
         if let mediaRange = value.range(of: "_Media", options: [.caseInsensitive]) {
             value = String(value[..<mediaRange.lowerBound])
@@ -227,8 +241,15 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         value = value
             .replacingOccurrences(of: "-vs-", with: " vs ", options: [.caseInsensitive])
             .replacingOccurrences(of: "_vs_", with: " vs ", options: [.caseInsensitive])
+            .replacingOccurrences(of: " versus ", with: " vs ", options: [.caseInsensitive])
+            .replacingOccurrences(of: " v ", with: " vs ", options: [.caseInsensitive])
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: ".", with: " ")
+            .replacingOccurrences(of: "(", with: " ")
+            .replacingOccurrences(of: ")", with: " ")
+            .replacingOccurrences(of: "[", with: " ")
+            .replacingOccurrences(of: "]", with: " ")
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -248,6 +269,11 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .split(whereSeparator: \.isWhitespace)
             .map(String.init)
 
+        while let first = tokens.first,
+              shouldDropLeadingGeneratedToken(first) {
+            tokens.removeFirst()
+        }
+
         while let last = tokens.last,
               shouldDropTrailingGeneratedToken(last) {
             tokens.removeLast()
@@ -258,6 +284,9 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
 
     private static func shouldDropTrailingGeneratedToken(_ token: String) -> Bool {
         let lower = token.lowercased()
+        if generatedWrapperTokens.contains(lower) {
+            return true
+        }
         if lower == "4k" || lower == "uhd" || lower == "hd" {
             return true
         }
@@ -279,6 +308,44 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         }
         return false
     }
+
+    private static func shouldDropLeadingGeneratedToken(_ token: String) -> Bool {
+        let lower = token.lowercased()
+        if generatedWrapperTokens.contains(lower) {
+            return true
+        }
+        if lower.range(of: #"^(img|vid|mov|dsc|pxl|trim)\d*$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if lower.range(of: #"^\d{3,}$"#, options: .regularExpression) != nil {
+            return !isLikelyYear(lower)
+        }
+        return false
+    }
+
+    private static let generatedWrapperTokens: Set<String> = [
+        "clip",
+        "copy",
+        "download",
+        "downloaded",
+        "file",
+        "fullsizeoutput",
+        "hd",
+        "import",
+        "imported",
+        "media",
+        "movie",
+        "project",
+        "source",
+        "temp",
+        "temporary",
+        "trim",
+        "uhd",
+        "video",
+        "videoplayback",
+        "youtube",
+        "ytdown"
+    ]
 
     private static func looksLikeCameraRollTitle(_ tokens: [String]) -> Bool {
         guard let first = tokens.first?.lowercased() else { return true }
