@@ -1016,6 +1016,7 @@ struct CloudAnalysisService {
         defer {
             uploadMonitorTask.cancel()
         }
+        Self.prepareFileForBackgroundUpload(url, context: "source_file")
 
         if let resumableUpload = job.resumableUpload, resumableUpload.partCount > 1 {
             let initialSnapshot = await tracker.snapshot()
@@ -1097,7 +1098,6 @@ struct CloudAnalysisService {
             request.setValue(value, forHTTPHeaderField: header)
         }
 
-        Self.prepareFileForBackgroundUpload(url, context: "source_upload")
         let response = try await delegate.upload(request: request, fromFile: url, using: uploadSession)
         let finalSnapshot = await tracker.snapshot()
         Self.recordLatestUploadProgressSummary(
