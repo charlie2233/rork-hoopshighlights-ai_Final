@@ -1104,7 +1104,8 @@ struct ContentView: View {
             reviewRecoveryNotice = nil
         } else {
             withAnimation(tabSelectionAnimation) {
-            reviewRecoveryNotice = nil
+                reviewRecoveryNotice = nil
+            }
         }
     }
 
@@ -1128,7 +1129,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
     }
 
     private func openPlayerFromReviewRecovery() {
@@ -1166,7 +1166,14 @@ struct ContentView: View {
     private func resumeCloudAnalysisAfterForegroundIfNeeded() {
         let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         if pendingManifest.contains("pending=true") {
-            showUploadResumeNotice("Resuming saved upload...")
+            let message = pendingManifest.contains("source=available")
+                ? "Resuming saved upload..."
+                : "Saved upload source missing. Check Player."
+            showUploadResumeNotice(message)
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "upload.resume.notice",
+                metadata: "sourceAvailable=\(pendingManifest.contains("source=available"))"
+            )
         }
         Task { @MainActor in
             await viewModel.resumeInFlightCloudAnalysisIfNeeded()
