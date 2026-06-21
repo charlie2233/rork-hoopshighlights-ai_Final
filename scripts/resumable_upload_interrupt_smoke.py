@@ -50,6 +50,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--file", dest="file_path", type=Path)
     parser.add_argument("--state-path", type=Path, default=Path("artifacts/resumable_upload_interrupt_state.json"))
     parser.add_argument(
+        "--generate-test-file-mb",
+        type=int,
+        default=0,
+        help=(
+            "Create a local sparse synthetic file of this size when --file is omitted or missing. "
+            "Use only for transport/resume proof, not analysis quality proof."
+        ),
+    )
+    parser.add_argument(
         "--mode",
         choices=["interrupt-after-first", "resume", "roundtrip"],
         required=True,
@@ -79,9 +88,13 @@ def parse_args() -> argparse.Namespace:
         raise ResumableUploadSmokeError("WORKER_BASE_URL or --worker-url is required.")
     if args.timeout_seconds <= 0:
         raise ResumableUploadSmokeError("Timeout must be positive.", {"timeoutSeconds": args.timeout_seconds})
+    if args.generate_test_file_mb < 0:
+        raise ResumableUploadSmokeError("--generate-test-file-mb must be zero or positive.")
+    if args.mode in {"interrupt-after-first", "roundtrip"} and not args.file_path and args.generate_test_file_mb <= 0:
+        raise ResumableUploadSmokeError("--file or --generate-test-file-mb is required for this mode.")
     if args.mode in {"interrupt-after-first", "roundtrip"} and not args.file_path:
-        raise ResumableUploadSmokeError("--file is required for this mode.")
-    if args.file_path and not args.file_path.is_file():
+        args.file_path = args.state_path.parent / "resumable_upload_synthetic.mp4"
+    if args.file_path and not args.file_path.is_file() and args.generate_test_file_mb <= 0:
         raise ResumableUploadSmokeError("Upload source file does not exist.", {"file": str(args.file_path)})
     if args.stop_after_new_parts < 0:
         raise ResumableUploadSmokeError("--stop-after-new-parts must be zero or positive.")
@@ -113,6 +126,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[str, Any]:
     source_path = args.file_path
     assert source_path is not None
+    ensure_source_file_for_interrupt(args, source_path)
     source_size = source_path.stat().st_size
     content_type = args.content_type or mimetypes.guess_type(source_path.name)[0] or "video/mp4"
     job = create_analysis_job(base_url, args, source_path.name, content_type, source_size)
@@ -168,6 +182,20 @@ def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[
         "nextAction": "rerun_with_mode_resume",
         "privacy": "no_secrets_no_presigned_urls_no_object_keys",
     }
+
+
+def ensure_source_file_for_interrupt(args: argparse.Namespace, source_path: Path) -> None:
+    if source_path.is_file():
+        return
+    if args.generate_test_file_mb <= 0:
+        raise ResumableUploadSmokeError("Upload source file does not exist.", {"sourcePathHash": stable_hash(str(source_path))})
+
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    size_bytes = args.generate_test_file_mb * 1024 * 1024
+    if size_bytes <= 0:
+        raise ResumableUploadSmokeError("Synthetic file size must be positive.")
+    with source_path.open("wb") as handle:
+        handle.truncate(size_bytes)
 
 
 def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, Any]) -> dict[str, Any]:
