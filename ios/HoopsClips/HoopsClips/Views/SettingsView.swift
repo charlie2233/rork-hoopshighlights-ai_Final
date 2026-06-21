@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var phoneSmokeIssueNote = ""
     @State private var smokeProofCopied = false
     @State private var uploadStateProofCopied = false
+    @State private var issueBundleCopied = false
     @State private var isSendingSmokeProof = false
     @State private var smokeProofSendSucceeded = false
     @State private var smokeProofSendFailed = false
@@ -514,6 +515,7 @@ struct SettingsView: View {
                 settingsBackgroundUploadStatusRow
                 phoneSmokeResultPicker
                 copyUploadStateProofButton
+                copyIssueBundleButton
                 copyBuildSummaryButton
                 copyTestFlightSmokeChecklistButton
 
@@ -926,6 +928,40 @@ struct SettingsView: View {
         .accessibilityIdentifier("settings.backgroundUpload.copyStateButton")
     }
 
+    private var copyIssueBundleButton: some View {
+        Button {
+            copyIssueBundleProof()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: issueBundleCopied ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(issueBundleCopied ? "Issue bundle copied" : "Copy issue bundle")
+                        .font(.caption.weight(.bold))
+                    Text("Build + upload + crash state.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(issueBundleCopied ? .black.opacity(0.72) : AppTheme.subtleText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(issueBundleCopied ? .black : .white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                issueBundleCopied ? AppTheme.successGreen : AppTheme.warningYellow.opacity(0.18),
+                in: .rect(cornerRadius: 14)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke((issueBundleCopied ? AppTheme.successGreen : AppTheme.warningYellow).opacity(0.30), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.smokeProof.copyIssueBundleButton")
+        .accessibilityHint("Copies one sanitized issue bundle with build, upload, and crash state.")
+    }
+
     private var backgroundUploadStatusPreview: (icon: String, title: String, detail: String, tint: Color) {
         let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
@@ -1225,6 +1261,24 @@ struct SettingsView: View {
         ].joined(separator: "\n")
     }
 
+    private var recoveredUploadStateProofText: String {
+        let savedPlayerBackgroundUploadProofForCopy = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
+        guard !savedPlayerBackgroundUploadProofForCopy.isEmpty else {
+            return uploadStateProofText
+        }
+        return uploadStateProofText + "\n\nsavedPlayerBackgroundUploadProof=\n" + proofLongTextValue(savedPlayerBackgroundUploadProofForCopy)
+    }
+
+    private var issueBundleProofText: String {
+        SmokeProofBundleCopy.bundle(
+            generatedAt: ISO8601DateFormatter().string(from: Date()),
+            buildSummary: buildSummaryProofText,
+            uploadState: recoveredUploadStateProofText,
+            crashSummary: proofLongTextValue(LaunchTelemetry.shared.latestUnexpectedExitSummary),
+            crashDelivery: proofTextValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary)
+        )
+    }
+
     private func backgroundUploadWakeReceivedFlag(latestProof: String, proofTrail: String) -> String {
         let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
         let didWake = combinedProof.contains("background_urlsession_events_received")
@@ -1275,14 +1329,22 @@ struct SettingsView: View {
     }
 
     private func copyUploadStateProof() {
-        let savedPlayerBackgroundUploadProofForCopy = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
-        let recoveredUploadStateProofText = savedPlayerBackgroundUploadProofForCopy.isEmpty ? uploadStateProofText : uploadStateProofText + "\n\nsavedPlayerBackgroundUploadProof=\n" + savedPlayerBackgroundUploadProofForCopy
         UIPasteboard.general.string = recoveredUploadStateProofText
         uploadStateProofCopied = true
         LaunchTelemetry.shared.recordStabilityCheckpoint("background_upload_state.copied", metadata: "build=\(appBuildNumber)")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             uploadStateProofCopied = false
+        }
+    }
+
+    private func copyIssueBundleProof() {
+        UIPasteboard.general.string = issueBundleProofText
+        issueBundleCopied = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.issue_bundle_copied", metadata: "build=\(appBuildNumber)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            issueBundleCopied = false
         }
     }
 

@@ -88,3 +88,67 @@ nonisolated enum SmokeProofSummaryCopy {
         return String(compact.prefix(180))
     }
 }
+
+nonisolated enum SmokeProofBundleCopy {
+    static let title = "HoopClips Issue Bundle"
+
+    static func bundle(
+        generatedAt: String,
+        buildSummary: String,
+        uploadState: String,
+        crashSummary: String,
+        crashDelivery: String
+    ) -> String {
+        [
+            title,
+            "generatedAt=\(safeBundleValue(generatedAt))",
+            "",
+            "buildSummary:",
+            buildSummary,
+            "",
+            "uploadState:",
+            uploadState,
+            "",
+            "latestUnexpectedExit=\(safeBundleValue(crashSummary))",
+            "latestCrashReportDelivery=\(safeBundleValue(crashDelivery))",
+            "privacy=no secrets, URLs, object keys, or local file paths"
+        ].joined(separator: "\n")
+    }
+
+    private static func safeBundleValue(_ value: String) -> String {
+        let compact = value
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else { return "none" }
+
+        let lowercased = compact.lowercased()
+        let forbiddenMarkers = [
+            "http://",
+            "https://",
+            "uploads/",
+            "edits/",
+            "renders/",
+            "render_logs/",
+            "sourceobjectkey",
+            "source_object_key",
+            "object_key",
+            "presigned",
+            "signature",
+            "x-amz",
+            "x-goog",
+            "authorization",
+            "bearer",
+            "file://",
+            "/var/",
+            "/users/"
+        ]
+        if forbiddenMarkers.contains(where: { lowercased.contains($0) }) {
+            return "redacted"
+        }
+
+        return String(compact.prefix(240))
+    }
+}

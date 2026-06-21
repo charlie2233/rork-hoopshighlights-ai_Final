@@ -1288,6 +1288,27 @@ struct HoopsClipsTests {
         #expect(PhoneSmokeIssueNoteCopy.sanitized("https://x.test/uploads/a?X-Amz-Signature=b", enabled: true) == "redacted")
     }
 
+    @Test func testSmokeProofIssueBundleIncludesKeySectionsAndRedactsCrashValues() {
+        let bundle = SmokeProofBundleCopy.bundle(
+            generatedAt: "2026-06-20T12:00:00Z",
+            buildSummary: "HoopClips Build Summary\nbuild=46\nphoneSmokeResult=issue",
+            uploadState: "HoopClips Background Upload State\nlatestProgress=uploading_12_percent",
+            crashSummary: "Crash after https://example.test/uploads/source.mp4?X-Amz-Signature=secret",
+            crashDelivery: "sent"
+        )
+
+        #expect(bundle.contains("HoopClips Issue Bundle"))
+        #expect(bundle.contains("buildSummary:"))
+        #expect(bundle.contains("uploadState:"))
+        #expect(bundle.contains("build=46"))
+        #expect(bundle.contains("latestProgress=uploading_12_percent"))
+        #expect(bundle.contains("latestUnexpectedExit=redacted"))
+        #expect(bundle.contains("latestCrashReportDelivery=sent"))
+        #expect(bundle.contains("privacy=no secrets"))
+        #expect(!bundle.localizedCaseInsensitiveContains("https://"))
+        #expect(!bundle.localizedCaseInsensitiveContains("x-amz"))
+    }
+
     @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-\(UUID().uuidString).mp4")
         try Data("fake video".utf8).write(to: tempURL)
