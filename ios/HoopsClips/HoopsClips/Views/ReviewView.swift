@@ -714,9 +714,21 @@ struct ReviewView: View {
 
     private func reviewFeedbackTags(_ clip: Clip) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Quick feedback")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.subtleText)
+            HStack(spacing: 6) {
+                Image(systemName: "tag.fill")
+                    .font(.caption2.weight(.heavy))
+                    .accessibilityHidden(true)
+
+                Text("Issue?")
+                    .font(.caption.weight(.heavy))
+
+                Spacer(minLength: 0)
+
+                Text("optional")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+            .foregroundStyle(.white.opacity(0.86))
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
