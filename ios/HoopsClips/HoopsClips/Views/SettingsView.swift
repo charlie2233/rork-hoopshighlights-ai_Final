@@ -552,24 +552,28 @@ struct SettingsView: View {
 
     private var settingsBackgroundUploadStatusRow: some View {
         let status = backgroundUploadStatusPreview
-        return HStack(alignment: .top, spacing: 10) {
-            Image(systemName: status.icon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(status.tint)
-                .frame(width: 24)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: status.icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(status.tint)
+                    .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(status.title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                Text(status.detail)
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(status.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(status.detail)
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .layoutPriority(1)
             }
-            .layoutPriority(1)
+
+            backgroundUploadLifecycleTimeline
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -580,6 +584,151 @@ struct SettingsView: View {
                 .stroke(status.tint.opacity(0.20), lineWidth: 1)
         }
         .accessibilityIdentifier("settings.backgroundUpload.status")
+    }
+
+    private var backgroundUploadLifecycleTimeline: some View {
+        let steps = backgroundUploadLifecycleSteps
+        return VStack(alignment: .leading, spacing: 7) {
+            ForEach(steps.indices, id: \.self) { index in
+                let step = steps[index]
+                HStack(spacing: 8) {
+                    Image(systemName: step.icon)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(step.tint)
+                        .frame(width: 16)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(step.title)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.92))
+                        Text(step.detail)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.74)
+                    }
+                    .layoutPriority(1)
+                }
+            }
+        }
+        .padding(10)
+        .background(.white.opacity(0.05), in: .rect(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.cyan.opacity(0.14), lineWidth: 1)
+        }
+        .accessibilityIdentifier("settings.backgroundUpload.timeline")
+    }
+
+    private var backgroundUploadLifecycleSteps: [(icon: String, title: String, detail: String, tint: Color)] {
+        let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
+        let proofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
+        let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
+        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let hasProgress = latestProgress.trimmingCharacters(in: .whitespacesAndNewlines) != "none"
+        let didWake = combinedProof.contains("background_urlsession_events_received")
+        let didReattach = combinedProof.contains("reattached_session")
+            || combinedProof.contains("events_received")
+        let didFinish = combinedProof.contains("events_completed")
+            || combinedProof.contains("events_finish_requested")
+
+        return [
+            backgroundUploadLifecycleStep(
+                isDone: didWake,
+                doneIcon: "iphone.radiowaves.left.and.right",
+                waitingIcon: "iphone.slash",
+                title: "iOS wake",
+                doneDetail: "Background wake received.",
+                waitingDetail: "Waiting for app-switch wake.",
+                tint: Color.cyan
+            ),
+            backgroundUploadLifecycleStep(
+                isDone: didReattach,
+                doneIcon: "link.circle.fill",
+                waitingIcon: "link.circle",
+                title: "Session reattach",
+                doneDetail: "Upload session checked.",
+                waitingDetail: "Waiting to reattach session.",
+                tint: AppTheme.neonPurple
+            ),
+            backgroundUploadLifecycleStep(
+                isDone: hasProgress,
+                doneIcon: "speedometer",
+                waitingIcon: "hourglass",
+                title: "Upload movement",
+                doneDetail: backgroundUploadProgressTimelineDetail(from: latestProgress),
+                waitingDetail: "No chunk progress recorded yet.",
+                tint: AppTheme.warningYellow
+            ),
+            backgroundUploadLifecycleStep(
+                isDone: didFinish,
+                doneIcon: "checkmark.seal.fill",
+                waitingIcon: "checkmark.seal",
+                title: "Final callback",
+                doneDetail: "Completion handler path recorded.",
+                waitingDetail: "Waiting for final callback.",
+                tint: AppTheme.successGreen
+            )
+        ]
+    }
+
+    private func backgroundUploadLifecycleStep(
+        isDone: Bool,
+        doneIcon: String,
+        waitingIcon: String,
+        title: String,
+        doneDetail: String,
+        waitingDetail: String,
+        tint: Color
+    ) -> (icon: String, title: String, detail: String, tint: Color) {
+        (
+            icon: isDone ? doneIcon : waitingIcon,
+            title: title,
+            detail: isDone ? doneDetail : waitingDetail,
+            tint: isDone ? tint : AppTheme.subtleText
+        )
+    }
+
+    private func backgroundUploadProgressTimelineDetail(from summary: String) -> String {
+        let bytes = backgroundUploadProgressField("bytes", in: summary)
+        let speed = backgroundUploadProgressField("speed", in: summary)
+        let eta = backgroundUploadProgressField("eta", in: summary)
+        let context = backgroundUploadProgressField("context", in: summary)
+        var parts = [String]()
+        if let context, backgroundUploadProgressContextIsUseful(context) {
+            parts.append(context)
+        }
+        if let bytes {
+            parts.append(bytes)
+        }
+        if let speed {
+            parts.append(speed)
+        }
+        if let eta {
+            parts.append("about \(eta) left")
+        }
+        return parts.isEmpty ? "Upload progress recorded." : parts.joined(separator: " | ")
+    }
+
+    private func backgroundUploadProgressField(_ field: String, in summary: String) -> String? {
+        let prefix = "\(field)="
+        guard let rawValue = summary
+            .split(separator: " ")
+            .first(where: { $0.hasPrefix(prefix) })?
+            .dropFirst(prefix.count) else {
+            return nil
+        }
+        let value = String(rawValue).replacingOccurrences(of: "_", with: " ")
+        return value.isEmpty ? nil : String(value.prefix(40))
+    }
+
+    private func backgroundUploadProgressContextIsUseful(_ context: String) -> Bool {
+        let lowercasedContext = context.lowercased()
+        return lowercasedContext.contains("retry")
+            || lowercasedContext.contains("failed")
+            || lowercasedContext.contains("waiting")
+            || lowercasedContext.contains("reconnecting")
+            || lowercasedContext.contains("background upload")
     }
 
     private var copyUploadStateProofButton: some View {
