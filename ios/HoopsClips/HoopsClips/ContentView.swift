@@ -267,6 +267,7 @@ struct ContentView: View {
                 VStack {
                     GlobalImportProgressBanner(
                         message: pipelineStatusMessage,
+                        detailMessage: pipelineDetailMessage,
                         stage: pipelineStage,
                         onCancel: requestPipelineCancelConfirmation
                     )
@@ -618,6 +619,50 @@ struct ContentView: View {
 
         let status = viewModel.analysisService.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         return status.isEmpty ? "Preparing upload..." : status
+    }
+
+    private var pipelineDetailMessage: String? {
+        guard pipelineStage == .uploading else { return nil }
+        return uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
+    }
+
+    private func uploadProgressPipelineDetail(from summary: String) -> String? {
+        let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSummary.isEmpty, trimmedSummary != "none" else { return nil }
+
+        let bytes = uploadProgressField("bytes", in: trimmedSummary)
+        let speed = uploadProgressField("speed", in: trimmedSummary)
+        let eta = uploadProgressField("eta", in: trimmedSummary)
+        let stalled = uploadProgressField("stalled", in: trimmedSummary) == "true"
+
+        var parts: [String] = []
+        if let bytes {
+            parts.append(bytes)
+        }
+        if let speed {
+            parts.append(speed)
+        }
+        if let eta {
+            parts.append("about \(eta) left")
+        }
+        if stalled, parts.isEmpty {
+            parts.append("waiting for connection")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " | ")
+    }
+
+    private func uploadProgressField(_ field: String, in summary: String) -> String? {
+        let prefix = "\(field)="
+        guard let rawValue = summary
+            .split(separator: " ")
+            .first(where: { $0.hasPrefix(prefix) })?
+            .dropFirst(prefix.count) else {
+            return nil
+        }
+        let value = String(rawValue).replacingOccurrences(of: "_", with: " ")
+        return value.isEmpty ? nil : String(value.prefix(40))
     }
 
     private var pipelineStage: AnalysisPipelineStage {
@@ -1619,6 +1664,7 @@ private struct ReviewUnavailableRecoveryCard: View {
 
 private struct GlobalImportProgressBanner: View {
     let message: String
+    let detailMessage: String?
     let stage: AnalysisPipelineStage
     let onCancel: () -> Void
 
@@ -1647,6 +1693,15 @@ private struct GlobalImportProgressBanner: View {
             }
 
             TinyAnalysisPipelineTracker(currentStage: stage)
+
+            if let detailMessage {
+                Text(detailMessage)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                    .accessibilityIdentifier("analysis.pipeline.uploadDetail")
+            }
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
