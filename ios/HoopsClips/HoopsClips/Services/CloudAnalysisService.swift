@@ -1774,71 +1774,117 @@ struct CloudAnalysisService {
             try? fileHandle.close()
         }
 
+        let safeChunkSize = max(manifest.chunkSizeBytes, 5 * 1024 * 1024)
+        let totalBytes = max(manifest.totalFileSizeBytes, 0)
+        let jobID = manifest.jobID
+        let installID = manifest.installID
+        let uploadID = manifest.uploadID
+        let partCount = manifest.partCount
         var uploadedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
         var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
+        let initialCompletedBytes = Self.completedUploadBytes(
+            completedParts: uploadedParts,
+            chunkSizeBytes: safeChunkSize,
+            totalFileSizeBytes: totalBytes
+        )
+        await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
 
-        for partNumber in 1...manifest.partCount {
-            try Task.checkCancellation()
-            let offset = UInt64(partNumber - 1) * UInt64(manifest.chunkSizeBytes)
-            if completedPartNumbers.contains(partNumber) {
-                await tracker.update(
-                    uploadedBytes: min(Int64(offset) + Int64(manifest.chunkSizeBytes), manifest.totalFileSizeBytes),
-                    totalBytes: manifest.totalFileSizeBytes
-                )
-                let snapshot = await tracker.snapshot()
-                reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(manifest.partCount) saved")
-                Self.recordLatestUploadProgressSummary(
-                    stage: "Resuming cloud upload",
-                    snapshot: snapshot,
-                    transferContext: "chunk \(partNumber)/\(manifest.partCount) saved",
-                    stalled: false
-                )
-                continue
+        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+            defaultMaximum: Self.maxConcurrentMultipartUploads
+        )
+        let maxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
+        let progressAggregator = CloudMultipartUploadProgressAggregator(
+            completedBytes: initialCompletedBytes,
+            totalBytes: totalBytes,
+            tracker: tracker
+        )
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_parallel_upload_selected",
+            metadata: "lanes=\(maxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+        )
+
+        try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
+            var nextPartNumber = 1
+            var inFlightUploads = 0
+
+            while nextPartNumber <= partCount || inFlightUploads > 0 {
+                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= partCount {
+                    try Task.checkCancellation()
+                    let partNumber = nextPartNumber
+                    nextPartNumber += 1
+                    let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
+
+                    if completedPartNumbers.contains(partNumber) {
+                        let snapshot = await tracker.snapshot()
+                        reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(partCount) saved")
+                        Self.recordLatestUploadProgressSummary(
+                            stage: "Resuming cloud upload",
+                            snapshot: snapshot,
+                            transferContext: "chunk \(partNumber)/\(partCount) saved",
+                            stalled: false
+                        )
+                        continue
+                    }
+
+                    try fileHandle.seek(toOffset: offset)
+                    guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
+                        nextPartNumber = partCount + 1
+                        break
+                    }
+
+                    let partTarget = try await createMultipartPart(
+                        baseURL: baseURL,
+                        jobID: jobID,
+                        installID: installID,
+                        uploadID: uploadID,
+                        partNumber: partNumber
+                    )
+                    group.addTask {
+                        let etag = try await Self.uploadMultipartChunk(
+                            partTarget,
+                            chunk: chunk,
+                            alreadyUploadedBytes: min(Int64(offset), totalBytes),
+                            totalBytes: totalBytes,
+                            uploadID: uploadID,
+                            partCount: partCount,
+                            tracker: tracker,
+                            progressAggregator: progressAggregator,
+                            reportUploadProgress: reportUploadProgress
+                        )
+                        return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
+                    }
+                    inFlightUploads += 1
+                }
+
+                guard inFlightUploads > 0 else {
+                    break
+                }
+
+                if let completedPart = try await group.next() {
+                    uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                        jobID: jobID,
+                        uploadID: uploadID,
+                        partNumber: completedPart.partNumber,
+                        etag: completedPart.etag
+                    )
+                    completedPartNumbers.insert(completedPart.partNumber)
+                    inFlightUploads -= 1
+                }
             }
-
-            try fileHandle.seek(toOffset: offset)
-            guard let chunk = try fileHandle.read(upToCount: manifest.chunkSizeBytes), !chunk.isEmpty else {
-                break
-            }
-
-            let partTarget = try await createMultipartPart(
-                baseURL: baseURL,
-                jobID: manifest.jobID,
-                installID: manifest.installID,
-                uploadID: manifest.uploadID,
-                partNumber: partNumber
-            )
-            let etag = try await Self.uploadMultipartChunk(
-                partTarget,
-                chunk: chunk,
-                alreadyUploadedBytes: min(Int64(offset), manifest.totalFileSizeBytes),
-                totalBytes: manifest.totalFileSizeBytes,
-                uploadID: manifest.uploadID,
-                partCount: manifest.partCount,
-                tracker: tracker,
-                reportUploadProgress: reportUploadProgress
-            )
-            uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
-                jobID: manifest.jobID,
-                uploadID: manifest.uploadID,
-                partNumber: partNumber,
-                etag: etag
-            )
-            completedPartNumbers.insert(partNumber)
         }
 
-        guard uploadedParts.count == manifest.partCount else {
+        guard uploadedParts.count == partCount else {
             throw CloudAnalysisError.uploadFailed
         }
 
         try await completeMultipartUpload(
             baseURL: baseURL,
-            jobID: manifest.jobID,
-            installID: manifest.installID,
-            uploadID: manifest.uploadID,
+            jobID: jobID,
+            installID: installID,
+            uploadID: uploadID,
             parts: uploadedParts
         )
-        await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
+        await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
         reportUploadProgress(finalSnapshot, false, "resumed chunks complete")
         Self.recordLatestUploadProgressSummary(
