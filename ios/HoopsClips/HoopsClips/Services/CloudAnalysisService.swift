@@ -1961,9 +1961,25 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         relaunchDelegates.removeValue(forKey: identifier)
         lock.unlock()
 
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "events_finish_requested",
+            metadata: [
+                "source=urlsession_delegate",
+                "hadCompletionHandler=\(completionHandler != nil)",
+                "hadRelaunchSession=\(session != nil)",
+                "privacy=no_raw_session_ids_no_urls_no_object_keys"
+            ].joined(separator: " ")
+        )
+
         session?.finishTasksAndInvalidate()
 
-        guard let completionHandler else { return }
+        guard let completionHandler else {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "events_finished_without_completion_handler",
+                metadata: "source=urlsession_delegate privacy=no_raw_session_ids_no_urls_no_object_keys"
+            )
+            return
+        }
         DispatchQueue.main.async {
             completionHandler()
             LaunchTelemetry.shared.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
