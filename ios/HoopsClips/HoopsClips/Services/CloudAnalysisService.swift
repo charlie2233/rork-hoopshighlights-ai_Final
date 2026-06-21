@@ -2392,6 +2392,13 @@ struct CloudAnalysisService {
             if http.statusCode == 429 {
                 throw CloudAnalysisError.quotaExceeded(apiError?.quotaRemainingToday)
             }
+            if http.statusCode == 410,
+               apiError?.errorCode == "upload_expired" {
+                throw CloudAnalysisError.backend(
+                    code: "upload_expired",
+                    message: "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
+                )
+            }
             throw CloudAnalysisError.backend(
                 code: apiError?.errorCode ?? "http_\(http.statusCode)",
                 message: Self.safeBackendMessage(apiError?.errorMessage ?? "", fallback: "Analysis request failed.")

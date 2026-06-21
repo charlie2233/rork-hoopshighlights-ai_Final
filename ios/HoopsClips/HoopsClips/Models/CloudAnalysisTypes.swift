@@ -497,6 +497,8 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
                 return "This video is longer than the cloud analysis limit for this environment. Trim it or raise the backend duration limit before retrying."
             case "empty_upload":
                 return "The server received an empty upload. Re-import the video from Photos or Files, stay on Wi-Fi, and retry."
+            case "upload_expired":
+                return "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
             default:
                 return message
             }
@@ -535,6 +537,8 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
             return "duration_policy"
         case "empty_upload":
             return "empty_upload"
+        case "upload_expired":
+            return "upload_expired"
         case let value where value.contains("http_"):
             return "http_status"
         default:

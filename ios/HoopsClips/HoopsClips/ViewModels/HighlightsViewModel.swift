@@ -754,7 +754,7 @@ final class HighlightsViewModel {
 
     private func handleInFlightCloudAnalysisResumeFailure(_ error: CloudAnalysisError) {
         switch error {
-        case .backend(let code, _) where code == "expired" || code == "analysis_failed":
+        case .backend(let code, _) where code == "expired" || code == "analysis_failed" || code == "upload_expired":
             let message = error.errorDescription ?? "Cloud analysis failed. Try again."
             analysisService.finishExternalAnalysis(with: message)
             recordAnalysisFailure(message: message)
@@ -2537,7 +2537,7 @@ final class HighlightsViewModel {
     #endif
 
     private func fallbackToLocalAnalysis(from error: CloudAnalysisError) async {
-        let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
+        let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large", "upload_expired"]
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         if AppConstants.requiresCloudVideoPipeline {
