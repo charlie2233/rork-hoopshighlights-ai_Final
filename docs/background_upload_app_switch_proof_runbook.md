@@ -118,7 +118,19 @@ Fail examples:
 
 Use either a safe test video or the script's synthetic payload generator. The synthetic payload proves upload transport/resume behavior only; it does not prove basketball analysis quality.
 
-Synthetic payload option:
+Preferred synthetic payload option:
+
+```bash
+python3 scripts/resumable_upload_interrupt_smoke.py \
+  --worker-url "$WORKER_BASE_URL" \
+  --state-path artifacts/resumable_upload_interrupt_state.json \
+  --mode interrupt-after-first \
+  --auto-generate-test-file
+```
+
+This queries `/v1/analysis/capabilities` and creates a local sparse `.mp4` payload under `artifacts/` that is large enough to request a resumable upload.
+
+Manual synthetic payload fallback:
 
 ```bash
 python3 scripts/resumable_upload_interrupt_smoke.py \
@@ -128,7 +140,7 @@ python3 scripts/resumable_upload_interrupt_smoke.py \
   --generate-test-file-mb 160
 ```
 
-This creates a local sparse `.mp4` payload under `artifacts/` if no `--file` is supplied. Increase the size if the Worker's current multipart threshold/chunk sizing requires a larger file to produce at least two parts.
+Increase the manual size if the Worker's current multipart threshold/chunk sizing requires a larger file to produce at least two parts.
 
 First interruption:
 
@@ -162,7 +174,7 @@ python3 scripts/resumable_upload_interrupt_smoke.py \
 Required evidence:
 
 - Sanitized JSON stdout from all three runs.
-- Whether the run used a real video or `--generate-test-file-mb`.
+- Whether the run used a real video, `--auto-generate-test-file`, or `--generate-test-file-mb`.
 - `partCount`.
 - `completedParts` after each run.
 - `stateUpdated=true` during resume.
