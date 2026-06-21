@@ -16,7 +16,7 @@ private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
 private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
 private let cloudUploadStallProofThresholdSeconds: TimeInterval = 90
 private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
-private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5]
+private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5, 12, 30]
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -172,6 +172,8 @@ struct CloudAnalysisService {
             "multipartLaneReason=\(networkPolicy.reason)",
             "networkExpensive=\(networkPolicy.isExpensive)",
             "networkConstrained=\(networkPolicy.isConstrained)",
+            "chunkRetryAttempts=\(cloudUploadChunkRetryBackoffSeconds.count + 1)",
+            "chunkRetryBackoffSeconds=\(cloudUploadChunkRetryBackoffSeconds.map { String($0) }.joined(separator: ","))",
             "progressAggregation=total_bytes_across_active_chunks",
             "memoryPolicy=bounded_chunk_data_per_lane",
             "resumePolicy=persist_completed_parts"
@@ -1851,7 +1853,8 @@ struct CloudAnalysisService {
         }
 
         var lastError: Error?
-        for attempt in 0..<3 {
+        let maxAttempts = cloudUploadChunkRetryBackoffSeconds.count + 1
+        for attempt in 0..<maxAttempts {
             let attemptNumber = attempt + 1
             let transferContext = "chunk \(partTarget.partNumber)/\(partCount) try \(attemptNumber)"
             let backgroundIdentifier = Self.backgroundUploadSessionIdentifier(
@@ -1958,7 +1961,7 @@ struct CloudAnalysisService {
                 return etag
             } catch {
                 lastError = error
-                let retrying = attempt < 2
+                let retrying = attemptNumber < maxAttempts
                 let retryReason = Self.uploadRetryReason(for: error)
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "chunk_upload_attempt_failed",
@@ -1998,7 +2001,7 @@ struct CloudAnalysisService {
 
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "chunk_upload_failed",
-            metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempts=3 reason=\(Self.uploadRetryReason(for: lastError))"
+            metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempts=\(maxAttempts) reason=\(Self.uploadRetryReason(for: lastError))"
         )
         throw lastError ?? CloudAnalysisError.uploadFailed
     }
