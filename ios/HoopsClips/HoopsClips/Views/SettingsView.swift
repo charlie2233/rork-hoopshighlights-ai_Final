@@ -465,6 +465,7 @@ struct SettingsView: View {
     private var smokeProofCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             smokeProofCompactHeader
+            smokeProofCompactStatusStrip
             smokeProofToolsDrawer
         }
         .padding(16)
@@ -497,6 +498,118 @@ struct SettingsView: View {
                     .minimumScaleFactor(0.84)
             }
             .layoutPriority(1)
+        }
+    }
+
+    private var smokeProofCompactStatusStrip: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                smokeProofStatusPill(
+                    icon: phoneSmokeStatusIcon,
+                    text: phoneSmokeStatusTitle,
+                    tint: phoneSmokeStatusTint
+                )
+                smokeProofStatusPill(
+                    icon: uploadProofStatusIcon,
+                    text: uploadProofStatusTitle,
+                    tint: uploadProofStatusTint
+                )
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                smokeProofStatusPill(
+                    icon: phoneSmokeStatusIcon,
+                    text: phoneSmokeStatusTitle,
+                    tint: phoneSmokeStatusTint
+                )
+                smokeProofStatusPill(
+                    icon: uploadProofStatusIcon,
+                    text: uploadProofStatusTitle,
+                    tint: uploadProofStatusTint
+                )
+            }
+        }
+        .accessibilityIdentifier("settings.smokeProof.compactStatus")
+    }
+
+    private func smokeProofStatusPill(icon: String, text: String, tint: Color) -> some View {
+        Label(text, systemImage: icon)
+            .font(.caption.weight(.heavy))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.76)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(tint.opacity(0.12), in: .capsule)
+            .overlay {
+                Capsule()
+                    .stroke(tint.opacity(0.22), lineWidth: 1)
+            }
+    }
+
+    private var phoneSmokeStatusTitle: String {
+        switch phoneSmokeResult {
+        case .passed:
+            return "Phone smoke passed"
+        case .issue:
+            return phoneSmokeIssueNoteForProof == "none" ? "Phone issue noted" : "Phone issue: \(phoneSmokeIssueNoteForProof)"
+        case .notRun:
+            return "Phone smoke not run"
+        }
+    }
+
+    private var phoneSmokeStatusIcon: String {
+        switch phoneSmokeResult {
+        case .passed:
+            return "checkmark.seal.fill"
+        case .issue:
+            return "exclamationmark.triangle.fill"
+        case .notRun:
+            return "iphone.gen3"
+        }
+    }
+
+    private var phoneSmokeStatusTint: Color {
+        switch phoneSmokeResult {
+        case .passed:
+            return AppTheme.successGreen
+        case .issue:
+            return AppTheme.warningYellow
+        case .notRun:
+            return AppTheme.subtleText
+        }
+    }
+
+    private var uploadProofStatusTitle: String {
+        let playerProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
+        let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? ""
+        if !playerProof.isEmpty || !latestProof.isEmpty {
+            return "Upload proof ready"
+        }
+        if viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing {
+            return "Upload proof live"
+        }
+        return "Upload proof pending"
+    }
+
+    private var uploadProofStatusIcon: String {
+        switch uploadProofStatusTitle {
+        case "Upload proof ready":
+            return "paperplane.circle.fill"
+        case "Upload proof live":
+            return "arrow.up.circle.fill"
+        default:
+            return "paperplane"
+        }
+    }
+
+    private var uploadProofStatusTint: Color {
+        switch uploadProofStatusTitle {
+        case "Upload proof ready":
+            return AppTheme.successGreen
+        case "Upload proof live":
+            return AppTheme.courtBlue
+        default:
+            return AppTheme.subtleText
         }
     }
 
@@ -1299,6 +1412,8 @@ struct SettingsView: View {
             "build=\(appBuildNumber)",
             "environment=\(AppConstants.environmentName)",
             "cloudLaunchMode=\(AppConstants.cloudLaunchMode.rawValue)",
+            "phoneSmokeResult=\(phoneSmokeResult.rawValue)",
+            "phoneSmokeIssueNote=\(phoneSmokeIssueNoteForProof)",
             "cloudAnalysisBaseURL=\(proofValue(AppConstants.cloudAnalysisBaseURL))",
             "cloudEditBaseURL=\(proofValue(AppConstants.cloudEditBaseURL))",
             "installID=\(viewModel.installID)",
