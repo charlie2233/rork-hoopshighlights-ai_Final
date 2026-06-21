@@ -542,46 +542,26 @@ struct ReviewView: View {
     }
 
     private func reviewCarouselHeader(clip: Clip) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Review Clips")
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(.white)
-
-                    Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "sparkles")
-                        .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(AppTheme.neonPurple)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(AppTheme.neonPurple.opacity(0.16), in: .capsule)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(clip.isKept ? "KEEPING" : "NAH")
-                    .font(.caption.bold().monospaced())
-                    .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background((clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed).opacity(0.14), in: .capsule)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Review Clips")
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Clip \(currentReviewIndex + 1)/\(filteredClips.count)")
                     .font(.title3.weight(.heavy))
                     .foregroundStyle(.white)
+                    .monospacedDigit()
 
-                HStack(spacing: 8) {
-                    Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "sparkles")
-                        .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(AppTheme.neonPurple)
-
-                    Text(clip.isKept ? "KEEPING" : "NAH")
-                        .font(.caption.bold().monospaced())
-                        .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
-                }
+                Text("Swipe right KEEP / left NAH")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
             }
+
+            Spacer(minLength: 0)
+
+            Label(clip.isKept ? "Kept" : "Nah", systemImage: clip.isKept ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.caption.bold().monospaced())
+                .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background((clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed).opacity(0.14), in: .capsule)
         }
     }
 
