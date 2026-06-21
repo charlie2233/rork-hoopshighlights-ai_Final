@@ -637,9 +637,15 @@ struct ContentView: View {
 
     private var pipelineDetailMessage: String? {
         guard pipelineStage == .uploading else { return nil }
+        let liveUploadDetail = uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
+            ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
+        let savedUploadDetail = savedUploadPipelineDetail(from: CloudAnalysisService.pendingBackgroundUploadManifestSummary())
+        let uploadDetail = [savedUploadDetail, liveUploadDetail]
+            .compactMap { $0 }
+            .prefix(2)
+            .joined(separator: " -> ")
         return uploadOptimizationPipelineDetail(
-            uploadDetail: uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
-                ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
+            uploadDetail: uploadDetail.isEmpty ? nil : uploadDetail
         )
     }
 
@@ -722,6 +728,46 @@ struct ContentView: View {
             || lowercasedContext.contains("chunk")
             || lowercasedContext.contains("source upload")
             || lowercasedContext.contains("saved chunks")
+    }
+
+    private func savedUploadPipelineDetail(from summary: String) -> String? {
+        let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSummary.isEmpty,
+              trimmedSummary != "none",
+              trimmedSummary.contains("pending=true") else {
+            return nil
+        }
+
+        let progress = uploadProgressField("progressPercent", in: trimmedSummary)
+        let completed = uploadProgressField("completed", in: trimmedSummary)
+        let nextAction = uploadProgressField("nextAction", in: trimmedSummary)
+        let source = uploadProgressField("source", in: trimmedSummary)
+        var parts: [String] = []
+
+        if let progress, progress != "0" {
+            parts.append("\(progress)% saved")
+        }
+        if let completed, completed != "0/0" {
+            parts.append("\(completed) chunks")
+        }
+        if let nextAction {
+            switch nextAction {
+            case "wait for background session":
+                parts.append("still uploading")
+            case "resume upload":
+                parts.append("tap resume")
+            case "start cloud analysis", "run team scan":
+                parts.append("upload done")
+            default:
+                parts.append(nextAction)
+            }
+        }
+        if source == "missing" {
+            parts.append("saved chunks only")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.prefix(3).joined(separator: " · ")
     }
 
     private var pipelineStage: AnalysisPipelineStage {
