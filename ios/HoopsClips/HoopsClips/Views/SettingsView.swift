@@ -913,7 +913,8 @@ struct SettingsView: View {
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
         let savedPlayerBackgroundUploadProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
-        let savedPlayerBackgroundUploadProofSummary = savedPlayerBackgroundUploadProof.isEmpty ? "missing" : "present length=\(savedPlayerBackgroundUploadProof.count)"
+        let savedPlayerBackgroundUploadProofSavedAt = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofSavedAt") ?? "missing"
+        let savedPlayerBackgroundUploadProofSummary = savedPlayerBackgroundUploadProof.isEmpty ? "missing" : "present length=\(savedPlayerBackgroundUploadProof.count) savedAt=\(savedPlayerBackgroundUploadProofSavedAt)"
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
@@ -979,7 +980,8 @@ struct SettingsView: View {
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
         let savedPlayerBackgroundUploadProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
-        let savedPlayerBackgroundUploadProofSummary = savedPlayerBackgroundUploadProof.isEmpty ? "missing" : "present length=\(savedPlayerBackgroundUploadProof.count)"
+        let savedPlayerBackgroundUploadProofSavedAt = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofSavedAt") ?? "missing"
+        let savedPlayerBackgroundUploadProofSummary = savedPlayerBackgroundUploadProof.isEmpty ? "missing" : "present length=\(savedPlayerBackgroundUploadProof.count) savedAt=\(savedPlayerBackgroundUploadProofSavedAt)"
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
         let backgroundUploadWakeReceived = backgroundUploadWakeReceivedFlag(

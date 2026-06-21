@@ -2564,6 +2564,7 @@ struct VideoPlayerView: View {
 
     private func copyBackgroundUploadProof() {
         UserDefaults.standard.set(backgroundUploadProofText, forKey: "hoopclips.lastBackgroundUploadProofText")
+        UserDefaults.standard.set(Date().ISO8601Format(), forKey: "hoopclips.lastBackgroundUploadProofSavedAt")
         UIPasteboard.general.string = backgroundUploadProofText
         didCopyUploadProof = true
         LaunchTelemetry.shared.recordStabilityCheckpoint(
