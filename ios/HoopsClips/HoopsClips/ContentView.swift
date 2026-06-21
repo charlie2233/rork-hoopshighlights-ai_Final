@@ -676,8 +676,10 @@ struct ContentView: View {
         let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(
             from: CloudAnalysisService.latestUploadSourceOptimizationSummary()
         )
+        let fastUploadFact = CloudAnalysisProgressCopy.fastUploadModeFact()
+        let leadingFact = savingsFact ?? fastUploadFact
 
-        switch (savingsFact, uploadDetail) {
+        switch (leadingFact, uploadDetail) {
         case let (savings?, detail?) where !detail.localizedCaseInsensitiveContains("saved "):
             return "\(savings) -> \(detail)"
         case let (savings?, _):
@@ -1135,6 +1137,7 @@ struct ContentView: View {
             "analysisProgress=\(analysisProgressPercent)%",
             "analysisStatus=\(safePipelineProofValue(pipelineStatusMessage))",
             "uploadDetail=\(safePipelineProofValue(pipelineDetailMessage ?? "none"))",
+            "fastUploadMode=\(CloudAnalysisProgressCopy.isFastUploadModeEnabled())",
             "latestUploadProgress=\(safePipelineProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
             "latestUploadSourceOptimization=\(safePipelineProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
             "pendingBackgroundUploadManifest=\(safePipelineProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",

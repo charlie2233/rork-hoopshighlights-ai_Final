@@ -16,6 +16,14 @@ nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
     private static let fastUploadModeDefaultsKey = "hoopsclips.cloudUpload.fastUploadMode.v1"
 
+    static func isFastUploadModeEnabled() -> Bool {
+        UserDefaults.standard.bool(forKey: fastUploadModeDefaultsKey)
+    }
+
+    static func fastUploadModeFact() -> String? {
+        isFastUploadModeEnabled() ? "Fast Upload Mode on" : nil
+    }
+
     static func approximateRemainingTime(
         statusMessage: String,
         analysisMode: AnalysisExecutionMode,
@@ -353,7 +361,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         latestUploadProgress: String
     ) -> CloudAnalysisUploadSourceOptimization {
         let status = "\(statusMessage) \(latestUploadProgress)".lowercased()
-        let fastUploadModeEnabled = UserDefaults.standard.bool(forKey: fastUploadModeDefaultsKey)
+        let fastUploadModeEnabled = isFastUploadModeEnabled()
         let isLongSource = durationSeconds.isFinite && durationSeconds >= 30 * 60
         let isHugeSource = (fileSizeBytes ?? 0) >= 900 * 1_024 * 1_024
         let prefersCompactSource = fastUploadModeEnabled
