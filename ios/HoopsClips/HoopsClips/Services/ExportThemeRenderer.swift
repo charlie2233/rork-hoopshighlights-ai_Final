@@ -422,11 +422,7 @@ internal extension ExportTheme {
                     margin: 18,
                     fixedOpacityMultiplier: 1.0
                 ),
-                clipStartFlashStyle: .init(
-                    duration: 0.12,
-                    color: rgba(1.0, 0.80, 0.55, 1),
-                    maxOpacity: 0.18
-                )
+                clipStartFlashStyle: nil
             )
 
         case .minimal:
