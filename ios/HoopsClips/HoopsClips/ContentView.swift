@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var reviewRecoveryNotice: ReviewRecoveryNotice?
     @State private var uploadResumeNotice: UploadResumeNotice?
     @State private var showingPipelineCancelConfirmation = false
+    @State private var didCopyPipelineUploadProof = false
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
@@ -269,6 +270,8 @@ struct ContentView: View {
                         message: pipelineStatusMessage,
                         detailMessage: pipelineDetailMessage,
                         stage: pipelineStage,
+                        didCopyProof: didCopyPipelineUploadProof,
+                        onCopyProof: copyPipelineUploadProof,
                         onCancel: requestPipelineCancelConfirmation
                     )
                         .padding(.horizontal, 16)
@@ -1074,6 +1077,48 @@ struct ContentView: View {
         showingPipelineCancelConfirmation = true
     }
 
+    private func copyPipelineUploadProof() {
+        UIPasteboard.general.string = pipelineUploadProofText
+        didCopyPipelineUploadProof = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "pipeline_upload_proof.copied",
+            metadata: "stage=\(pipelineStage.title) progress=\(analysisProgressPercent)"
+        )
+        Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            await MainActor.run {
+                didCopyPipelineUploadProof = false
+            }
+        }
+    }
+
+    private var pipelineUploadProofText: String {
+        [
+            "HoopClips Upload Proof",
+            "pipelineStage=\(safePipelineProofValue(pipelineStage.title))",
+            "analysisProgress=\(analysisProgressPercent)%",
+            "analysisStatus=\(safePipelineProofValue(pipelineStatusMessage))",
+            "uploadDetail=\(safePipelineProofValue(pipelineDetailMessage ?? "none"))",
+            "latestUploadProgress=\(safePipelineProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
+            "pendingBackgroundUploadManifest=\(safePipelineProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
+            "backgroundUploadRuntimePolicy=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
+            "backgroundUploadCompletionProof=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
+            "latestBackgroundUploadProof=\(safePipelineProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"))",
+            "privacy=no_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: "\n")
+    }
+
+    private func safePipelineProofValue(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "file://", with: "file-redacted://")
+            .replacingOccurrences(of: "/var/", with: "/redacted/")
+            .replacingOccurrences(of: "/Users/", with: "/redacted/")
+            .prefix(260)
+            .description
+    }
+
     private func selectTab(_ tab: AppTab) {
         guard selectedTab != tab.rawValue else { return }
         recordTabSwitchBreadcrumb(fromRawValue: selectedTab, toRawValue: tab.rawValue, phase: "requested", trigger: "tab_bar")
@@ -1695,6 +1740,8 @@ private struct GlobalImportProgressBanner: View {
     let message: String
     let detailMessage: String?
     let stage: AnalysisPipelineStage
+    let didCopyProof: Bool
+    let onCopyProof: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
@@ -1718,6 +1765,7 @@ private struct GlobalImportProgressBanner: View {
 
                 Spacer(minLength: 0)
 
+                copyProofButton
                 cancelButton
             }
 
@@ -1752,7 +1800,7 @@ private struct GlobalImportProgressBanner: View {
                 .stroke(stage.tint.opacity(0.34), lineWidth: 1)
         )
         .shadow(color: stage.tint.opacity(0.16), radius: 18, x: 0, y: 9)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Import in progress")
         .accessibilityValue(shortMessage)
         .accessibilityIdentifier("global.importProgress.banner")
@@ -1761,6 +1809,19 @@ private struct GlobalImportProgressBanner: View {
     private var shortMessage: String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Importing video..." : trimmed
+    }
+
+    private var copyProofButton: some View {
+        Button(action: onCopyProof) {
+            Image(systemName: didCopyProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(didCopyProof ? AppTheme.successGreen : stage.tint)
+                .frame(width: 30, height: 30)
+                .background(Color.white.opacity(didCopyProof ? 0.16 : 0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(didCopyProof ? "Upload proof copied" : "Copy upload proof")
+        .accessibilityIdentifier("analysis.pipeline.copyProofButton")
     }
 
     private var cancelButton: some View {
