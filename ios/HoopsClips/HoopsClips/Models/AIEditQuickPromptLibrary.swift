@@ -16,6 +16,12 @@ enum AIEditQuickPromptLibrary {
             icon: "bolt.fill"
         ),
         AIEditQuickPrompt(
+            id: "personal",
+            title: "My highlights",
+            prompt: "Personal highlight: focus on one player when clear, keep full makes, assists, blocks, steals, and best defense.",
+            icon: "person.crop.circle.fill"
+        ),
+        AIEditQuickPrompt(
             id: "defense",
             title: "Defense only",
             prompt: "Defense only: blocks, steals, forced turnovers, stops, deflections, and loose balls.",
