@@ -1723,7 +1723,12 @@ struct VideoPlayerView: View {
                     .accessibilityIdentifier("analysis.cloudBackgroundReminder")
             }
 
-            if analysisBackgroundUploadBadgeText != nil {
+            if let analysisBackgroundUploadStillRunningText {
+                backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
+            }
+
+            if analysisBackgroundUploadBadgeText != nil,
+               analysisBackgroundUploadStillRunningText == nil {
                 if let analysisRecoveredUploadProofPromptText {
                     recoveredUploadProofPrompt(analysisRecoveredUploadProofPromptText)
                 } else {
@@ -2072,6 +2077,41 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.recoveredUploadProofPrompt")
     }
 
+    private func backgroundUploadStillRunningCard(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(Color.cyan)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Still uploading")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.white)
+                    Text(text)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            backgroundUploadProofActionButtons
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.cyan.opacity(0.28), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("analysis.backgroundUploadStillRunningCard")
+    }
+
     private func failedUploadProofPrompt(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(text, systemImage: "exclamationmark.triangle.fill")
@@ -2292,6 +2332,21 @@ struct VideoPlayerView: View {
         return "Upload recovered after app switch. Send proof so we can confirm resume worked."
     }
 
+    private var analysisBackgroundUploadStillRunningText: String? {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [status, latestProof, recentProof].joined(separator: " ")
+
+        guard combined.contains("background upload still running")
+            || combined.contains("source_still_uploading")
+            || combined.contains("active_sessions_pending") else {
+            return nil
+        }
+
+        return "Safe to switch apps. HoopClips will reconnect when iOS reports the next upload update."
+    }
+
     private var analysisBackgroundUploadBadgeText: String? {
         let status = viewModel.analysisService.statusMessage.lowercased()
         guard status.contains("upload") else { return nil }
@@ -2327,6 +2382,9 @@ struct VideoPlayerView: View {
         }
         if let analysisRecoveredUploadProofPromptText {
             parts.append(analysisRecoveredUploadProofPromptText)
+        }
+        if let analysisBackgroundUploadStillRunningText {
+            parts.append(analysisBackgroundUploadStillRunningText)
         }
         if let analysisBackgroundReminderText {
             parts.append(analysisBackgroundReminderText)
