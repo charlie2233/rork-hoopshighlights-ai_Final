@@ -748,7 +748,7 @@ struct ExportView: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Export preview unavailable", systemImage: "exclamationmark.triangle.fill")
+                        Label("Reel not ready", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.warningYellow)
                         Text(ExportReelCopy.previewShareMissingMessage)
@@ -1194,7 +1194,7 @@ struct ExportView: View {
 
                 if !isExportFileAvailable(url) {
                     ContentUnavailableView {
-                        Label("Review Unavailable", systemImage: "video.slash.fill")
+                        Label("Reel not ready", systemImage: "video.slash.fill")
                     } description: {
                         Text(ExportReelCopy.previewMissingMessage)
                     }
@@ -1272,6 +1272,6 @@ struct ExportView: View {
 }
 
 nonisolated enum ExportReelCopy {
-    static let previewMissingMessage = "Saved reel missing. Run AI Edit to preview."
-    static let previewShareMissingMessage = "Saved reel missing. Run AI Edit to preview/share."
+    static let previewMissingMessage = "Make the reel with AI Edit to preview."
+    static let previewShareMissingMessage = "Make the reel with AI Edit before sharing."
 }
