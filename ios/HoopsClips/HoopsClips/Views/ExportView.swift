@@ -816,22 +816,34 @@ struct ExportView: View {
     private var exportButton: some View {
         VStack(spacing: 12) {
             if viewModel.exportService.isExporting {
-                VStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Label("Making reel", systemImage: "sparkles.tv.fill")
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundStyle(.white)
+                        Spacer(minLength: 0)
+                        Text(exportProgressPercentText)
+                            .font(.caption.weight(.heavy).monospacedDigit())
+                            .foregroundStyle(AppTheme.neonPurple)
+                    }
+
                     ProgressView(value: viewModel.exportService.exportProgress)
                         .tint(AppTheme.accentPurple)
                         .scaleEffect(y: 2)
                         .accessibilityLabel("Export progress")
-                        .accessibilityValue("\(Int(viewModel.exportService.exportProgress * 100)) percent")
+                        .accessibilityValue(exportProgressPercentText)
 
-                    Text(viewModel.exportService.statusMessage)
+                    Text(exportStatusText)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
                 }
                 .padding(16)
                 .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Exporting highlight reel")
-                .accessibilityValue("\(Int(viewModel.exportService.exportProgress * 100)) percent. \(viewModel.exportService.statusMessage)")
+                .accessibilityValue("\(exportProgressPercentText). \(exportStatusText)")
             } else {
                 let cloudRenderRequired = AppConstants.requiresCloudVideoPipeline
                 Button {
@@ -878,6 +890,15 @@ struct ExportView: View {
                 .accessibilityHint(exportButtonAccessibilityHint(isCloudRequired: cloudRenderRequired))
             }
         }
+    }
+
+    private var exportProgressPercentText: String {
+        "\(Int((min(max(viewModel.exportService.exportProgress, 0), 1) * 100).rounded()))%"
+    }
+
+    private var exportStatusText: String {
+        let status = viewModel.exportService.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return status.isEmpty ? "Preparing export..." : status
     }
 
     private var hasLockedSelections: Bool {
