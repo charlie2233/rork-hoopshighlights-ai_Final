@@ -220,6 +220,7 @@ struct CloudAnalysisService {
             "allowsConstrainedNetworkAccess=true",
             "sessionSendsLaunchEvents=true",
             "multipartCompleteIdempotent=true",
+            "cancellationPolicy=background_sessions_finish_after_task_cancel",
             "isDiscretionary=false",
             "privacy=no_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: " ")
@@ -3133,8 +3134,24 @@ private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegat
                 task.resume()
             }
         }, onCancel: {
-            session.invalidateAndCancel()
+            Self.handleUploadTaskCancellation(for: session)
         })
+    }
+
+    private static func handleUploadTaskCancellation(for session: URLSession) {
+        if session.configuration.identifier != nil {
+            CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                event: "background_task_cancel_detached",
+                reason: "background_session_kept_alive"
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "background_upload_task_cancel_detached",
+                metadata: "session=background action=finish_tasks privacy=no_urls_no_object_keys_no_local_file_paths"
+            )
+            session.finishTasksAndInvalidate()
+        } else {
+            session.invalidateAndCancel()
+        }
     }
 
     func urlSession(
