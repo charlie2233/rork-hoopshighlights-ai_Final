@@ -1335,6 +1335,7 @@ struct VideoPlayerView: View {
                 analysisProgressView
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
+                analysisSmokeProofPrompt
             } else {
                 if let pendingUploadResumePromptText {
                     pendingUploadResumePrompt(pendingUploadResumePromptText)
@@ -1960,6 +1961,35 @@ struct VideoPlayerView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(analysisProgressTitle)
         .accessibilityValue(analysisProgressAccessibilityValue)
+    }
+
+    private var analysisSmokeProofPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Review ready. Send smoke proof if testing.", systemImage: "checkmark.seal.fill")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(AppTheme.successGreen)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Includes build, cloud route, upload progress, and clip count. No secrets or file paths.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.74))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+
+            backgroundUploadProofActionButtons
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.successGreen.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.successGreen.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.smokeProofPrompt")
     }
 
     private var analysisProgressHeader: some View {
@@ -2844,6 +2874,10 @@ struct VideoPlayerView: View {
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
+            "analysisMode=\(safeUploadProofValue(String(describing: viewModel.analysisMode)))",
+            "reviewReady=\(!viewModel.clips.isEmpty)",
+            "clipCount=\(viewModel.clips.count)",
+            "keptClipCount=\(viewModel.keptClips.count)",
             "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
             "recentBackgroundUploadProofTrail=\(safeUploadProofLongValue(LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary))",
             "latestUploadProgress=\(safeUploadProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
