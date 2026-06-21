@@ -26,6 +26,30 @@ Code-side background upload work has already added the main pieces needed for pr
 
 ## Proof that still must be captured
 
+### Optional local proof checker
+
+After copying the real-device proof from the app, save it to a local scratch file and run:
+
+```bash
+python3 scripts/verify_background_upload_phone_proof.py /path/to/background-upload-proof.txt
+```
+
+For CI or handoff packets, use JSON output:
+
+```bash
+python3 scripts/verify_background_upload_phone_proof.py /path/to/background-upload-proof.txt --json
+```
+
+Expected pass shape:
+
+```text
+status: pass
+backgroundUploadPhoneProofReady: true
+privacyScanPassed: true
+```
+
+If the checker reports `blocked`, fix the listed evidence gap before calling background upload done.
+
 ### 1. Staging backend proof
 
 Capture one fresh current-tip backend proof after deploying the current Worker/control-plane changes:
