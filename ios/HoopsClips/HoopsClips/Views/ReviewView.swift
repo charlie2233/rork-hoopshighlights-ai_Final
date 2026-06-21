@@ -1628,7 +1628,7 @@ struct ReviewView: View {
     }
 
     private var primaryFilterOptions: Set<FilterOption> {
-        [.all, .priority, .selectedTeam]
+        [.all, .needsReview, .kept]
     }
 
     private func shouldShowFilter(_ option: FilterOption) -> Bool {
@@ -1976,15 +1976,15 @@ struct ReviewView: View {
         }
         .accessibilityLabel(showAllFilterChips ? "Show fewer review filters" : "Show more review filters")
         .accessibilityValue(showAllFilterChips ? "All filters visible" : "\(hiddenFilterOptions.count) filters hidden")
-        .accessibilityHint("Shows or hides extra filters like defense, blocks, steals, sound, kept, and skipped.")
+        .accessibilityHint("Shows or hides extra filters like team, defense, sound, and skipped.")
     }
 
     private func filterChipLabel(title: String, isSelected: Bool, icon: String?) -> some View {
         Label {
             Text(title)
                 .font(.subheadline.weight(.medium))
-                .lineLimit(2)
-                .minimumScaleFactor(0.84)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
@@ -2096,7 +2096,7 @@ struct ReviewView: View {
         case .sound:
             return "Sound \(clipCount(for: option))"
         case .needsReview:
-            return "Check \(viewModel.needsReviewClips.count)"
+            return "Review \(viewModel.needsReviewClips.count)"
         case .kept:
             return "Kept \(viewModel.keptClips.count)"
         case .discarded:
