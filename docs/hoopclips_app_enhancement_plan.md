@@ -28,12 +28,14 @@ The architecture stays cloud-first:
 - Required cloud-render outro no longer uses a near-black slate; it is now a bright HoopClips end card.
 - Saved project titles are cleaner and less random-looking.
 - Review, History, Settings, Export, and AI Edit copy has been simplified in several places.
+- Review top stack has been reduced: status cards collapsed, progress folded into the status strip, filters hidden when not useful, advanced filters moved behind More, and the AI Edit entry is now one compact row.
 - Solo/personal highlight flow is clearer and does not force team scan language.
 - Team scan fallback copy explains that HoopClips will use all teams when teams are unclear.
 
 ## Active launch blockers
 
 - Latest `main` needs Swift build validation after recent upload/network changes.
+- Recent Review SwiftUI declutter needs simulator confirmation before more Review layout work.
 - AI Analysis crash report needs simulator reproduction on current code.
 - Background upload needs real iPhone app-switch proof with a long video.
 - No-black-outro render needs cloud render smoke proof.
@@ -46,7 +48,7 @@ The architecture stays cloud-first:
 1. Build and simulator safety pass.
 2. AI Analysis crash reproduction and fix if current code still crashes.
 3. Player audio/mute fix and clear audio-unavailable state.
-4. Review-page simplification pass: one clip at a time, fast decisions, minimal words.
+4. Review-page validation pass: confirm the compact Review screen builds, scrolls, swipes, scrubs, keeps/nahs, undo works, and empty/analyzing states are correct.
 5. Export-page simplification pass: avoid duplicate progress/status details.
 6. Background upload proof pass on real iPhone.
 7. Cloud render smoke for no-black-outro output.
@@ -97,7 +99,8 @@ Target behavior:
 Still needed:
 
 - Simulator proof on latest code.
-- Reduce any remaining stacked text.
+- Confirm the compact status strip, hidden filters, AI Edit row, swipe gestures, scrubber, Keep/Nah, and undo toast all work after the declutter pass.
+- Reduce remaining context/quick-action clutter only after the current Review layout passes simulator build.
 - Verify unsafe/no-clip state shows "Analyzing, please wait" during analysis and recovery only after analysis ends.
 
 ## Export and AI Edit experience
