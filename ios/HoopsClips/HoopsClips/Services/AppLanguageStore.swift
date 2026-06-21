@@ -291,6 +291,7 @@ enum AppTextKey {
     case settingsSmokeProofCloud
     case settingsSmokeProofProject
     case settingsSmokeProofAnalysis
+    case settingsSmokeProofUpload
     case rookieGuideTitle
     case rookieGuideSkip
     case rookieGuideBack
@@ -590,6 +591,7 @@ extension AppLanguage {
         .settingsSmokeProofCloud: "Cloud",
         .settingsSmokeProofProject: "Project",
         .settingsSmokeProofAnalysis: "Analysis",
+        .settingsSmokeProofUpload: "Upload",
         .rookieGuideTitle: "Quick guide",
         .rookieGuideSkip: "Skip",
         .rookieGuideBack: "Back",
@@ -853,6 +855,7 @@ extension AppLanguage {
         .settingsSmokeProofCloud: "云端",
         .settingsSmokeProofProject: "项目",
         .settingsSmokeProofAnalysis: "分析",
+        .settingsSmokeProofUpload: "上传",
         .rookieGuideTitle: "新手教程",
         .rookieGuideSkip: "跳过",
         .rookieGuideBack: "上一步",
@@ -1116,6 +1119,7 @@ extension AppLanguage {
         .settingsSmokeProofCloud: "Nube",
         .settingsSmokeProofProject: "Proyecto",
         .settingsSmokeProofAnalysis: "Análisis",
+        .settingsSmokeProofUpload: "Subida",
         .rookieGuideTitle: "Guía rápida",
         .rookieGuideSkip: "Omitir",
         .rookieGuideBack: "Atrás",
@@ -1379,6 +1383,7 @@ extension AppLanguage {
         .settingsSmokeProofCloud: "Cloud",
         .settingsSmokeProofProject: "Projet",
         .settingsSmokeProofAnalysis: "Analyse",
+        .settingsSmokeProofUpload: "Envoi",
         .rookieGuideTitle: "Guide rapide",
         .rookieGuideSkip: "Ignorer",
         .rookieGuideBack: "Retour",

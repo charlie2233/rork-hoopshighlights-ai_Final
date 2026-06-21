@@ -534,6 +534,61 @@ struct SettingsView: View {
                 )
                 .settingsPreviewStatCard()
             }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: uploadOptimizationProofIcon,
+                    value: uploadOptimizationProofValue,
+                    label: languageStore.text(.settingsSmokeProofUpload),
+                    tint: uploadOptimizationProofTint
+                )
+                .settingsPreviewStatCard()
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var uploadOptimizationProofValue: String {
+        let summary = CloudAnalysisService.latestUploadSourceOptimizationSummary()
+        if summary.contains("reason=preparation_timed_out") {
+            return "Fallback"
+        }
+        if summary.contains("profile=compact_540p") {
+            return "Compact"
+        }
+        if summary.contains("profile=balanced_720p") {
+            return "Balanced"
+        }
+        if CloudAnalysisProgressCopy.isFastUploadModeEnabled() {
+            return "Fast"
+        }
+        return "None"
+    }
+
+    private var uploadOptimizationProofIcon: String {
+        switch uploadOptimizationProofValue {
+        case "Fallback":
+            return "arrow.triangle.2.circlepath.icloud.fill"
+        case "Compact", "Fast":
+            return "bolt.icloud.fill"
+        case "Balanced":
+            return "icloud.and.arrow.up.fill"
+        default:
+            return "icloud.slash"
+        }
+    }
+
+    private var uploadOptimizationProofTint: Color {
+        switch uploadOptimizationProofValue {
+        case "Fallback":
+            return AppTheme.warningYellow
+        case "Compact", "Fast":
+            return AppTheme.rimOrange
+        case "Balanced":
+            return AppTheme.courtBlue
+        default:
+            return AppTheme.subtleText
         }
     }
 
