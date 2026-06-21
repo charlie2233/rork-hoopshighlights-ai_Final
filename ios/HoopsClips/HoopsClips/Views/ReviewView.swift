@@ -108,11 +108,11 @@ struct ReviewView: View {
                             headerStats
                             reviewProgressStrip
                             reviewCarousel
+                            aiEditEntryCard
                             filterBar
                             priorityReviewCard
                             reviewContextStrip
                             quickActionsBar
-                            aiEditEntryCard
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
