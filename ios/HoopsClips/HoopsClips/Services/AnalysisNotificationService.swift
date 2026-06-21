@@ -60,16 +60,20 @@ final class AnalysisNotificationService: NSObject {
                 let clipLabel = "clip\(clipsCount == 1 ? "" : "s")"
                 switch context {
                 case .analysis:
+                    content.subtitle = "Analyzing -> Review ready"
                     content.body = "HoopClips found \(clipsCount) \(clipLabel). Open Review to keep or nah."
                 case .backgroundUploadResume:
-                    content.body = "Background upload finished. HoopClips found \(clipsCount) \(clipLabel). Open Review to keep or nah."
+                    content.subtitle = "Upload done -> Review ready"
+                    content.body = "Upload and analysis finished. HoopClips found \(clipsCount) \(clipLabel). Open Review to keep or nah."
                 }
             } else {
                 switch context {
                 case .analysis:
+                    content.subtitle = "Analyzing finished"
                     content.body = "Your highlight scan finished, but no strong clips were detected."
                 case .backgroundUploadResume:
-                    content.body = "Background upload finished, but no strong clips were detected."
+                    content.subtitle = "Upload done -> Analysis finished"
+                    content.body = "Upload and analysis finished, but no strong clips were detected."
                 }
             }
             content.sound = .default
@@ -78,6 +82,7 @@ final class AnalysisNotificationService: NSObject {
             content.userInfo = [
                 "source": "HoopClips",
                 "event": "analysis_completed",
+                "pipeline": context == .backgroundUploadResume ? "upload_done_review_ready" : "analysis_review_ready",
                 "clipsCount": clipsCount,
                 "usedFallback": usedFallback,
                 "completionContext": context.rawValue
@@ -117,14 +122,16 @@ final class AnalysisNotificationService: NSObject {
             }
 
             let content = UNMutableNotificationContent()
-            content.title = "Upload finished"
-            content.body = "Open HoopClips to continue analysis and get Review ready."
+            content.title = "Upload done, analyzing now"
+            content.subtitle = "Uploading -> Analyzing"
+            content.body = "You can keep using your phone. HoopClips will ping again when Review is ready."
             content.sound = .default
             content.threadIdentifier = "hoopclips-analysis"
             content.categoryIdentifier = "background-upload-complete"
             content.userInfo = [
                 "source": "HoopClips",
                 "event": "background_upload_completed",
+                "pipeline": "upload_done_analysis_started",
                 "completionContext": CompletionContext.backgroundUploadResume.rawValue
             ]
 
@@ -135,7 +142,10 @@ final class AnalysisNotificationService: NSObject {
             )
             do {
                 try await center.add(request)
-                LaunchTelemetry.shared.recordBackgroundUploadProof("background_upload_notification_scheduled")
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "background_upload_notification_scheduled",
+                    metadata: "pipeline=upload_done_analysis_started"
+                )
             } catch {
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "background_upload_notification_schedule_failed",
