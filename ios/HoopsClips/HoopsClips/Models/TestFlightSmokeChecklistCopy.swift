@@ -59,6 +59,7 @@ nonisolated enum TestFlightSmokeChecklistCopy {
             "- saved chunks / stale resume hint appears when retrying",
             "- Player upload card can send proof directly",
             "- Player upload proof includes build/environment/project context",
+            "- Player upload proof includes multipart retry/backoff policy",
             "- app-switch handoff event is present in proof after leaving the app",
             "- Review says Analyzing, please wait while cloud is active",
             "1. Install this exact TestFlight build.",
