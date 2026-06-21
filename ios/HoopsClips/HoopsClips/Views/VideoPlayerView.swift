@@ -133,6 +133,14 @@ struct VideoPlayerView: View {
     private let videoImportCompletionGraceNanoseconds: UInt64 = 2 * 1_000_000_000
     private let videoImportRecoveryPollNanoseconds: UInt64 = 2 * 1_000_000_000
 
+    private var analysisDisplayProgress: Double {
+        min(max(viewModel.analysisService.progress, 0), 1)
+    }
+
+    private var analysisDisplayPercent: Int {
+        Int((analysisDisplayProgress * 100).rounded())
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -1901,11 +1909,11 @@ struct VideoPlayerView: View {
         VStack(spacing: 16) {
             analysisProgressHeader
 
-            ProgressView(value: viewModel.analysisService.progress)
+            ProgressView(value: analysisDisplayProgress)
                 .tint(AppTheme.accentPurple)
                 .scaleEffect(y: 2)
                 .accessibilityLabel(analysisProgressTitle)
-                .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent")
+                .accessibilityValue("\(analysisDisplayPercent) percent")
 
             Text(viewModel.analysisService.statusMessage)
                 .font(.caption)
@@ -2040,7 +2048,7 @@ struct VideoPlayerView: View {
     }
 
     private var analysisProgressPercentText: some View {
-        Text("\(Int(viewModel.analysisService.progress * 100))%")
+            Text("\(analysisDisplayPercent)%")
             .font(.subheadline.monospacedDigit())
             .foregroundStyle(AppTheme.neonPurple)
             .lineLimit(1)
@@ -2310,7 +2318,7 @@ struct VideoPlayerView: View {
         CloudAnalysisProgressCopy.approximateRemainingTime(
             statusMessage: viewModel.analysisService.statusMessage,
             analysisMode: viewModel.analysisMode,
-            progress: viewModel.analysisService.progress,
+            progress: analysisDisplayProgress,
             durationSeconds: viewModel.videoDuration
         )
     }
@@ -2821,7 +2829,7 @@ struct VideoPlayerView: View {
 
     private var analysisProgressAccessibilityValue: String {
         var parts = [
-            "\(Int(viewModel.analysisService.progress * 100)) percent.",
+            "\(analysisDisplayPercent) percent.",
             viewModel.analysisService.statusMessage,
             analysisProgressDetailText
         ]
