@@ -1636,6 +1636,13 @@ struct VideoPlayerView: View {
         ]
     }
 
+    private struct AnalysisProgressFact: Identifiable {
+        let id: String
+        let icon: String
+        let text: String
+        let tint: Color
+    }
+
     private var analysisProgressView: some View {
         VStack(spacing: 16) {
             analysisProgressHeader
@@ -1662,73 +1669,7 @@ struct VideoPlayerView: View {
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let analysisApproximateRemainingText {
-                Label(analysisApproximateRemainingText, systemImage: "clock.badge.checkmark")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.white.opacity(0.07), in: .rect(cornerRadius: 12))
-                    .accessibilityIdentifier("analysis.approximateRemainingTime")
-            }
-
-            if let analysisUploadMetricText {
-                Label(analysisUploadMetricText, systemImage: "speedometer")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.cyan)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.cyan.opacity(0.22), lineWidth: 1)
-                    }
-                    .accessibilityIdentifier("analysis.uploadMetricSummary")
-            }
-
-            if let analysisChunkProgressText {
-                Label(analysisChunkProgressText, systemImage: "square.stack.3d.up.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(AppTheme.warningYellow)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AppTheme.warningYellow.opacity(0.11), in: .rect(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(AppTheme.warningYellow.opacity(0.22), lineWidth: 1)
-                    }
-                    .accessibilityIdentifier("analysis.chunkProgressSummary")
-            }
-
-            if let analysisBackgroundReminderText {
-                Label(analysisBackgroundReminderText, systemImage: "cloud.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AppTheme.neonPurple)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AppTheme.neonPurple.opacity(0.12), in: .rect(cornerRadius: 12))
-                    .accessibilityIdentifier("analysis.cloudBackgroundReminder")
-            }
+            analysisProgressQuickFacts
 
             if let analysisBackgroundUploadStillRunningText {
                 backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
@@ -1820,6 +1761,43 @@ struct VideoPlayerView: View {
             .foregroundStyle(AppTheme.neonPurple)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
+    }
+
+    @ViewBuilder
+    private var analysisProgressQuickFacts: some View {
+        let facts = analysisProgressFacts
+        if !facts.isEmpty {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(facts) { fact in
+                        analysisProgressFactPill(fact)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(facts) { fact in
+                        analysisProgressFactPill(fact)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("analysis.progressQuickFacts")
+        }
+    }
+
+    private func analysisProgressFactPill(_ fact: AnalysisProgressFact) -> some View {
+        Label(fact.text, systemImage: fact.icon)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(fact.tint)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+            .minimumScaleFactor(0.78)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(fact.tint.opacity(0.11), in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(fact.tint.opacity(0.22), lineWidth: 1)
+            }
     }
 
     private var analysisCompleteView: some View {
@@ -2044,6 +2022,87 @@ struct VideoPlayerView: View {
             statusMessage: viewModel.analysisService.statusMessage,
             analysisMode: viewModel.analysisMode
         )
+    }
+
+    private var analysisProgressFacts: [AnalysisProgressFact] {
+        var facts: [AnalysisProgressFact] = []
+
+        if let analysisUploadMetricText {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "upload",
+                    icon: "speedometer",
+                    text: analysisUploadMetricText,
+                    tint: .cyan
+                )
+            )
+        }
+
+        if let analysisChunkProgressText {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "chunks",
+                    icon: "square.stack.3d.up.fill",
+                    text: analysisChunkProgressText,
+                    tint: AppTheme.warningYellow
+                )
+            )
+        }
+
+        if let analysisApproximateRemainingCompactText {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "eta",
+                    icon: "clock.badge.checkmark",
+                    text: analysisApproximateRemainingCompactText,
+                    tint: .white.opacity(0.88)
+                )
+            )
+        }
+
+        if let analysisBackgroundReminderCompactText {
+            facts.append(
+                AnalysisProgressFact(
+                    id: "background",
+                    icon: "cloud.fill",
+                    text: analysisBackgroundReminderCompactText,
+                    tint: AppTheme.neonPurple
+                )
+            )
+        }
+
+        return Array(facts.prefix(dynamicTypeSize.isAccessibilitySize ? 4 : 3))
+    }
+
+    private var analysisApproximateRemainingCompactText: String? {
+        guard let analysisApproximateRemainingText else { return nil }
+        let firstSentence = analysisApproximateRemainingText
+            .components(separatedBy: ".")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let firstSentence, !firstSentence.isEmpty else {
+            return analysisApproximateRemainingText
+        }
+
+        return firstSentence.replacingOccurrences(
+            of: "Approx time left: about ",
+            with: "ETA ",
+            options: [.caseInsensitive]
+        )
+    }
+
+    private var analysisBackgroundReminderCompactText: String? {
+        guard analysisBackgroundReminderText != nil else { return nil }
+
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        if status.contains("resum") || status.contains("recover") {
+            return "Reconnecting upload"
+        }
+        if status.contains("background") || status.contains("upload") {
+            return "Safe to switch apps"
+        }
+        return "Cloud keeps working"
     }
 
     @ViewBuilder
