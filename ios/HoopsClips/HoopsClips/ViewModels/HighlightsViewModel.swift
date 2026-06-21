@@ -489,9 +489,10 @@ final class HighlightsViewModel {
     }
 
     func resumeInFlightCloudAnalysisIfNeeded() async {
+        let canResumeWaitingBackgroundUpload = await shouldResumeWaitingBackgroundUpload()
         guard AppConstants.cloudAnalysisEnabled,
               !isForegroundCloudResumeInProgress,
-              !analysisService.isAnalyzing,
+              (!analysisService.isAnalyzing || canResumeWaitingBackgroundUpload),
               analysisService.clips.isEmpty,
               lastAnalyzedAt == nil else {
             return
@@ -540,6 +541,18 @@ final class HighlightsViewModel {
         } catch {
             handleInFlightCloudAnalysisResumeFailure(CloudAnalysisError.network(error.localizedDescription))
         }
+    }
+
+    private func shouldResumeWaitingBackgroundUpload() async -> Bool {
+        guard analysisService.isAnalyzing,
+              await cloudAnalysisService.hasPendingBackgroundUpload() else {
+            return false
+        }
+
+        let status = analysisService.statusMessage.lowercased()
+        return status.contains("background upload still running")
+            || status.contains("recovered background upload")
+            || status.contains("saved background upload")
     }
 
     private func resumePendingBackgroundUploadIfNeeded() async -> Bool {
