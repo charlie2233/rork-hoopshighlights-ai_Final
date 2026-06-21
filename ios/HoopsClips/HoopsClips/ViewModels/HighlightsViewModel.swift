@@ -28,6 +28,7 @@ final class HighlightsViewModel {
     private var pendingCloudAnalysisJob: PreparedCloudAnalysisJob?
     private var activeCloudTeamScanID: UUID?
     @ObservationIgnored private var activeAnalysisTask: Task<Void, Never>?
+    private var isForegroundCloudResumeInProgress = false
     private var lastAnalysisStatusSummary: String?
     private var lastAnalyzedAt: Date?
     private var lastExportedAt: Date?
@@ -489,10 +490,15 @@ final class HighlightsViewModel {
 
     func resumeInFlightCloudAnalysisIfNeeded() async {
         guard AppConstants.cloudAnalysisEnabled,
+              !isForegroundCloudResumeInProgress,
               !analysisService.isAnalyzing,
               analysisService.clips.isEmpty,
               lastAnalyzedAt == nil else {
             return
+        }
+        isForegroundCloudResumeInProgress = true
+        defer {
+            isForegroundCloudResumeInProgress = false
         }
 
         if await resumePendingBackgroundUploadIfNeeded() {

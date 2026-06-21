@@ -165,6 +165,9 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             LaunchTelemetry.shared.recordLifecycleState(phase.hoopsTelemetryName, screen: selectedTabTelemetryName)
             recordRuntimeStateBreadcrumb(reason: "lifecycle_\(phase.hoopsTelemetryName)")
+            if phase == .active {
+                resumeCloudAnalysisAfterForegroundIfNeeded()
+            }
         }
         .onChange(of: selectedTab) { oldValue, newValue in
             recordTabSwitchBreadcrumb(fromRawValue: oldValue, toRawValue: newValue, phase: "active", trigger: "state")
@@ -1088,6 +1091,12 @@ struct ContentView: View {
     private func openPlayerFromReviewRecovery() {
         dismissReviewRecoveryNotice()
         selectTab(.player)
+    }
+
+    private func resumeCloudAnalysisAfterForegroundIfNeeded() {
+        Task { @MainActor in
+            await viewModel.resumeInFlightCloudAnalysisIfNeeded()
+        }
     }
 
     private func reviewBlockMetadata(reason: String) -> String {
