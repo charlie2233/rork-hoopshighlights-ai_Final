@@ -64,16 +64,16 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         if status.contains("resuming") && status.contains("upload") {
             if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
-                return "Reconnecting to saved upload: \(chunkProgress). Finished chunks stay saved."
+                return "Reconnecting to saved upload: \(chunkProgress). Finished chunks stay saved; resume uses fast lanes when available."
             }
-            return "Reconnecting to saved upload. Finished chunks stay saved."
+            return "Reconnecting to saved upload. Finished chunks stay saved; resume uses fast lanes when available."
         }
 
         if status.contains("upload") && status.contains("retry") {
             if let retryProgress = uploadRetryProgressSummary(from: statusMessage) {
-                return "Retrying upload: \(retryProgress). Finished chunks stay saved."
+                return "Retrying upload: \(retryProgress). Finished chunks stay saved; fast lanes are reused when available."
             }
-            return "Retrying upload. Finished chunks stay saved; HoopClips will keep trying before you restart."
+            return "Retrying upload. Finished chunks stay saved; HoopClips keeps trying with fast lanes before you restart."
         }
 
         if status.contains("upload") && isSlowUploadStatus(status) {
@@ -85,9 +85,9 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         if status.contains("upload") {
             if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
-                return "Uploading \(chunkProgress). Safe to switch apps; completed chunks stay saved."
+                return "Uploading \(chunkProgress). Safe to switch apps; completed chunks stay saved for fast resume."
             }
-            return "Background upload active. Huge videos use resumable chunks when supported; switch apps and reopen for live progress."
+            return "Background upload active. Huge videos use resumable chunks and fast resume when supported."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -139,16 +139,16 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
         if status.contains("resuming") && status.contains("upload") {
             if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
-                return "Resuming saved upload: \(chunkProgress). Completed chunks are preserved."
+                return "Resuming saved upload: \(chunkProgress). Completed chunks are preserved and fast lanes are used when available."
             }
-            return "Resuming saved upload. Completed chunks are preserved."
+            return "Resuming saved upload. Completed chunks are preserved and fast lanes are used when available."
         }
 
         if status.contains("upload") && status.contains("retry") {
             if let retryProgress = uploadRetryProgressSummary(from: statusMessage) {
-                return "Retrying upload: \(retryProgress). Completed chunks are preserved."
+                return "Retrying upload: \(retryProgress). Completed chunks are preserved for fast resume."
             }
-            return "Retrying saved upload. Completed chunks are preserved."
+            return "Retrying saved upload. Completed chunks are preserved for fast resume."
         }
 
         if status.contains("upload") && isSlowUploadStatus(status) {
@@ -322,7 +322,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         if combined.contains("retry") || combined.contains("retrying") {
             return CloudAnalysisSlowUploadHelp(
                 title: "Retrying upload",
-                message: "No need to restart yet. HoopClips is retrying saved chunks; send proof if it stays stuck.",
+                message: "No need to restart yet. HoopClips is retrying saved chunks with fast lanes when available; send proof if it stays stuck.",
                 icon: "arrow.clockwise.icloud.fill"
             )
         }
@@ -382,7 +382,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             "durationMinutes=\(durationMinutes)",
             "sourceSizeMB=\(sourceSizeMB.map(String.init) ?? "unknown")",
             "optimizedSourceStatus=available",
-            "currentPath=optimized_when_recommended_else_original_background_chunked_upload"
+            "currentPath=optimized_when_recommended_else_original_background_chunked_upload_with_fast_resume"
         ].joined(separator: " ")
 
         return CloudAnalysisUploadSourceOptimization(
