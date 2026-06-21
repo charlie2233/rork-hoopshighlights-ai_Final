@@ -21,7 +21,9 @@ nonisolated enum SmokeProofSummaryCopy {
         keptClips: Int,
         needsReviewClips: Int,
         lastAnalysisBlockReason: String,
+        fastUploadMode: Bool,
         latestUploadProgress: String,
+        latestUploadSourceOptimization: String,
         latestUnexpectedExit: String,
         latestCrashReportDelivery: String
     ) -> String {
@@ -44,18 +46,30 @@ nonisolated enum SmokeProofSummaryCopy {
             "keptClips=\(max(0, keptClips))",
             "needsReviewClips=\(max(0, needsReviewClips))",
             "lastAnalysisBlockReason=\(safeSummaryValue(lastAnalysisBlockReason))",
+            "fastUploadMode=\(fastUploadMode)",
             "latestUploadProgress=\(safeSummaryValue(latestUploadProgress))",
-            "longVideoUploadEvidence=\(longVideoUploadEvidence(from: latestUploadProgress, analysisStatus: analysisStatus))",
+            "latestUploadSourceOptimization=\(safeSummaryValue(latestUploadSourceOptimization))",
+            "longVideoUploadEvidence=\(longVideoUploadEvidence(from: latestUploadProgress, latestUploadSourceOptimization: latestUploadSourceOptimization, analysisStatus: analysisStatus))",
             "latestUnexpectedExit=\(safeSummaryValue(latestUnexpectedExit))",
             "latestCrashReportDelivery=\(safeSummaryValue(latestCrashReportDelivery))",
             "privacy=no secrets, URLs, object keys, or local file paths"
         ].joined(separator: "\n")
     }
 
-    private static func longVideoUploadEvidence(from latestUploadProgress: String, analysisStatus: String) -> String {
-        let combined = "\(latestUploadProgress) \(analysisStatus)".lowercased()
+    private static func longVideoUploadEvidence(
+        from latestUploadProgress: String,
+        latestUploadSourceOptimization: String,
+        analysisStatus: String
+    ) -> String {
+        let combined = "\(latestUploadProgress) \(latestUploadSourceOptimization) \(analysisStatus)".lowercased()
         var evidence: [String] = []
 
+        if combined.contains("compact") || combined.contains("optimized") {
+            evidence.append("optimized_source")
+        }
+        if combined.contains("fastuploadmode=true") || combined.contains("fast_upload_mode") {
+            evidence.append("fast_upload_mode")
+        }
         if combined.contains("chunk") {
             evidence.append("chunks")
         }

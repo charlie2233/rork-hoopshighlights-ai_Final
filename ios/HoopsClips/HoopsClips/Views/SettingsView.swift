@@ -1219,6 +1219,7 @@ struct SettingsView: View {
             proofTrail: recentBackgroundUploadProofTrail
         )
         let latestUploadProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let latestUploadSourceOptimization = CloudAnalysisService.latestUploadSourceOptimizationSummary()
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
@@ -1252,6 +1253,7 @@ struct SettingsView: View {
             "analysisProgressPercent=\(analysisProgressPercent)",
             "analysisStatus=\(proofTextValue(viewModel.analysisService.statusMessage))",
             "backgroundUploadMode=ios_background_urlsession",
+            "fastUploadMode=\(CloudAnalysisProgressCopy.isFastUploadModeEnabled())",
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadMultipartCompleteIdempotent=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
@@ -1263,6 +1265,7 @@ struct SettingsView: View {
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
             "latestUploadProgress=\(proofTextValue(latestUploadProgress))",
+            "latestUploadSourceOptimization=\(proofTextValue(latestUploadSourceOptimization))",
             "multipartUploadPolicy=\(proofTextValue(multipartUploadPolicy))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
             "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
@@ -1305,7 +1308,9 @@ struct SettingsView: View {
             keptClips: viewModel.keptClips.count,
             needsReviewClips: viewModel.needsReviewClips.count,
             lastAnalysisBlockReason: viewModel.lastAnalysisStartBlockReason?.rawValue ?? "none",
+            fastUploadMode: CloudAnalysisProgressCopy.isFastUploadModeEnabled(),
             latestUploadProgress: proofTextValue(CloudAnalysisService.latestUploadProgressSummary()),
+            latestUploadSourceOptimization: proofTextValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()),
             latestUnexpectedExit: proofTextValue(LaunchTelemetry.shared.latestUnexpectedExitSummary),
             latestCrashReportDelivery: proofTextValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary)
         )
@@ -1330,8 +1335,10 @@ struct SettingsView: View {
             clipCount: viewModel.clips.count,
             keptClipCount: viewModel.keptClips.count,
             needsReviewClipCount: viewModel.needsReviewClips.count,
+            fastUploadMode: CloudAnalysisProgressCopy.isFastUploadModeEnabled(),
             pendingUploadSummary: proofTextValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()),
-            latestUploadProgress: proofTextValue(CloudAnalysisService.latestUploadProgressSummary())
+            latestUploadProgress: proofTextValue(CloudAnalysisService.latestUploadProgressSummary()),
+            latestUploadSourceOptimization: proofTextValue(CloudAnalysisService.latestUploadSourceOptimizationSummary())
         )
     }
 
@@ -1354,6 +1361,7 @@ struct SettingsView: View {
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
         let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let latestUploadSourceOptimization = CloudAnalysisService.latestUploadSourceOptimizationSummary()
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
@@ -1383,6 +1391,7 @@ struct SettingsView: View {
             "analysisProgressPercent=\(analysisProgressPercent)",
             "analysisStatus=\(proofTextValue(viewModel.analysisService.statusMessage))",
             "backgroundUploadMode=ios_background_urlsession",
+            "fastUploadMode=\(CloudAnalysisProgressCopy.isFastUploadModeEnabled())",
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadMultipartCompleteIdempotent=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
@@ -1392,6 +1401,7 @@ struct SettingsView: View {
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
             "latestUploadProgress=\(proofTextValue(latestProgress))",
+            "latestUploadSourceOptimization=\(proofTextValue(latestUploadSourceOptimization))",
             "multipartUploadPolicy=\(proofTextValue(multipartUploadPolicy))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
             "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
