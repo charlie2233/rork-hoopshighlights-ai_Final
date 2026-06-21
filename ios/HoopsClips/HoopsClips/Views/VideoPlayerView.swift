@@ -1154,6 +1154,42 @@ struct VideoPlayerView: View {
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
     }
 
+    private var analysisStartUnavailableReason: String? {
+        if viewModel.isVideoImportInProgress {
+            return "Import is finishing. Analysis unlocks when the video is ready."
+        }
+        if !viewModel.isVideoLoaded || viewModel.videoURL == nil {
+            return "Import a video first."
+        }
+        if viewModel.analysisService.isAnalyzing {
+            return "Analysis is already running."
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return "Finding teams first."
+        }
+        if viewModel.requiresHighlightTeamSelectionConfirmation {
+            return "Pick a team or All teams first."
+        }
+        return nil
+    }
+
+    private var analysisPrimaryButtonTitle: String {
+        if viewModel.isVideoImportInProgress {
+            return "Importing video"
+        }
+        if !viewModel.isVideoLoaded || viewModel.videoURL == nil {
+            return "Import video first"
+        }
+        if viewModel.analysisService.isAnalyzing {
+            return "Analysis running"
+        }
+        return analysisButtonTitle
+    }
+
+    private var analysisPrimaryButtonSubtitle: String {
+        analysisStartUnavailableReason ?? analysisButtonSubtitle
+    }
+
     private var isAnalysisStartDisabled: Bool {
         viewModel.isVideoImportInProgress
             || !viewModel.isVideoLoaded
@@ -1215,12 +1251,12 @@ struct VideoPlayerView: View {
                         Image(systemName: analysisButtonIcon)
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(analysisButtonTitle)
+                            Text(analysisPrimaryButtonTitle)
                                 .font(.headline)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                                 .minimumScaleFactor(0.84)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(analysisButtonSubtitle)
+                            Text(analysisPrimaryButtonSubtitle)
                                 .font(.caption)
                                 .foregroundStyle(.white.opacity(0.86))
                                 .lineLimit(2)
