@@ -175,6 +175,8 @@ struct ContentView: View {
             recordRuntimeStateBreadcrumb(reason: "lifecycle_\(phase.hoopsTelemetryName)")
             if phase == .active {
                 resumeCloudAnalysisAfterForegroundIfNeeded()
+            } else {
+                viewModel.noteCloudAnalysisAppSwitch(phaseName: phase.hoopsTelemetryName)
             }
         }
         .onChange(of: selectedTab) { oldValue, newValue in

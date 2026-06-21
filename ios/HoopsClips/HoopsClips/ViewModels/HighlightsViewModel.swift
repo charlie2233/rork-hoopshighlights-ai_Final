@@ -507,6 +507,53 @@ final class HighlightsViewModel {
         startAnalysisTask {}
     }
 
+    func noteCloudAnalysisAppSwitch(phaseName: String) {
+        guard AppConstants.cloudAnalysisEnabled,
+              analysisMode == .cloud,
+              analysisService.isAnalyzing else {
+            return
+        }
+
+        let status = analysisService.statusMessage.lowercased()
+        let isUploadStage = status.contains("upload")
+            || status.contains("preparing cloud")
+            || status.contains("reconnecting")
+            || status.contains("saved background")
+            || status.contains("recovered background")
+            || cloudAnalysisJobID == nil
+        let message = isUploadStage
+            ? "Background upload still running. Safe to switch apps."
+            : "Cloud analysis still running. Reopen HoopClips for live status."
+        let progressFloor = isUploadStage ? 0.14 : 0.32
+
+        analysisService.updateExternalAnalysis(
+            progress: max(analysisService.progress, progressFloor),
+            status: message
+        )
+        lastAnalysisStatusSummary = message
+        persistCurrentProject(
+            reason: .analysisStarted,
+            message: message
+        )
+
+        if isUploadStage {
+            CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                event: "app_switch_handoff",
+                reason: phaseName
+            )
+        }
+
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "app_switch_cloud_analysis_handoff",
+            metadata: [
+                "phase=\(phaseName)",
+                "stage=\(isUploadStage ? "upload" : "analysis")",
+                "progressPercent=\(Int((min(max(analysisService.progress, 0), 1) * 100).rounded(.down)))",
+                "privacy=no_urls_no_object_keys_no_local_file_paths"
+            ].joined(separator: " ")
+        )
+    }
+
     func resumePendingBackgroundUploadFromPlayer() {
         guard activeAnalysisTask == nil,
               !isVideoImportInProgress,
