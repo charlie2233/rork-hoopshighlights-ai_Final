@@ -48,6 +48,7 @@ struct VideoPlayerView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showSourcePicker = false
     @State private var analysisStarted = false
+    @State private var showAnalysisOptions = false
     @State private var showingPaywall = false
     @State private var showingNoClipsAlert = false
     @State private var showingDurationLimitAlert = false
@@ -1296,34 +1297,6 @@ struct VideoPlayerView: View {
                     analysisStartRecoveryCard(analysisStartRecoveryContent)
                 }
 
-                if viewModel.isVideoLoaded, viewModel.videoURL != nil, !viewModel.isVideoImportInProgress {
-                    teamTargetControl
-                    targetHighlightLengthControl
-
-                    if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sparkles")
-                                .foregroundStyle(AppTheme.warningYellow)
-                                .padding(.top, 1)
-                            Text(analysisBannerText)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(AppTheme.warningYellow)
-                                .lineLimit(3)
-                                .minimumScaleFactor(0.84)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .layoutPriority(1)
-                            Spacer()
-                            if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
-                                Button(languageStore.text(.goPro)) { showingPaywall = true }
-                                    .font(.caption.bold())
-                                    .foregroundStyle(AppTheme.neonPurple)
-                            }
-                        }
-                        .padding(12)
-                        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
-                    }
-                }
-
                 Button {
                     startAnalysisFromButton()
                 } label: {
@@ -1360,12 +1333,89 @@ struct VideoPlayerView: View {
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
                 .accessibilityIdentifier(hasPendingUploadResume ? "analysis.resumePendingBackgroundUploadButton" : "analysis.startButton")
 
+                if shouldShowAnalysisOptionsPanel {
+                    analysisOptionsPanel
+                }
+
                 if AppConstants.requiresCloudVideoPipeline {
                 }
             }
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
+    }
+
+    private var shouldShowAnalysisOptionsPanel: Bool {
+        viewModel.isVideoLoaded && viewModel.videoURL != nil && !viewModel.isVideoImportInProgress
+    }
+
+    private var shouldForceShowAnalysisOptions: Bool {
+        viewModel.isCloudTeamScanInProgress
+            || viewModel.requiresHighlightTeamSelectionConfirmation
+            || requiresProForCurrentVideo
+    }
+
+    @ViewBuilder
+    private var analysisOptionsPanel: some View {
+        if shouldForceShowAnalysisOptions {
+            analysisOptionsContent
+        } else {
+            DisclosureGroup(isExpanded: $showAnalysisOptions) {
+                analysisOptionsContent
+                    .padding(.top, 10)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(AppTheme.neonPurple)
+                    Text("Length & team")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    Text("Optional")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+            }
+            .tint(AppTheme.neonPurple)
+            .padding(12)
+            .background(AppTheme.surfaceBg.opacity(0.42), in: .rect(cornerRadius: 14))
+            .accessibilityIdentifier("analysis.options.disclosure")
+        }
+    }
+
+    private var analysisOptionsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            targetHighlightLengthControl
+            teamTargetControl
+            analysisQuotaBanner
+        }
+    }
+
+    @ViewBuilder
+    private var analysisQuotaBanner: some View {
+        if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .padding(.top, 1)
+                Text(analysisBannerText)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
+                Spacer()
+                if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
+                    Button(languageStore.text(.goPro)) { showingPaywall = true }
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+            }
+            .padding(12)
+            .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+        }
     }
 
     @ViewBuilder
@@ -2961,7 +3011,7 @@ struct VideoPlayerView: View {
         if viewModel.requiresHighlightTeamSelectionConfirmation {
             return "Solo? Use All teams first"
         }
-        return languageStore.text(.analysisButtonSubtitle)
+        return "Cloud finds clips; you review before export."
     }
 
     private var analysisButtonTitle: String {
@@ -2974,7 +3024,7 @@ struct VideoPlayerView: View {
         if viewModel.requiresHighlightTeamSelectionConfirmation {
             return "Choose Team First"
         }
-        return languageStore.text(.analyzeWithAI)
+        return "Get Highlights"
     }
 
     private var analysisButtonIcon: String {
