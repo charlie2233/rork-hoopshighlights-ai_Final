@@ -180,6 +180,7 @@ def proof_time(values: dict[str, Any]) -> dt.datetime | None:
             "capturedAt",
             "lastUpdatedAt",
             "queuedAt",
+            "proofCapturedAt",
             "proofSavedAt",
             "backgroundUploadProofSavedAt",
         )
