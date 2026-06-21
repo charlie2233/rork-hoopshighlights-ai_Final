@@ -1191,10 +1191,11 @@ struct ExportView: View {
     }
 
     private func applyExportPreviewAudioMute() {
-        exportPreviewPlayer?.isMuted = previewAudioMuted
-        exportPreviewPlayer?.volume = previewAudioMuted ? 0 : 1
-        expandedExportPreviewPlayer?.isMuted = previewAudioMuted
-        expandedExportPreviewPlayer?.volume = previewAudioMuted ? 0 : 1
+        PreviewAudioCopy.applyMuted(
+            previewAudioMuted,
+            to: exportPreviewPlayer,
+            expandedExportPreviewPlayer
+        )
     }
 
     private func clearExportPreviewAudioTrackState() {

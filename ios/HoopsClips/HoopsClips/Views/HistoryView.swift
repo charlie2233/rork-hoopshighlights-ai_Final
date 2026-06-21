@@ -1157,8 +1157,7 @@ private struct HistoryProjectDetailView: View {
     }
 
     private func applyHistoryPreviewAudioMute() {
-        previewPlayer?.isMuted = previewAudioMuted
-        previewPlayer?.volume = previewAudioMuted ? 0 : 1
+        PreviewAudioCopy.applyMuted(previewAudioMuted, to: previewPlayer)
     }
 
     private func inspectHistoryPreviewAudioTrack(for url: URL) {

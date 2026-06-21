@@ -10,6 +10,26 @@ enum PreviewAudioCopy {
     static let noClipAudio = "No clip audio"
     static let noHistoryPreviewAudio = "No preview audio"
     static let noReelAudio = "No reel audio"
+
+    static func applyMuted(_ isMuted: Bool, to players: AVPlayer?...) {
+        if !isMuted {
+            activatePlaybackSession()
+        }
+
+        for player in players {
+            player?.isMuted = isMuted
+            player?.volume = isMuted ? 0 : 1
+        }
+    }
+
+    private static func activatePlaybackSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to activate preview audio session: \(error.localizedDescription)")
+        }
+    }
 }
 
 struct VideoPlayerView: View {
@@ -861,11 +881,7 @@ struct VideoPlayerView: View {
     }
 
     private func applySourcePreviewAudioMute() {
-        if !previewAudioMuted {
-            activateSourcePreviewAudioSession()
-        }
-        player?.isMuted = previewAudioMuted
-        player?.volume = previewAudioMuted ? 0 : 1
+        PreviewAudioCopy.applyMuted(previewAudioMuted, to: player)
     }
 
     private func activateSourcePreviewAudioSession() {

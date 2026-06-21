@@ -1715,8 +1715,7 @@ struct AIEditView: View {
     }
 
     private func applyPreviewAudioMute() {
-        previewPlayer?.isMuted = previewAudioMuted
-        previewPlayer?.volume = previewAudioMuted ? 0 : 1
+        PreviewAudioCopy.applyMuted(previewAudioMuted, to: previewPlayer)
     }
 
     private var proBenefitsSheet: some View {

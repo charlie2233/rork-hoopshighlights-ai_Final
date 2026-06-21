@@ -2455,8 +2455,7 @@ struct ReviewView: View {
     }
 
     private func applyClipPreviewAudioMute() {
-        clipPlayer?.isMuted = previewAudioMuted
-        clipPlayer?.volume = previewAudioMuted ? 0 : 1
+        PreviewAudioCopy.applyMuted(previewAudioMuted, to: clipPlayer)
     }
 
     private func clipDetailSheet(clip: Clip) -> some View {
