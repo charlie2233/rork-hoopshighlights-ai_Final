@@ -41,7 +41,9 @@ struct ExportView: View {
                             summaryCard
                             aiEditAgentSection
                             if AppConstants.requiresCloudVideoPipeline {
-                                quickActionsSection
+                                if viewModel.exportService.exportedURL != nil {
+                                    quickActionsSection
+                                }
                             } else {
                                 localExportSetupCard
                                 if showAdvancedLocalExportControls {
@@ -157,23 +159,25 @@ struct ExportView: View {
     }
 
     private var summaryCard: some View {
-        VStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             RorkSectionHeader(
-                title: "Tell HoopClips what reel you want",
+                title: "Make your reel",
                 icon: "sparkles.tv.fill",
                 subtitle: viewModel.keptClips.isEmpty
-                    ? "Pick a vibe below, then make the reel."
-                    : "Kept clips stay in. Pick a vibe, then make the reel."
+                    ? "Pick a style below. HoopClips will choose the best moments."
+                    : "Your kept clips stay in. Pick a style and let HoopClips cut it."
             )
 
-            LazyVGrid(columns: summaryMetricGridColumns, alignment: .leading, spacing: 10) {
-                summaryMetric(
-                    value: summaryPrimaryValue,
-                    label: summaryPrimaryLabel
+            HStack(spacing: 10) {
+                exportContextPill(
+                    icon: viewModel.keptClips.isEmpty ? "wand.and.stars" : "checkmark.seal.fill",
+                    title: summaryPrimaryValue,
+                    subtitle: summaryPrimaryLabel
                 )
-                summaryMetric(
-                    value: summarySecondaryValue,
-                    label: summarySecondaryLabel
+                exportContextPill(
+                    icon: viewModel.keptClips.isEmpty ? "sparkles" : "timer",
+                    title: summarySecondaryValue,
+                    subtitle: summarySecondaryLabel
                 )
             }
 
@@ -199,21 +203,11 @@ struct ExportView: View {
                 )
             }
 
-            LazyVGrid(columns: summaryClipGridColumns, alignment: .leading, spacing: 8) {
-                if viewModel.keptClips.isEmpty {
-                    summaryClipChip(icon: "text.bubble.fill", text: "Describe it below")
-                    summaryClipChip(icon: "wand.and.stars", text: "AI picks clips")
-                } else {
-                    summaryClipChip(icon: "text.bubble.fill", text: "Describe it below")
-                    ForEach(Array(viewModel.keptClips.prefix(summaryClipPreviewLimit))) { clip in
-                        summaryClipChip(icon: clip.action.icon, text: clip.label)
-                    }
-
-                    if summaryClipOverflowCount > 0 {
-                        summaryClipChip(icon: "plus.circle.fill", text: "+\(summaryClipOverflowCount) more")
-                    }
-                }
-            }
+            Text(viewModel.keptClips.isEmpty ? "No extra setup needed: describe the vibe once and AI Edit builds from the candidate pool." : "Need a different feel? The style cards below can still reshape the final reel.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
@@ -961,26 +955,6 @@ struct ExportView: View {
         viewModel.keptClips.isEmpty ? "Selection" : "Duration"
     }
 
-    private var summaryMetricGridColumns: [GridItem] {
-        [
-            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 132 : 104), spacing: 10, alignment: .leading)
-        ]
-    }
-
-    private var summaryClipGridColumns: [GridItem] {
-        [
-            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 118, maximum: 260), spacing: 8, alignment: .top)
-        ]
-    }
-
-    private var summaryClipPreviewLimit: Int {
-        dynamicTypeSize.isAccessibilitySize ? 4 : 6
-    }
-
-    private var summaryClipOverflowCount: Int {
-        max(0, viewModel.keptClips.count - summaryClipPreviewLimit)
-    }
-
     private var quickActionButtonGridColumns: [GridItem] {
         [
             GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 128), spacing: 10, alignment: .top)
@@ -999,41 +973,37 @@ struct ExportView: View {
         ]
     }
 
-    private func summaryMetric(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(value)
-                .font(.title.bold().monospacedDigit())
-                .foregroundStyle(AppTheme.neonPurple)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.subtleText)
-                .lineLimit(2)
-                .minimumScaleFactor(0.86)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 66 : 52, alignment: .leading)
-    }
-
-    private func summaryClipChip(icon: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+    private func exportContextPill(icon: String, title: String, subtitle: String) -> some View {
+        HStack(alignment: .center, spacing: 9) {
             Image(systemName: icon)
-                .font(.caption2.weight(.semibold))
-                .padding(.top, 1)
-            Text(text)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .minimumScaleFactor(0.82)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(1)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(AppTheme.neonPurple)
+                .frame(width: 26, height: 26)
+                .background(AppTheme.accentPurple.opacity(0.18), in: Circle())
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.headline.weight(.heavy).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(subtitle)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.white)
-        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 44, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppTheme.softBorder.opacity(0.8), lineWidth: 1)
+        )
     }
 
     private func exportActionLabel(
