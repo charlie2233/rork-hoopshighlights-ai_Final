@@ -481,7 +481,7 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
         case .invalidResponse:
             return "The analysis server returned an invalid response."
         case .uploadFailed:
-            return "The video upload did not complete. Stay on Wi-Fi and retry; background uploads can resume when the server provides a resumable upload plan."
+            return "The video upload did not complete. Stay on Wi-Fi and retry; saved chunks can resume with fast lanes when the server provides a resumable upload plan."
         case .timedOut:
             return "Cloud analysis is taking longer than expected. Reopen the project from History and try again, or choose a shorter video."
         case .quotaExceeded(let remaining):
@@ -514,7 +514,7 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
         case .invalidResponse:
             return "kind=invalid_response retryable=true privacy=no_urls_no_object_keys"
         case .uploadFailed:
-            return "kind=upload_failed retryable=true next=wifi_retry_or_resumable_plan privacy=no_urls_no_object_keys"
+            return "kind=upload_failed retryable=true next=wifi_retry_or_fast_resumable_plan savedChunks=possible privacy=no_urls_no_object_keys"
         case .timedOut:
             return "kind=timed_out retryable=true next=history_reopen_or_retry privacy=no_urls_no_object_keys"
         case .quotaExceeded(let remaining):
