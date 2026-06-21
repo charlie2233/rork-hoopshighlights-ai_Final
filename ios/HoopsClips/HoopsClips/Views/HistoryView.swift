@@ -35,7 +35,7 @@ struct HistoryView: View {
                                     title: "Current Project",
                                     icon: "bolt.circle.fill",
                                     subtitle: currentProjectSectionSubtitle,
-                                    accent: AppTheme.rimOrange,
+                                    accent: historyPrimaryAccent,
                                     accessibilityIdentifier: "history.section.currentProject",
                                     projects: [currentProject]
                                 )
@@ -46,7 +46,7 @@ struct HistoryView: View {
                                     title: "Past Projects",
                                     icon: "clock.arrow.circlepath",
                                     subtitle: "Reopen past runs and replay saved videos",
-                                    accent: AppTheme.courtBlue,
+                                    accent: historySecondaryAccent,
                                     accessibilityIdentifier: "history.section.pastProjects",
                                     projects: viewModel.pastProjectRecords
                                 )
@@ -206,13 +206,15 @@ struct HistoryView: View {
         if viewModel.canRetryUploadAfterCancel {
             return AppTheme.warningYellow
         }
-        if viewModel.isVideoImportInProgress || viewModel.analysisService.statusMessage.lowercased().contains("upload") {
-            return Color.cyan
-        }
-        if viewModel.isCloudTeamScanInProgress {
-            return AppTheme.rimOrange
-        }
-        return AppTheme.neonPurple
+        return historyPrimaryAccent
+    }
+
+    private var historyPrimaryAccent: Color {
+        AppTheme.rimOrange
+    }
+
+    private var historySecondaryAccent: Color {
+        AppTheme.neonPurple.opacity(0.86)
     }
 
     private var currentWorkIcon: String {
@@ -282,7 +284,7 @@ struct HistoryView: View {
                         .background(currentWorkTint.opacity(0.22), in: .rect(cornerRadius: 14))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(currentWorkTint.opacity(0.32), lineWidth: 1)
+                                .stroke(currentWorkTint.opacity(0.26), lineWidth: 1)
                         )
                 }
                 .buttonStyle(.plain)
@@ -293,8 +295,8 @@ struct HistoryView: View {
         .background(
             LinearGradient(
                 colors: [
-                    currentWorkTint.opacity(0.18),
-                    AppTheme.surfaceBg.opacity(0.74)
+                    AppTheme.surfaceBg.opacity(0.92),
+                    currentWorkTint.opacity(0.10)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -303,7 +305,7 @@ struct HistoryView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(currentWorkTint.opacity(0.24), lineWidth: 1)
+                .stroke(currentWorkTint.opacity(0.18), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("history.currentWorkStatusCard")

@@ -33,6 +33,9 @@ struct SettingsView: View {
     @State private var smokeProofSendFailed = false
     @State private var showingSmokeProofTools = false
 
+    private var settingsPrimaryAccent: Color { AppTheme.rimOrange }
+    private var settingsSecondaryAccent: Color { AppTheme.neonPurple.opacity(0.86) }
+
     private enum FeedbackType: String, CaseIterable, Identifiable {
         case suggestion = "Suggestion"
         case bug = "Bug Report"
@@ -804,7 +807,7 @@ struct SettingsView: View {
         .background(.white.opacity(0.05), in: .rect(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.cyan.opacity(0.14), lineWidth: 1)
+                .stroke(settingsPrimaryAccent.opacity(0.14), lineWidth: 1)
         }
         .accessibilityIdentifier("settings.backgroundUpload.timeline")
     }
@@ -830,7 +833,7 @@ struct SettingsView: View {
                 title: "iOS wake",
                 doneDetail: "Background wake received.",
                 waitingDetail: "Waiting for app-switch wake.",
-                tint: Color.cyan
+                tint: settingsPrimaryAccent
             ),
             backgroundUploadLifecycleStep(
                 isDone: didReattach,
@@ -839,7 +842,7 @@ struct SettingsView: View {
                 title: "Session reattach",
                 doneDetail: "Upload session checked.",
                 waitingDetail: "Waiting to reattach session.",
-                tint: AppTheme.neonPurple
+                tint: settingsSecondaryAccent
             ),
             backgroundUploadLifecycleStep(
                 isDone: hasProgress,
@@ -848,7 +851,7 @@ struct SettingsView: View {
                 title: "Upload movement",
                 doneDetail: backgroundUploadProgressTimelineDetail(from: latestProgress),
                 waitingDetail: "No chunk progress recorded yet.",
-                tint: AppTheme.warningYellow
+                tint: settingsPrimaryAccent
             ),
             backgroundUploadLifecycleStep(
                 isDone: didFinish,
@@ -857,7 +860,7 @@ struct SettingsView: View {
                 title: "Final callback",
                 doneDetail: "Completion handler path recorded.",
                 waitingDetail: didRequestFinish ? "Finish requested; waiting for callback." : "Waiting for final callback.",
-                tint: didRequestFinish ? AppTheme.warningYellow : AppTheme.successGreen
+                tint: didRequestFinish ? settingsPrimaryAccent : settingsSecondaryAccent
             )
         ]
     }
@@ -2495,11 +2498,11 @@ struct SettingsView: View {
                         HStack(spacing: 10) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .fill(AppTheme.accentPurple.opacity(0.14))
+                                    .fill(settingsSecondaryAccent.opacity(0.14))
                                     .frame(width: 28, height: 28)
                                 Image(systemName: item.icon)
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(AppTheme.neonPurple)
+                                    .foregroundStyle(settingsSecondaryAccent)
                             }
                             Text(item.question)
                                 .font(.subheadline.weight(.medium))
@@ -2507,7 +2510,7 @@ struct SettingsView: View {
                             Spacer()
                         }
                     }
-                    .tint(AppTheme.neonPurple)
+                    .tint(settingsSecondaryAccent)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .rorkCard(
@@ -2534,11 +2537,11 @@ struct SettingsView: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(AppTheme.accentPurple.opacity(0.2))
+                        .fill(settingsSecondaryAccent.opacity(0.16))
                         .frame(width: 48, height: 48)
                     Image(systemName: authMethodIcon)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(AppTheme.neonPurple)
+                        .foregroundStyle(settingsSecondaryAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -2619,13 +2622,13 @@ struct SettingsView: View {
                         icon: "sparkles",
                         value: "\(subscriptionManager.freeUsesRemaining)",
                         label: languageStore.text(.freeLeft),
-                        tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
+                        tint: subscriptionManager.freeUsesRemaining > 0 ? settingsPrimaryAccent : AppTheme.dangerRed
                     )
                     RorkMetricChip(
                         icon: "crown.fill",
                         value: "$9.99",
                         label: languageStore.text(.settingsPerMonth),
-                        tint: AppTheme.neonPurple
+                        tint: settingsSecondaryAccent
                     )
                 }
 
@@ -2682,13 +2685,13 @@ struct SettingsView: View {
     private func aiFeatureTag(_ text: String) -> some View {
         Text(text)
             .font(.caption2)
-            .foregroundStyle(AppTheme.neonPurple)
+            .foregroundStyle(settingsSecondaryAccent)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
             .minimumScaleFactor(0.84)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(AppTheme.accentPurple.opacity(0.15), in: .capsule)
+            .background(settingsSecondaryAccent.opacity(0.12), in: .capsule)
     }
 
     private var dangerZone: some View {
@@ -2733,7 +2736,7 @@ struct SettingsView: View {
             }
         }
         .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.15), glowOpacity: 0.05)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glow: settingsPrimaryAccent, glowOpacity: 0.025)
     }
 
     @ViewBuilder
@@ -2743,11 +2746,11 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(AppTheme.accentPurple.opacity(0.14))
+                            .fill(settingsSecondaryAccent.opacity(0.12))
                             .frame(width: 40, height: 40)
                         Image(systemName: icon)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.neonPurple)
+                            .foregroundStyle(settingsSecondaryAccent)
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -2764,7 +2767,7 @@ struct SettingsView: View {
 
                     Image(systemName: "arrow.up.right.square")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.neonPurple)
+                        .foregroundStyle(settingsSecondaryAccent)
                 }
                 .padding(12)
                 .background(AppTheme.surfaceBg.opacity(0.42), in: .rect(cornerRadius: 14))
