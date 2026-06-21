@@ -624,6 +624,7 @@ struct ContentView: View {
     private var pipelineDetailMessage: String? {
         guard pipelineStage == .uploading else { return nil }
         return uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
+            ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
     }
 
     private func uploadProgressPipelineDetail(from summary: String) -> String? {
@@ -654,7 +655,7 @@ struct ContentView: View {
         }
 
         guard !parts.isEmpty else { return nil }
-        return parts.joined(separator: " | ")
+        return parts.joined(separator: " -> ")
     }
 
     private func uploadProgressField(_ field: String, in summary: String) -> String? {
@@ -676,6 +677,9 @@ struct ContentView: View {
             || lowercasedContext.contains("waiting")
             || lowercasedContext.contains("reconnecting")
             || lowercasedContext.contains("background upload")
+            || lowercasedContext.contains("chunk")
+            || lowercasedContext.contains("source upload")
+            || lowercasedContext.contains("saved chunks")
     }
 
     private var pipelineStage: AnalysisPipelineStage {
