@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Exercise HoopClips resumable upload interruption and resume behavior. "
             "Stdout is sanitized and does not print presigned URLs, object keys, or secrets. "
-            "The local state file contains job/upload identifiers needed for resume."
+            "The local state file contains job/upload identifiers and a local source path needed for resume."
         )
     )
     parser.add_argument("--worker-url", default=os.getenv("WORKER_BASE_URL"))
@@ -126,8 +126,9 @@ def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[
     state = {
         "schemaVersion": 1,
         "createdAt": int(time.time()),
-        "workerUrl": base_url,
+        "worker": sanitized_worker(base_url),
         "sourcePath": str(source_path.resolve()),
+        "sourcePathHash": stable_hash(str(source_path.resolve())),
         "sourceSizeBytes": source_size,
         "filename": source_path.name,
         "contentType": content_type,
@@ -139,7 +140,7 @@ def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[
         "completedParts": [first_part],
         "status": "interrupted_after_first_part",
         "updatedAt": int(time.time()),
-        "privacy": "state_file_contains_job_upload_identifiers_but_no_presigned_urls_or_object_keys",
+        "privacy": "state_file_contains_job_upload_identifiers_and_local_source_path_but_no_presigned_urls_or_object_keys",
     }
     args.state_path.parent.mkdir(parents=True, exist_ok=True)
     args.state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
@@ -161,7 +162,7 @@ def interrupt_after_first_part(base_url: str, args: argparse.Namespace) -> dict[
 def resume_from_state(base_url: str, args: argparse.Namespace, state: dict[str, Any]) -> dict[str, Any]:
     source_path = Path(require_str(state, "sourcePath"))
     if not source_path.is_file():
-        raise ResumableUploadSmokeError("State source file is missing.", {"sourcePath": str(source_path)})
+        raise ResumableUploadSmokeError("State source file is missing.", {"sourcePathHash": stable_hash(str(source_path))})
     job_id = require_str(state, "jobId")
     upload_id = require_str(state, "uploadId")
     install_id = require_str(state, "installId")
@@ -216,7 +217,7 @@ def persist_resume_state(
         "completedParts": sorted(completed_parts, key=lambda part: int(part["partNumber"])),
         "status": status,
         "updatedAt": int(time.time()),
-        "privacy": "state_file_contains_job_upload_identifiers_but_no_presigned_urls_or_object_keys",
+        "privacy": "state_file_contains_job_upload_identifiers_and_local_source_path_but_no_presigned_urls_or_object_keys",
     }
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(updated_state, indent=2, sort_keys=True), encoding="utf-8")
