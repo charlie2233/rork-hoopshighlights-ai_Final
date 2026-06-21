@@ -426,7 +426,6 @@ struct ReviewView: View {
 
                 if expandedClipID == clip.id {
                     VStack(alignment: .leading, spacing: 12) {
-                        reviewCarouselEvidenceChips(clip)
                         clipScoreBreakdown(clip: clip, includeDivider: false)
                         clipEvidenceRows(clip: clip, maxRows: 3)
                     }
