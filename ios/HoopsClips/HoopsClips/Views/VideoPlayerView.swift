@@ -1491,7 +1491,6 @@ struct VideoPlayerView: View {
                 analysisProgressView
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
-                analysisSmokeProofPrompt
             } else {
                 if let uploadExpiredFreshUploadPromptText {
                     uploadExpiredFreshUploadPrompt(uploadExpiredFreshUploadPromptText)
@@ -2231,28 +2230,6 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.liveUploadProgressStrip")
     }
 
-    private var analysisSmokeProofPrompt: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Proof", systemImage: "checkmark.seal.fill")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(AppTheme.successGreen)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-
-            backgroundUploadProofActionButtons
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.successGreen.opacity(0.10), in: .rect(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(AppTheme.successGreen.opacity(0.24), lineWidth: 1)
-        }
-        .accessibilityIdentifier("analysis.smokeProofPrompt")
-    }
-
     private var analysisProgressHeader: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -2848,8 +2825,6 @@ struct VideoPlayerView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            backgroundUploadDiagnosticsTray
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
