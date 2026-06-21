@@ -456,10 +456,20 @@ struct SettingsView: View {
             || viewModel.isCloudTeamScanInProgress
             || viewModel.canRetryUploadAfterCancel
             || LaunchTelemetry.shared.latestCrashReportDeliverySummary != nil
+            || hasSettingsUploadProofReady
     }
 
     private var shouldShowSmokeProofCard: Bool {
-        AppConstants.environmentName != "production" || AppConstants.cloudLaunchMode == .internalOnly
+        shouldSurfaceSmokeProofCard
+            && (AppConstants.environmentName != "production" || AppConstants.cloudLaunchMode == .internalOnly)
+    }
+
+    private var hasSettingsUploadProofReady: Bool {
+        let savedPlayerProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
+        let latestUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? ""
+        return !savedPlayerProof.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !latestUploadProof.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || CloudAnalysisService.pendingBackgroundUploadManifestSummary().contains("pending=true")
     }
 
     private var smokeProofCard: some View {
