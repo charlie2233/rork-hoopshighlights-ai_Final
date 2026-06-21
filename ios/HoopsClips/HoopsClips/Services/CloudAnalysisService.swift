@@ -116,11 +116,17 @@ struct CloudAnalysisService {
         }
 
         let sourceAvailability = FileManager.default.fileExists(atPath: manifest.sourceFilePath) ? "available" : "missing"
+        let completedParts = manifest.completedParts.count
+        let partCount = max(manifest.partCount, 0)
+        let uploadComplete = partCount > 0 && completedParts >= partCount
+        let activeSessions = manifest.activeSessionIdentifiers.count
         return [
             "pending=true",
             "purpose=\(manifest.purpose.rawValue)",
-            "completed=\(manifest.completedParts.count)/\(manifest.partCount)",
-            "sessions=\(manifest.activeSessionIdentifiers.count)",
+            "completed=\(completedParts)/\(partCount)",
+            "uploadComplete=\(uploadComplete)",
+            "sessions=\(activeSessions)",
+            "activeUploadSessions=\(activeSessions > 0)",
             "source=\(sourceAvailability)",
             "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
         ].joined(separator: " ")
