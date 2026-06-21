@@ -804,7 +804,7 @@ struct ContentView: View {
                 .environment(authService)
 
         case .history:
-            HistoryView(viewModel: viewModel)
+            HistoryView(viewModel: viewModel, onReturnToPlayer: { selectTab(.player) })
 
         case .settings:
             SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)

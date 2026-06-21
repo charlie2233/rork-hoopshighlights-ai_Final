@@ -4,6 +4,7 @@ import UIKit
 
 struct HistoryView: View {
     @Bindable var viewModel: HighlightsViewModel
+    let onReturnToPlayer: (() -> Void)?
     @State private var selectedProject: PersistedProjectRecord?
     @State private var projectPendingDeletion: PersistedProjectRecord?
     @State private var showingDeleteProjectConfirmation = false
@@ -255,6 +256,25 @@ struct HistoryView: View {
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(currentWorkTint)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let onReturnToPlayer {
+                Button {
+                    onReturnToPlayer()
+                } label: {
+                    Label(viewModel.canRetryUploadAfterCancel ? "Retry on Player" : "Back to Player", systemImage: "play.circle.fill")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(currentWorkTint.opacity(0.22), in: .rect(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(currentWorkTint.opacity(0.32), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("history.currentWork.returnToPlayer")
+            }
         }
         .padding(16)
         .background(
