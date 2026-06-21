@@ -2340,30 +2340,59 @@ struct VideoPlayerView: View {
 
     private var analysisCompleteView: some View {
         VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(AppTheme.successGreen)
-                Text(languageStore.text(.analysisComplete))
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Spacer()
-            }
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.successGreen.opacity(0.16))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppTheme.successGreen)
+                }
+                .accessibilityHidden(true)
 
-            LazyVGrid(columns: analysisStatGridColumns, alignment: .leading, spacing: 10) {
-                statBadge(value: "\(viewModel.clips.count)", label: languageStore.text(.clipsFound), color: AppTheme.neonPurple)
-                statBadge(value: "\(viewModel.keptClips.count)", label: languageStore.text(.kept), color: AppTheme.successGreen)
-                statBadge(value: formatDuration(viewModel.keptClips.reduce(0) { $0 + $1.duration }), label: languageStore.text(.duration), color: AppTheme.warningYellow)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Review is ready")
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+
+                    Text(analysisReviewReadySummaryText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
             }
 
             Button {
                 onOpenReview()
             } label: {
-                Label("Review ready", systemImage: "film.stack.fill")
-                    .font(.subheadline.weight(.heavy))
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(AppTheme.successGreen, in: .rect(cornerRadius: 15))
+                HStack(spacing: 10) {
+                    Image(systemName: "film.stack.fill")
+                        .font(.subheadline.weight(.heavy))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Open Review")
+                            .font(.subheadline.weight(.heavy))
+                        Text("KEEP / NAH clips, then export")
+                            .font(.caption2.weight(.semibold))
+                            .opacity(0.82)
+                    }
+                    .layoutPriority(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.subheadline.weight(.heavy))
+                }
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(AppTheme.successGreen, in: .rect(cornerRadius: 15))
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("analysis.reviewReadyButton")
@@ -2388,6 +2417,14 @@ struct VideoPlayerView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.successGreen.opacity(0.28), glow: AppTheme.successGreen, glowOpacity: 0.10)
+    }
+
+    private var analysisReviewReadySummaryText: String {
+        let foundCount = viewModel.clips.count
+        let keptCount = viewModel.keptClips.count
+        let keptDuration = viewModel.keptClips.reduce(0) { $0 + $1.duration }
+        let durationText = keptDuration > 0 ? " · \(formatDuration(keptDuration)) selected" : ""
+        return "\(foundCount) \(foundCount == 1 ? "clip" : "clips") found · \(keptCount) kept\(durationText)"
     }
 
     private var analysisStatGridColumns: [GridItem] {
