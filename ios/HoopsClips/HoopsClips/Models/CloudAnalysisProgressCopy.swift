@@ -354,6 +354,8 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = "\(statusMessage) \(latestUploadProgress)".lowercased()
         let isLongSource = durationSeconds.isFinite && durationSeconds >= 30 * 60
         let isHugeSource = (fileSizeBytes ?? 0) >= 900 * 1_024 * 1_024
+        let prefersCompactSource = durationSeconds.isFinite && durationSeconds >= 45 * 60
+            || (fileSizeBytes ?? 0) >= 1_400 * 1_024 * 1_024
         let isUploadStruggling = status.contains("upload") && isSlowUploadStatus(status)
         let shouldOptimize = isLongSource || isHugeSource || isUploadStruggling
 
@@ -373,6 +375,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             isLongSource: isLongSource,
             isHugeSource: isHugeSource,
             isUploadStruggling: isUploadStruggling,
+            prefersCompactSource: prefersCompactSource,
             durationMinutes: durationMinutes,
             sourceSizeMB: sourceSizeMB
         )
@@ -382,6 +385,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             "durationMinutes=\(durationMinutes)",
             "sourceSizeMB=\(sourceSizeMB.map(String.init) ?? "unknown")",
             "optimizedSourceStatus=available",
+            "preferredOptimizationProfile=\(prefersCompactSource ? "compact_540p" : "balanced_720p")",
             "currentPath=optimized_when_recommended_else_original_background_chunked_upload_with_fast_resume"
         ].joined(separator: " ")
 
@@ -398,6 +402,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         isLongSource: Bool,
         isHugeSource: Bool,
         isUploadStruggling: Bool,
+        prefersCompactSource: Bool,
         durationMinutes: Int,
         sourceSizeMB: Int?
     ) -> String? {
@@ -412,6 +417,16 @@ nonisolated enum CloudAnalysisProgressCopy {
                 return "Preparing smaller upload for \(durationMinutes) min video"
             }
             return "Preparing smaller upload"
+        }
+
+        if prefersCompactSource {
+            if durationMinutes > 0 {
+                return "Preparing compact upload for \(durationMinutes) min video"
+            }
+            if let sizeText {
+                return "Preparing compact upload from \(sizeText)"
+            }
+            return "Preparing compact upload"
         }
 
         if isHugeSource, let sizeText {
@@ -436,10 +451,11 @@ nonisolated enum CloudAnalysisProgressCopy {
               savedMB > 0 else {
             return nil
         }
+        let profileLabel = values["profile"] == "compact_540p" ? "compact upload" : "upload"
 
         if let optimizedMB = Int(values["optimizedMB"] ?? ""),
            optimizedMB > 0 {
-            return "Saved \(savedMB) MB; uploading \(optimizedMB) MB"
+            return "Saved \(savedMB) MB; \(profileLabel) is \(optimizedMB) MB"
         }
 
         if let originalMB = Int(values["originalMB"] ?? ""),

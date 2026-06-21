@@ -10,6 +10,8 @@ private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.ca
 private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
 private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudUpload.sourceOptimizationSummary.v1"
 private let optimizedUploadSourceMaximumAge: TimeInterval = 24 * 60 * 60
+private let compactOptimizedUploadDurationSeconds: Double = 45 * 60
+private let compactOptimizedUploadFileSizeBytes: Int64 = 1_400 * 1_024 * 1_024
 private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
 private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
 private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
@@ -1110,7 +1112,12 @@ struct CloudAnalysisService {
 
         progress(progressValue, progressStage)
         do {
-            let optimizedURL = try await Self.exportOptimizedUploadSource(from: originalURL)
+            let optimizedExport = try await Self.exportOptimizedUploadSource(
+                from: originalURL,
+                duration: duration,
+                fileSizeBytes: originalFileSizeBytes
+            )
+            let optimizedURL = optimizedExport.url
             let optimizedBytes = try Self.fileSizeBytes(for: optimizedURL)
             let savedBytes = max(originalFileSizeBytes - optimizedBytes, 0)
             let savedFraction = originalFileSizeBytes > 0 ? Double(savedBytes) / Double(originalFileSizeBytes) : 0
@@ -1122,7 +1129,8 @@ struct CloudAnalysisService {
                     result: "fallback_original",
                     reason: "insufficient_savings",
                     originalBytes: originalFileSizeBytes,
-                    optimizedBytes: optimizedBytes
+                    optimizedBytes: optimizedBytes,
+                    profile: optimizedExport.profile
                 )
                 return PreparedUploadSource(
                     url: originalURL.standardizedFileURL,
@@ -1136,13 +1144,14 @@ struct CloudAnalysisService {
             Self.prepareFileForBackgroundUpload(optimizedURL, context: "optimized_upload_source")
             Self.recordUploadSourceOptimizationSummary(
                 result: "optimized",
-                reason: "smaller_source_created",
+                reason: optimizedExport.profile == "compact_540p" ? "compact_source_created" : "smaller_source_created",
                 originalBytes: originalFileSizeBytes,
-                optimizedBytes: optimizedBytes
+                optimizedBytes: optimizedBytes,
+                profile: optimizedExport.profile
             )
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "optimized_upload_source_created",
-                metadata: "originalMB=\(Self.megabytes(originalFileSizeBytes)) optimizedMB=\(Self.megabytes(optimizedBytes))"
+                metadata: "originalMB=\(Self.megabytes(originalFileSizeBytes)) optimizedMB=\(Self.megabytes(optimizedBytes)) profile=\(optimizedExport.profile) preset=\(Self.safeUploadPlanComponent(optimizedExport.presetName))"
             )
             return PreparedUploadSource(
                 url: optimizedURL.standardizedFileURL,
@@ -1180,16 +1189,24 @@ struct CloudAnalysisService {
         }
     }
 
-    private static func exportOptimizedUploadSource(from sourceURL: URL) async throws -> URL {
+    private static func exportOptimizedUploadSource(
+        from sourceURL: URL,
+        duration: Double,
+        fileSizeBytes: Int64
+    ) async throws -> (url: URL, presetName: String, profile: String) {
         let asset = AVURLAsset(url: sourceURL)
-        let preset = AVAssetExportSession.exportPresets(compatibleWith: asset)
-            .first { $0 == AVAssetExportPreset1280x720 }
-            ?? AVAssetExportSession.exportPresets(compatibleWith: asset).first { $0 == AVAssetExportPreset960x540 }
-            ?? AVAssetExportSession.exportPresets(compatibleWith: asset).first { $0 == AVAssetExportPresetMediumQuality }
+        let compatiblePresets = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        let preferCompactSource = duration >= compactOptimizedUploadDurationSeconds
+            || fileSizeBytes >= compactOptimizedUploadFileSizeBytes
+        let preferredPresets = preferCompactSource
+            ? [AVAssetExportPreset960x540, AVAssetExportPreset1280x720, AVAssetExportPresetMediumQuality]
+            : [AVAssetExportPreset1280x720, AVAssetExportPreset960x540, AVAssetExportPresetMediumQuality]
+        let preset = preferredPresets.first { compatiblePresets.contains($0) }
         guard let preset,
               let exporter = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw CloudAnalysisError.invalidVideo
         }
+        let profile = optimizedUploadProfileName(for: preset)
 
         let directory = try optimizedUploadSourceDirectory()
         let outputURL = directory.appending(path: "optimized-upload-\(UUID().uuidString).mp4")
@@ -1218,7 +1235,18 @@ struct CloudAnalysisService {
             exportBox.exporter.cancelExport()
         })
 
-        return outputURL
+        return (url: outputURL, presetName: preset, profile: profile)
+    }
+
+    private static func optimizedUploadProfileName(for preset: String) -> String {
+        switch preset {
+        case AVAssetExportPreset960x540:
+            return "compact_540p"
+        case AVAssetExportPreset1280x720:
+            return "balanced_720p"
+        default:
+            return "medium_quality"
+        }
     }
 
     private static func optimizedUploadSourceDirectory() throws -> URL {
@@ -1279,7 +1307,8 @@ struct CloudAnalysisService {
         result: String,
         reason: String,
         originalBytes: Int64,
-        optimizedBytes: Int64?
+        optimizedBytes: Int64?,
+        profile: String = "none"
     ) {
         let originalMB = megabytes(originalBytes)
         let optimizedMB = optimizedBytes.map(megabytes) ?? -1
@@ -1287,6 +1316,7 @@ struct CloudAnalysisService {
         let summary = [
             "result=\(safeUploadPlanComponent(result))",
             "reason=\(safeUploadPlanComponent(reason))",
+            "profile=\(safeUploadPlanComponent(profile))",
             "originalMB=\(originalMB)",
             optimizedBytes == nil ? "optimizedMB=none" : "optimizedMB=\(optimizedMB)",
             "savedMB=\(savedMB)",
