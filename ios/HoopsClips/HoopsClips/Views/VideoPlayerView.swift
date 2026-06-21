@@ -1495,6 +1495,10 @@ struct VideoPlayerView: View {
             } else {
                 if let pendingUploadResumePromptText {
                     pendingUploadResumePrompt(pendingUploadResumePromptText)
+                } else if let staleUploadResumePromptText {
+                    staleUploadResumePrompt(staleUploadResumePromptText)
+                } else if let missingUploadSourcePromptText {
+                    missingUploadSourcePrompt(missingUploadSourcePromptText)
                 } else if let failedUploadProofPromptText {
                     failedUploadProofPrompt(failedUploadProofPromptText)
                 }
@@ -2931,6 +2935,48 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.pendingUploadResumePrompt")
     }
 
+    private func missingUploadSourcePrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "externaldrive.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.missingUploadSourcePrompt")
+    }
+
+    private func staleUploadResumePrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.staleUploadResumePrompt")
+    }
+
     private func analysisStartRecoveryCard(_ content: AnalysisStartRecoveryContent) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(content.title, systemImage: content.icon)
@@ -3075,7 +3121,8 @@ struct VideoPlayerView: View {
 
         let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         guard summary.contains("pending=true"),
-              summary.contains("source=available") else {
+              summary.contains("source=available"),
+              !summary.contains("staleWithoutActiveSession=true") else {
             return nil
         }
 
@@ -3094,6 +3141,37 @@ struct VideoPlayerView: View {
             return "Saved upload ready: \(progressSummary). The main button resumes instead of restarting."
         }
         return "Saved upload ready. The main button resumes instead of restarting."
+    }
+
+    private var staleUploadResumePromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        guard summary.contains("pending=true"),
+              summary.contains("source=available"),
+              summary.contains("staleWithoutActiveSession=true") else {
+            return nil
+        }
+
+        return "Saved upload looks stale. Start AI Analysis will create a fresh cloud upload instead of waiting on the old one."
+    }
+
+    private var missingUploadSourcePromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        guard summary.contains("pending=true"),
+              summary.contains("source=missing") else {
+            return nil
+        }
+
+        return "Saved upload cannot resume because the original video is missing. Re-import the video to upload again."
     }
 
     private var hasPendingUploadResume: Bool {
