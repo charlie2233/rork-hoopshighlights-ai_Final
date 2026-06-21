@@ -753,6 +753,9 @@ struct ContentView: View {
                     viewModel: viewModel,
                     onOpenHistory: {
                         selectTab(.history)
+                    },
+                    onOpenReview: {
+                        selectTab(.review)
                     }
                 )
                 .id("player-\(revenueCatSyncKey)")

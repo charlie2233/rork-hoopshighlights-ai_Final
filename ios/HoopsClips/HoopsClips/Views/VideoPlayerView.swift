@@ -8,6 +8,7 @@ import UIKit
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
     var onOpenHistory: () -> Void = {}
+    var onOpenReview: () -> Void = {}
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
     @Environment(AppLanguageStore.self) private var languageStore
@@ -1816,6 +1817,20 @@ struct VideoPlayerView: View {
                 statBadge(value: "\(viewModel.keptClips.count)", label: languageStore.text(.kept), color: AppTheme.successGreen)
                 statBadge(value: formatDuration(viewModel.keptClips.reduce(0) { $0 + $1.duration }), label: languageStore.text(.duration), color: AppTheme.warningYellow)
             }
+
+            Button {
+                onOpenReview()
+            } label: {
+                Label("Review ready", systemImage: "film.stack.fill")
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.successGreen, in: .rect(cornerRadius: 15))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("analysis.reviewReadyButton")
+            .accessibilityHint("Opens Review to keep or nah clips.")
 
             if !analysisQualitySummaryRows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
