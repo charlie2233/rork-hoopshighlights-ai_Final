@@ -813,7 +813,7 @@ final class HighlightsViewModel {
         settings.highlightTeamSelection = .allTeams
         hasConfirmedHighlightTeamSelection = true
         cloudTeamScanErrorMessage = nil
-        cloudTeamScanStatusMessage = "No teams found. Use All teams for solo or personal highlights."
+        cloudTeamScanStatusMessage = "All teams ready. Start AI Analysis."
         isCloudTeamScanInProgress = false
         activeCloudTeamScanID = nil
         LaunchTelemetry.shared.recordStabilityCheckpoint(

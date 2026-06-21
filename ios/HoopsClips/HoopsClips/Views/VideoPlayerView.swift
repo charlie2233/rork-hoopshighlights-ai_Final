@@ -1174,7 +1174,7 @@ struct VideoPlayerView: View {
             return "Watch progress here. Review opens when clips are ready."
         }
         if viewModel.isCloudTeamScanInProgress {
-            return "Finding teams. This only takes a moment."
+            return "Finding teams. If none are clear, HoopClips uses All teams."
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
             return "Pick a team below, or choose All teams."
