@@ -155,6 +155,15 @@ struct CloudAnalysisService {
         UserDefaults.standard.string(forKey: cloudUploadProgressSummaryDefaultsKey) ?? "none"
     }
 
+    static func multipartUploadPolicySummary() -> String {
+        [
+            "maxConcurrentMultipartUploads=\(maxConcurrentMultipartUploads)",
+            "progressAggregation=total_bytes_across_active_chunks",
+            "memoryPolicy=bounded_chunk_data_per_lane",
+            "resumePolicy=persist_completed_parts"
+        ].joined(separator: " ")
+    }
+
     static func recordRelaunchedUploadProgressSummary(
         event: String,
         statusCode: Int? = nil,

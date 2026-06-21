@@ -926,6 +926,7 @@ struct SettingsView: View {
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
+        let multipartUploadPolicy = CloudAnalysisService.multipartUploadPolicySummary()
         let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
@@ -966,6 +967,7 @@ struct SettingsView: View {
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
             "latestUploadProgress=\(proofTextValue(latestUploadProgress))",
+            "multipartUploadPolicy=\(proofTextValue(multipartUploadPolicy))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
             "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
             "deployedUploadCapability=\(proofTextValue(latestDeployedUploadCapability))",
@@ -994,6 +996,7 @@ struct SettingsView: View {
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
+        let multipartUploadPolicy = CloudAnalysisService.multipartUploadPolicySummary()
         let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let backgroundUploadCompletionProof = CloudAnalysisService.backgroundUploadCompletionProofSummary()
         let savedPlayerBackgroundUploadProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
@@ -1028,6 +1031,7 @@ struct SettingsView: View {
             "backgroundUploadWakeReceived=\(backgroundUploadWakeReceived)",
             "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
             "latestUploadProgress=\(proofTextValue(latestProgress))",
+            "multipartUploadPolicy=\(proofTextValue(multipartUploadPolicy))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
             "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
             "deployedUploadCapability=\(proofTextValue(latestDeployedUploadCapability))",

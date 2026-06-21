@@ -2596,6 +2596,7 @@ struct VideoPlayerView: View {
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "clientChunkedUploadCompatible=true",
             "serverMultipartCompleteIdempotent=true",
+            "multipartUploadPolicy=\(safeUploadProofValue(CloudAnalysisService.multipartUploadPolicySummary()))",
             "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
             "proofCapturedAt=\(Date().ISO8601Format())",
             "backgroundUploadCompletionProof=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
