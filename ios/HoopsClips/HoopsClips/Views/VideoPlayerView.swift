@@ -2436,7 +2436,7 @@ struct VideoPlayerView: View {
     private var backgroundUploadDiagnosticsTray: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Only use this if upload seems stuck or support asks.")
+                Text("Safe to switch apps. Reopen HoopClips for live progress; send proof only if upload feels stuck.")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
@@ -2445,7 +2445,7 @@ struct VideoPlayerView: View {
             }
             .padding(.top, 8)
         } label: {
-            Label("Stuck? Send proof", systemImage: "wrench.and.screwdriver.fill")
+            Label("Upload help", systemImage: "wrench.and.screwdriver.fill")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.cyan)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2879,6 +2879,10 @@ struct VideoPlayerView: View {
             "cloudEditBaseURLConfigured=\(!AppConstants.cloudEditBaseURL.isEmpty)",
             "cloudAnalysisEndpoint=\(cloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
+            "uploadSummary=\(safeUploadProofValue(backgroundUploadProofSummaryText))",
+            "videoFileSize=\(safeUploadProofValue(currentVideoFileSizeProofText))",
+            "safeToSwitchApps=true",
+            "switchAppGuidance=safe_to_switch_apps_reopen_for_live_progress",
             "clientChunkedUploadCompatible=true",
             "serverMultipartCompleteIdempotent=true",
             "uploadSourceOptimizationPolicy=\(safeUploadProofValue(analysisUploadSourceOptimization.proof))",
@@ -2905,6 +2909,27 @@ struct VideoPlayerView: View {
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
+    }
+
+    private var backgroundUploadProofSummaryText: String {
+        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let resumeProgress = CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: latestProgress)
+            ?? CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: pendingManifest)
+
+        let progressText = resumeProgress ?? "progress=\(analysisDisplayPercent)%"
+        return "\(progressText); file=\(currentVideoFileSizeProofText); safeToSwitchApps=true; reopenForLiveProgress=true"
+    }
+
+    private var currentVideoFileSizeProofText: String {
+        guard let bytes = currentVideoFileSizeBytes, bytes > 0 else {
+            return "unknown"
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        return "\(formatter.string(fromByteCount: bytes)) (\(bytes) bytes)"
     }
 
     private var currentVideoFileSizeBytes: Int64? {
