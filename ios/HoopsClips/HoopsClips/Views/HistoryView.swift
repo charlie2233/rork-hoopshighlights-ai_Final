@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import AVKit
 import UIKit
 
@@ -649,6 +650,8 @@ private struct HistoryProjectDetailView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var previewPlayer: AVPlayer?
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
+    @State private var previewHasAudioTrack: Bool?
+    @State private var previewAudioCheckTask: Task<Void, Never>?
     @State private var previewTitle: String?
     @State private var showingDeleteConfirmation = false
     @State private var shareURL: URL?
@@ -824,20 +827,32 @@ private struct HistoryProjectDetailView: View {
                         .accessibilityHint("Use playback controls to preview this saved project.")
                         .accessibilityIdentifier("history.detail.videoPreview")
 
-                    Button {
-                        previewAudioMuted.toggle()
-                        applyHistoryPreviewAudioMute()
-                    } label: {
-                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(9)
-                            .background(.black.opacity(0.58), in: Circle())
+                    VStack(alignment: .trailing, spacing: 8) {
+                        Button {
+                            previewAudioMuted.toggle()
+                            applyHistoryPreviewAudioMute()
+                        } label: {
+                            Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(9)
+                                .background(.black.opacity(0.58), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("history.preview.muteToggle")
+                        .accessibilityLabel(previewAudioMuted ? "Unmute history preview" : "Mute history preview")
+
+                        if previewHasAudioTrack == false && !previewAudioMuted {
+                            Text("No preview audio")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.62), in: Capsule())
+                                .accessibilityIdentifier("history.preview.noAudio")
+                        }
                     }
-                    .buttonStyle(.plain)
                     .padding(10)
-                    .accessibilityIdentifier("history.preview.muteToggle")
-                    .accessibilityLabel(previewAudioMuted ? "Unmute history preview" : "Mute history preview")
                 }
 
                 if let previewTitle {
@@ -1117,6 +1132,7 @@ private struct HistoryProjectDetailView: View {
         guard let url else { return }
         previewPlayer?.pause()
         previewPlayer = AVPlayer(url: url)
+        inspectHistoryPreviewAudioTrack(for: url)
         applyHistoryPreviewAudioMute()
         previewPlayer?.play()
         previewTitle = title
@@ -1125,6 +1141,18 @@ private struct HistoryProjectDetailView: View {
     private func applyHistoryPreviewAudioMute() {
         previewPlayer?.isMuted = previewAudioMuted
         previewPlayer?.volume = previewAudioMuted ? 0 : 1
+    }
+
+    private func inspectHistoryPreviewAudioTrack(for url: URL) {
+        previewAudioCheckTask?.cancel()
+        previewHasAudioTrack = nil
+        let expectedURL = url.standardizedFileURL
+        previewAudioCheckTask = Task { @MainActor in
+            let asset = AVURLAsset(url: expectedURL)
+            let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty == false
+            guard !Task.isCancelled else { return }
+            previewHasAudioTrack = hasAudio
+        }
     }
 
     private var shareSheetTitle: String {

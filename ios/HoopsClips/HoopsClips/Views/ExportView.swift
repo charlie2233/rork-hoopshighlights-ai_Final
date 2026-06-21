@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import AVKit
 import UniformTypeIdentifiers
 
@@ -18,6 +19,8 @@ struct ExportView: View {
     @State private var exportPreviewPlayer: AVPlayer?
     @State private var expandedExportPreviewPlayer: AVPlayer?
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
+    @State private var exportPreviewHasAudioTrack: Bool?
+    @State private var exportPreviewAudioCheckTask: Task<Void, Never>?
     @State private var shareURL: URL?
     @State private var lastAutoPresentedExportURL: URL?
     @State private var shareErrorMessage: String?
@@ -1129,6 +1132,7 @@ struct ExportView: View {
 
         exportPreviewPlayer?.pause()
         exportPreviewPlayer = AVPlayer(url: url)
+        inspectExportPreviewAudioTrack(for: url)
         applyExportPreviewAudioMute()
     }
 
@@ -1145,12 +1149,14 @@ struct ExportView: View {
 
         expandedExportPreviewPlayer?.pause()
         expandedExportPreviewPlayer = AVPlayer(url: url)
+        inspectExportPreviewAudioTrack(for: url)
         applyExportPreviewAudioMute()
     }
 
     private func teardownExportPreviewPlayer() {
         exportPreviewPlayer?.pause()
         exportPreviewPlayer = nil
+        clearExportPreviewAudioTrackState()
     }
 
     private func teardownExpandedExportPreviewPlayer() {
@@ -1170,21 +1176,51 @@ struct ExportView: View {
         expandedExportPreviewPlayer?.volume = previewAudioMuted ? 0 : 1
     }
 
-    private func exportPreviewMuteButton(accessibilityIdentifier: String) -> some View {
-        Button {
-            previewAudioMuted.toggle()
-            applyExportPreviewAudioMute()
-        } label: {
-            Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(9)
-                .background(.black.opacity(0.58), in: Circle())
+    private func clearExportPreviewAudioTrackState() {
+        exportPreviewAudioCheckTask?.cancel()
+        exportPreviewAudioCheckTask = nil
+        exportPreviewHasAudioTrack = nil
+    }
+
+    private func inspectExportPreviewAudioTrack(for url: URL) {
+        exportPreviewAudioCheckTask?.cancel()
+        exportPreviewHasAudioTrack = nil
+        let expectedURL = url.standardizedFileURL
+        exportPreviewAudioCheckTask = Task { @MainActor in
+            let asset = AVURLAsset(url: expectedURL)
+            let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty == false
+            guard !Task.isCancelled else { return }
+            exportPreviewHasAudioTrack = hasAudio
         }
-        .buttonStyle(.plain)
+    }
+
+    private func exportPreviewMuteButton(accessibilityIdentifier: String) -> some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Button {
+                previewAudioMuted.toggle()
+                applyExportPreviewAudioMute()
+            } label: {
+                Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(9)
+                    .background(.black.opacity(0.58), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(accessibilityIdentifier)
+            .accessibilityLabel(previewAudioMuted ? "Unmute export preview" : "Mute export preview")
+
+            if exportPreviewHasAudioTrack == false && !previewAudioMuted {
+                Text("No reel audio")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.62), in: Capsule())
+                    .accessibilityIdentifier("\(accessibilityIdentifier).noAudio")
+            }
+        }
         .padding(10)
-        .accessibilityIdentifier(accessibilityIdentifier)
-        .accessibilityLabel(previewAudioMuted ? "Unmute export preview" : "Mute export preview")
     }
 
     private func exportPreviewSheet(url: URL) -> some View {

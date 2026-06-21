@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import AVKit
 
 struct ReviewView: View {
@@ -8,6 +9,8 @@ struct ReviewView: View {
     @State private var selectedClip: Clip?
     @State private var clipPlayer: AVPlayer?
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
+    @State private var clipPreviewHasAudioTrack: Bool?
+    @State private var clipPreviewAudioCheckTask: Task<Void, Never>?
     @State private var clipLoopObserverToken: NSObjectProtocol?
     @State private var clipTimeObserverToken: Any?
     @State private var clipPlaybackRange: ClosedRange<Double>?
@@ -611,11 +614,23 @@ struct ReviewView: View {
                         previewAudioMuted.toggle()
                         applyClipPreviewAudioMute()
                     } label: {
-                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(10)
-                            .background(AppTheme.neonPurple.opacity(0.52), in: Circle())
+                        VStack(alignment: .trailing, spacing: 7) {
+                            Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(AppTheme.neonPurple.opacity(0.52), in: Circle())
+
+                            if clipPreviewHasAudioTrack == false && !previewAudioMuted {
+                                Text("No clip audio")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 6)
+                                    .background(.black.opacity(0.62), in: Capsule())
+                                    .accessibilityIdentifier("review.carousel.noAudio")
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("review.carousel.muteToggle")
@@ -2235,11 +2250,16 @@ struct ReviewView: View {
         reviewScrubProgress = 0
         guard let window = playbackWindow(for: clip, logsInvalidWindow: true) else {
             clipPlaybackRange = nil
+            clearClipPreviewAudioTrackState()
             return
         }
         clipPlaybackRange = window.range
 
-        guard let url = viewModel.videoURL else { return }
+        guard let url = viewModel.videoURL else {
+            clearClipPreviewAudioTrackState()
+            return
+        }
+        inspectClipPreviewAudioTrack(for: url)
 
         let playerItem = AVPlayerItem(url: url)
         let clipEnd = CMTime(seconds: window.end, preferredTimescale: 600)
@@ -2275,10 +2295,30 @@ struct ReviewView: View {
         clipPlayer?.pause()
         clipPlayer = nil
         clipPlaybackRange = nil
+        clearClipPreviewAudioTrackState()
 
         if let clipLoopObserverToken {
             NotificationCenter.default.removeObserver(clipLoopObserverToken)
             self.clipLoopObserverToken = nil
+        }
+    }
+
+    private func clearClipPreviewAudioTrackState() {
+        clipPreviewAudioCheckTask?.cancel()
+        clipPreviewAudioCheckTask = nil
+        clipPreviewHasAudioTrack = nil
+    }
+
+    private func inspectClipPreviewAudioTrack(for url: URL) {
+        clipPreviewAudioCheckTask?.cancel()
+        clipPreviewHasAudioTrack = nil
+        let expectedURL = url.standardizedFileURL
+        clipPreviewAudioCheckTask = Task { @MainActor in
+            let asset = AVURLAsset(url: expectedURL)
+            let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).isEmpty == false
+            guard !Task.isCancelled,
+                  viewModel.videoURL?.standardizedFileURL == expectedURL else { return }
+            clipPreviewHasAudioTrack = hasAudio
         }
     }
 
@@ -2354,20 +2394,32 @@ struct ReviewView: View {
                                     .accessibilityValue("\(clip.label), \(clip.formattedStartTime) to \(clip.formattedEndTime)")
                                     .accessibilityHint("Loops the selected highlight clip.")
 
-                                Button {
-                                    previewAudioMuted.toggle()
-                                    applyClipPreviewAudioMute()
-                                } label: {
-                                    Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(.white)
-                                        .padding(9)
-                                        .background(.black.opacity(0.58), in: Circle())
+                                VStack(alignment: .trailing, spacing: 8) {
+                                    Button {
+                                        previewAudioMuted.toggle()
+                                        applyClipPreviewAudioMute()
+                                    } label: {
+                                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(.white)
+                                            .padding(9)
+                                            .background(.black.opacity(0.58), in: Circle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("review.clipPreview.muteToggle")
+                                    .accessibilityLabel(previewAudioMuted ? "Unmute clip preview" : "Mute clip preview")
+
+                                    if clipPreviewHasAudioTrack == false && !previewAudioMuted {
+                                        Text("No clip audio")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 6)
+                                            .background(.black.opacity(0.62), in: Capsule())
+                                            .accessibilityIdentifier("review.clipPreview.noAudio")
+                                    }
                                 }
-                                .buttonStyle(.plain)
                                 .padding(10)
-                                .accessibilityIdentifier("review.clipPreview.muteToggle")
-                                .accessibilityLabel(previewAudioMuted ? "Unmute clip preview" : "Mute clip preview")
                             }
                         } else {
                             ContentUnavailableView {
