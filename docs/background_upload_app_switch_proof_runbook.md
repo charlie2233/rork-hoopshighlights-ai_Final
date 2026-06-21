@@ -120,6 +120,17 @@ Fail examples:
 
 Use either a safe test video or the script's synthetic payload generator. The synthetic payload proves upload transport/resume behavior only; it does not prove basketball analysis quality.
 
+Preferred one-command sequence:
+
+```bash
+python3 scripts/run_resumable_upload_smoke_sequence.py \
+  --worker-url "$WORKER_BASE_URL" \
+  --state-path artifacts/resumable_upload_interrupt_state.json \
+  --evidence-path artifacts/resumable_upload_interrupt_sequence_evidence.json
+```
+
+This runs first interruption, second interruption, final resume, and duplicate multipart-complete proof. Share the sequence evidence JSON, not the private state file.
+
 Preferred synthetic payload option:
 
 ```bash
