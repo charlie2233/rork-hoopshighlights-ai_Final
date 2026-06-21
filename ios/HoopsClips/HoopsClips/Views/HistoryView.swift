@@ -340,15 +340,6 @@ struct HistoryView: View {
 
                     LazyVGrid(columns: historyActionGridColumns, alignment: .leading, spacing: 8) {
                         Button {
-                            selectedProject = project
-                        } label: {
-                            historyActionLabel(title: "Details", icon: "info.circle.fill", tint: AppTheme.courtBlue)
-                                .accessibilityLabel("Show saved project details for \(project.displayTitle)")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("history.project.details")
-
-                        Button {
                             viewModel.openProject(id: project.id)
                         } label: {
                             historyActionLabel(
@@ -363,14 +354,18 @@ struct HistoryView: View {
                         .opacity((viewModel.canOpenProject(project) && viewModel.currentProjectID != project.id) ? 1.0 : 0.54)
                         .accessibilityIdentifier("history.project.resume")
 
-                        Button(role: .destructive) {
-                            requestDelete(project)
+                        Button {
+                            selectedProject = project
                         } label: {
-                            historyActionLabel(title: "Delete", icon: "trash.fill", tint: AppTheme.dangerRed)
-                                .accessibilityLabel("Delete \(project.displayTitle)")
+                            historyActionLabel(
+                                title: project.hasLatestExport ? "Preview" : "More",
+                                icon: project.hasLatestExport ? "play.rectangle.fill" : "ellipsis.circle.fill",
+                                tint: AppTheme.courtBlue
+                            )
+                                .accessibilityLabel("Show saved project details for \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("history.project.delete")
+                        .accessibilityIdentifier("history.project.details")
                     }
                 }
                 .contextMenu {
@@ -487,21 +482,6 @@ struct HistoryView: View {
                     )
                 }
 
-                if let analysisMode = project.analysisMode {
-                    historyBadge(
-                        icon: userFacingAnalysisModeIcon(analysisMode),
-                        text: userFacingAnalysisModeLabel(analysisMode),
-                        tint: AppTheme.rimOrange
-                    )
-                }
-
-                if let teamTarget = projectTeamTargetShortLabel(project) {
-                    historyBadge(
-                        icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
-                        text: teamTarget,
-                        tint: AppTheme.rimOrange
-                    )
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
