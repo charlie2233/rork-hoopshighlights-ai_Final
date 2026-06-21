@@ -1359,48 +1359,53 @@ struct ReviewView: View {
     }
 
     private var aiEditEntryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Button {
+            openExport()
+        } label: {
             HStack(spacing: 12) {
                 Image(systemName: "wand.and.stars.inverse")
-                    .font(.title2)
+                    .font(.headline.weight(.heavy))
                     .foregroundStyle(AppTheme.warningYellow)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 38, height: 38)
                     .background(AppTheme.warningYellow.opacity(0.15), in: .circle)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Make Highlight Reel")
-                        .font(.headline)
+                    Text("Make reel")
+                        .font(.subheadline.weight(.heavy))
                         .foregroundStyle(.white)
-                    Text(viewModel.cloudEditUnavailableReason ?? "Pick a style, add a note, and HoopClips will make the video.")
+                    Text(aiEditEntrySubtitle)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .layoutPriority(1)
 
                 Spacer()
-            }
 
-            Button {
-                openExport()
-            } label: {
-                Label("Make My Highlight", systemImage: "sparkles")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
+                Image(systemName: viewModel.canRequestCloudEdit ? "chevron.right.circle.fill" : "lock.circle.fill")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(viewModel.canRequestCloudEdit ? AppTheme.neonPurple : AppTheme.subtleText)
+                    .accessibilityHidden(true)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.accentPurple)
-            .disabled(!viewModel.canRequestCloudEdit)
-            .accessibilityIdentifier("review.continueToExportButton")
-            .accessibilityHint("Opens AI Edit with style, length, preview, save, and share controls.")
+            .padding(12)
+            .rorkCard(
+                cornerRadius: 16,
+                stroke: viewModel.canRequestCloudEdit ? AppTheme.neonPurple.opacity(0.28) : AppTheme.softBorder,
+                glow: AppTheme.neonPurple,
+                glowOpacity: viewModel.canRequestCloudEdit ? 0.08 : 0.03
+            )
         }
-        .padding(14)
-        .rorkCard(
-            cornerRadius: 16,
-            stroke: viewModel.canRequestCloudEdit ? AppTheme.neonPurple.opacity(0.28) : AppTheme.softBorder,
-            glow: AppTheme.neonPurple,
-            glowOpacity: viewModel.canRequestCloudEdit ? 0.08 : 0.03
-        )
+        .buttonStyle(.plain)
+        .disabled(!viewModel.canRequestCloudEdit)
+        .accessibilityIdentifier("review.continueToExportButton")
+        .accessibilityLabel("Make highlight reel")
+        .accessibilityValue(aiEditEntrySubtitle)
+        .accessibilityHint("Opens AI Edit with style, length, preview, save, and share controls.")
+    }
+
+    private var aiEditEntrySubtitle: String {
+        viewModel.cloudEditUnavailableReason ?? "Style, note, export."
     }
 
     private func openExport() {
