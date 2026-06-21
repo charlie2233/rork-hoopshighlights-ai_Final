@@ -139,8 +139,13 @@ struct CloudAnalysisService {
         let activeSessions = manifest.activeSessionIdentifiers.count
         let ageSeconds = max(0, Int(Date().timeIntervalSince(manifest.updatedAt).rounded(.down)))
         let staleWithoutActiveSession = !uploadComplete && activeSessions == 0 && ageSeconds >= 300
+        let uploadExpired = manifest.uploadExpiresAt.map { $0 <= Date().addingTimeInterval(60) } ?? false
+        let resumeSafe = (sourceAvailability == "available" || uploadComplete) && !uploadExpired && !staleWithoutActiveSession
+        let expiresAt = manifest.uploadExpiresAt.map { ISO8601DateFormatter().string(from: $0) } ?? "none"
         let nextAction: String
-        if activeSessions > 0 {
+        if uploadExpired {
+            nextAction = "fresh_upload_required"
+        } else if activeSessions > 0 {
             nextAction = "wait_for_background_session"
         } else if uploadComplete {
             nextAction = manifest.purpose == .teamScan ? "run_team_scan" : "start_cloud_analysis"
@@ -160,6 +165,9 @@ struct CloudAnalysisService {
             "nextAction=\(nextAction)",
             "ageSeconds=\(ageSeconds)",
             "staleWithoutActiveSession=\(staleWithoutActiveSession)",
+            "uploadExpired=\(uploadExpired)",
+            "resumeSafe=\(resumeSafe)",
+            "expiresAt=\(expiresAt)",
             "source=\(sourceAvailability)",
             "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
         ].joined(separator: " ")
@@ -875,6 +883,15 @@ struct CloudAnalysisService {
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_invalid")
             return nil
         }
+        if let uploadExpiresAt = manifest.uploadExpiresAt,
+           uploadExpiresAt <= Date().addingTimeInterval(60) {
+            await CloudUploadResumeStore.shared.clearAnyManifest(reason: "upload_expired")
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_upload_expired",
+                metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count)/\(manifest.partCount)"
+            )
+            return nil
+        }
         guard let baseURL = configuredBaseURL() else {
             throw CloudAnalysisError.notConfigured
         }
@@ -1536,7 +1553,8 @@ struct CloudAnalysisService {
             purpose: purpose,
             chunkSizeBytes: Int(max(fileSizeBytes, 1)),
             partCount: 1,
-            totalFileSizeBytes: max(fileSizeBytes, 1)
+            totalFileSizeBytes: max(fileSizeBytes, 1),
+            uploadExpiresAt: job.expiresAt
         )
         await CloudUploadResumeStore.shared.recordSession(
             jobID: job.jobId,
@@ -1705,7 +1723,8 @@ struct CloudAnalysisService {
             purpose: purpose,
             chunkSizeBytes: safeChunkSize,
             partCount: resumableUpload.partCount,
-            totalFileSizeBytes: totalBytes
+            totalFileSizeBytes: totalBytes,
+            uploadExpiresAt: resumableUpload.expiresAt
         )
         var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
         let initialCompletedBytes = Self.completedUploadBytes(
@@ -2853,6 +2872,7 @@ nonisolated private struct CloudUploadResumeManifest: Codable, Sendable {
     var totalFileSizeBytes: Int64
     var completedParts: [CloudMultipartCompletedPart]
     var activeSessionIdentifiers: [String]
+    var uploadExpiresAt: Date?
     var createdAt: Date
     var updatedAt: Date
 }
@@ -2879,7 +2899,8 @@ private actor CloudUploadResumeStore {
         purpose: CloudUploadResumePurpose,
         chunkSizeBytes: Int,
         partCount: Int,
-        totalFileSizeBytes: Int64
+        totalFileSizeBytes: Int64,
+        uploadExpiresAt: Date?
     ) -> [CloudMultipartCompletedPart] {
         var manifest = loadManifest()
         if manifest?.jobID != jobID || manifest?.uploadID != uploadID {
@@ -2897,11 +2918,15 @@ private actor CloudUploadResumeStore {
                 totalFileSizeBytes: totalFileSizeBytes,
                 completedParts: [],
                 activeSessionIdentifiers: [],
+                uploadExpiresAt: uploadExpiresAt,
                 createdAt: Date(),
                 updatedAt: Date()
             )
         }
 
+        if let uploadExpiresAt {
+            manifest?.uploadExpiresAt = uploadExpiresAt
+        }
         manifest?.updatedAt = Date()
         saveManifest(manifest)
         Self.recordBackgroundUploadProof(

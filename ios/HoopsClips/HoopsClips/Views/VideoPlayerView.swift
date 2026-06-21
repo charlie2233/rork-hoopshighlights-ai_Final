@@ -3121,8 +3121,7 @@ struct VideoPlayerView: View {
 
         let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         guard summary.contains("pending=true"),
-              summary.contains("source=available"),
-              !summary.contains("staleWithoutActiveSession=true") else {
+              summary.contains("resumeSafe=true") else {
             return nil
         }
 
@@ -3150,12 +3149,16 @@ struct VideoPlayerView: View {
         }
 
         let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let isStale = summary.contains("staleWithoutActiveSession=true") || summary.contains("uploadExpired=true")
         guard summary.contains("pending=true"),
-              summary.contains("source=available"),
-              summary.contains("staleWithoutActiveSession=true") else {
+              summary.contains("source=available") || summary.contains("uploadExpired=true"),
+              isStale else {
             return nil
         }
 
+        if summary.contains("uploadExpired=true") {
+            return "Saved upload expired. Start AI Analysis will create a fresh cloud upload instead of waiting on the old one."
+        }
         return "Saved upload looks stale. Start AI Analysis will create a fresh cloud upload instead of waiting on the old one."
     }
 

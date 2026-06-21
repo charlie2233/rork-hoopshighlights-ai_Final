@@ -1424,13 +1424,18 @@ struct ContentView: View {
     private func resumeCloudAnalysisAfterForegroundIfNeeded() {
         let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         if pendingManifest.contains("pending=true") {
-            let message = pendingManifest.contains("source=available")
-                ? "Resuming saved upload..."
-                : "Saved upload source missing. Check Player."
+            let message: String
+            if pendingManifest.contains("uploadExpired=true") {
+                message = "Saved upload expired. Start again from Player."
+            } else if pendingManifest.contains("resumeSafe=true") {
+                message = "Resuming saved upload..."
+            } else {
+                message = "Saved upload source missing. Check Player."
+            }
             showUploadResumeNotice(message)
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "upload.resume.notice",
-                metadata: "sourceAvailable=\(pendingManifest.contains("source=available"))"
+                metadata: "sourceAvailable=\(pendingManifest.contains("source=available")) resumeSafe=\(pendingManifest.contains("resumeSafe=true")) uploadExpired=\(pendingManifest.contains("uploadExpired=true"))"
             )
         }
         Task { @MainActor in
