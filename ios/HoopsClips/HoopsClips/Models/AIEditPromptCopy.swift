@@ -2,8 +2,8 @@ import Foundation
 
 enum AIEditPromptCopy {
     static let title = "Tell HoopClips how to edit"
-    static let heroSubtitle = "Add a short focus only when you want a specific style, like my highlights, defense, recap, or 4:30 reel."
-    static let placeholder = "Example: my highlights, more hype, defense, NBA recap, 4:30 reel."
+    static let heroSubtitle = "Tap Solo for one-player reels, or add a short focus like defense, recap, or 4:30 reel."
+    static let placeholder = "Example: solo highlights, more hype, defense, NBA recap, 4:30 reel."
     static let quickFocusTitle = "Tap a focus"
     static let clearNoteTitle = "Clear note"
     static let accessibilityLabel = "AI Edit note"

@@ -11,8 +11,8 @@ enum AIEditQuickPromptLibrary {
     static let options: [AIEditQuickPrompt] = [
         AIEditQuickPrompt(
             id: "personal",
-            title: "Me",
-            prompt: "Personal highlight: focus on one player when clear, keep full makes, assists, blocks, steals, and best defense.",
+            title: "Solo",
+            prompt: "Solo/player highlight: focus on one player when clear. Do not require team scan; use visible player cues, full makes, assists, blocks, steals, and best defense.",
             icon: "person.crop.circle.fill"
         ),
         AIEditQuickPrompt(
