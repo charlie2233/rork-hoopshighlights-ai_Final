@@ -633,9 +633,13 @@ struct ContentView: View {
         let bytes = uploadProgressField("bytes", in: trimmedSummary)
         let speed = uploadProgressField("speed", in: trimmedSummary)
         let eta = uploadProgressField("eta", in: trimmedSummary)
+        let context = uploadProgressField("context", in: trimmedSummary)
         let stalled = uploadProgressField("stalled", in: trimmedSummary) == "true"
 
         var parts: [String] = []
+        if let context = context, uploadProgressContextIsUseful(context) {
+            parts.append(context)
+        }
         if let bytes {
             parts.append(bytes)
         }
@@ -663,6 +667,15 @@ struct ContentView: View {
         }
         let value = String(rawValue).replacingOccurrences(of: "_", with: " ")
         return value.isEmpty ? nil : String(value.prefix(40))
+    }
+
+    private func uploadProgressContextIsUseful(_ context: String) -> Bool {
+        let lowercasedContext = context.lowercased()
+        return lowercasedContext.contains("retry")
+            || lowercasedContext.contains("failed")
+            || lowercasedContext.contains("waiting")
+            || lowercasedContext.contains("reconnecting")
+            || lowercasedContext.contains("background upload")
     }
 
     private var pipelineStage: AnalysisPipelineStage {
