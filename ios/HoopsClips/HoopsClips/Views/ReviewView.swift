@@ -130,7 +130,7 @@ struct ReviewView: View {
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                if !viewModel.clips.isEmpty {
+                if filteredClips.count > 1 {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             sortByScore.toggle()
