@@ -19,6 +19,9 @@ struct ContentView: View {
     @State private var uploadResumeNotice: UploadResumeNotice?
     @State private var showingPipelineCancelConfirmation = false
     @State private var didCopyPipelineUploadProof = false
+    @State private var isSendingPipelineUploadProof = false
+    @State private var didSendPipelineUploadProof = false
+    @State private var pipelineUploadProofSendFailed = false
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
@@ -274,8 +277,12 @@ struct ContentView: View {
                         stage: pipelineStage,
                         canResumeUpload: canResumePipelineUpload,
                         didCopyProof: didCopyPipelineUploadProof,
+                        isSendingProof: isSendingPipelineUploadProof,
+                        didSendProof: didSendPipelineUploadProof,
+                        sendProofFailed: pipelineUploadProofSendFailed,
                         onResumeUpload: resumePipelineUpload,
                         onCopyProof: copyPipelineUploadProof,
+                        onSendProof: sendPipelineUploadProof,
                         onCancel: requestPipelineCancelConfirmation
                     )
                         .padding(.horizontal, 16)
@@ -1132,6 +1139,28 @@ struct ContentView: View {
         }
     }
 
+    private func sendPipelineUploadProof() {
+        guard !isSendingPipelineUploadProof else { return }
+        let proof = pipelineUploadProofText
+        isSendingPipelineUploadProof = true
+        didSendPipelineUploadProof = false
+        pipelineUploadProofSendFailed = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "pipeline_upload_proof.send_requested",
+            metadata: "stage=\(pipelineStage.title) progress=\(analysisProgressPercent)"
+        )
+
+        Task { @MainActor in
+            let sent = await LaunchTelemetry.shared.sendManualUploadProof(proof)
+            isSendingPipelineUploadProof = false
+            didSendPipelineUploadProof = sent
+            pipelineUploadProofSendFailed = !sent
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            didSendPipelineUploadProof = false
+            pipelineUploadProofSendFailed = false
+        }
+    }
+
     private var pipelineUploadProofText: String {
         [
             "HoopClips Upload Proof",
@@ -1784,8 +1813,12 @@ private struct GlobalImportProgressBanner: View {
     let stage: AnalysisPipelineStage
     let canResumeUpload: Bool
     let didCopyProof: Bool
+    let isSendingProof: Bool
+    let didSendProof: Bool
+    let sendProofFailed: Bool
     let onResumeUpload: () -> Void
     let onCopyProof: () -> Void
+    let onSendProof: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
@@ -1813,6 +1846,7 @@ private struct GlobalImportProgressBanner: View {
                     resumeButton
                 }
                 copyProofButton
+                sendProofButton
                 cancelButton
             }
 
@@ -1884,6 +1918,60 @@ private struct GlobalImportProgressBanner: View {
         .buttonStyle(.plain)
         .accessibilityLabel(didCopyProof ? "Upload proof copied" : "Copy upload proof")
         .accessibilityIdentifier("analysis.pipeline.copyProofButton")
+    }
+
+    private var sendProofButton: some View {
+        Button(action: onSendProof) {
+            if isSendingProof {
+                ProgressView()
+                    .tint(stage.tint)
+                    .frame(width: 30, height: 30)
+                    .background(Color.white.opacity(0.08), in: Circle())
+            } else {
+                Image(systemName: sendProofIconName)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(sendProofColor)
+                    .frame(width: 30, height: 30)
+                    .background(Color.white.opacity(didSendProof || sendProofFailed ? 0.16 : 0.08), in: Circle())
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isSendingProof)
+        .accessibilityLabel(sendProofAccessibilityLabel)
+        .accessibilityIdentifier("analysis.pipeline.sendProofButton")
+    }
+
+    private var sendProofIconName: String {
+        if didSendProof {
+            return "paperplane.circle.fill"
+        }
+        if sendProofFailed {
+            return "exclamationmark.triangle.fill"
+        }
+        return "paperplane.fill"
+    }
+
+    private var sendProofColor: Color {
+        if didSendProof {
+            return AppTheme.successGreen
+        }
+        if sendProofFailed {
+            return AppTheme.warningYellow
+        }
+        return stage.tint
+    }
+
+    private var sendProofAccessibilityLabel: String {
+        if isSendingProof {
+            return "Sending upload proof"
+        }
+        if didSendProof {
+            return "Upload proof sent"
+        }
+        if sendProofFailed {
+            return "Upload proof failed"
+        }
+        return "Send upload proof"
     }
 
     private var cancelButton: some View {
