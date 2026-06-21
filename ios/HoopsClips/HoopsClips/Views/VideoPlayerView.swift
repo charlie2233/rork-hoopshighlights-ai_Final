@@ -120,7 +120,9 @@ struct VideoPlayerView: View {
     @State private var uploadProofSendFailed = false
     @State private var sourcePreviewHasAudioTrack: Bool?
     @State private var sourcePreviewAudioCheckTask: Task<Void, Never>?
+    @State private var didCopyUnexpectedExitProof = false
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
+    @AppStorage("hoops.player.dismissedUnexpectedExitSummary.v1") private var dismissedUnexpectedExitSummary = ""
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
     #if targetEnvironment(simulator)
@@ -148,6 +150,10 @@ struct VideoPlayerView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
+                        if let playerUnexpectedExitSummary {
+                            playerUnexpectedExitCard(playerUnexpectedExitSummary)
+                        }
+
                         if viewModel.isVideoLoaded {
                             videoSection
                             analysisSection
@@ -1158,6 +1164,148 @@ struct VideoPlayerView: View {
         return [
             GridItem(.adaptive(minimum: minimumWidth, maximum: 260), spacing: 12, alignment: .top)
         ]
+    }
+
+    private var playerUnexpectedExitSummary: String? {
+        guard let summary = LaunchTelemetry.shared.latestUnexpectedExitSummary?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !summary.isEmpty,
+              summary != dismissedUnexpectedExitSummary else {
+            return nil
+        }
+        return summary
+    }
+
+    private func playerUnexpectedExitCard(_ summary: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.warningYellow.opacity(0.16))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "waveform.path.ecg.rectangle.fill")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("What happened?")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+
+                    Text(playerUnexpectedExitFriendlyMessage(for: summary))
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 6 : 3)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let delivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary {
+                        Text("Report: \(delivery)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.warningYellow.opacity(0.86))
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                            .minimumScaleFactor(0.82)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .layoutPriority(1)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    copyUnexpectedExitProof(summary)
+                } label: {
+                    Label(didCopyUnexpectedExitProof ? "Copied" : "Copy proof", systemImage: didCopyUnexpectedExitProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
+                        .background(AppTheme.warningYellow.opacity(0.12), in: .rect(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    dismissUnexpectedExitCard(summary)
+                } label: {
+                    Text("Hide")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
+                        .background(AppTheme.surfaceBg.opacity(0.64), in: .rect(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppTheme.softBorder, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(AppTheme.warningYellow.opacity(0.08), in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppTheme.warningYellow.opacity(0.22), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("player.unexpectedExitRecoveryCard")
+    }
+
+    private func playerUnexpectedExitFriendlyMessage(for summary: String) -> String {
+        let lowercased = summary.lowercased()
+        if lowercased.contains("analysis was active") || lowercased.contains("analyzing") {
+            return "HoopClips closed while analysis was running. Stay on Player or reopen the app; Review should wait until clips are ready."
+        }
+        if lowercased.contains("upload") || lowercased.contains("background") {
+            return "HoopClips closed during upload/background work. Your upload proof is saved, and reopening refreshes progress."
+        }
+        if lowercased.contains("review") || lowercased.contains("no_reviewable_clips") {
+            return "Review was blocked because clips were not ready yet. Re-run analysis or wait for Review ready before switching."
+        }
+        return "The last session ended before a normal close. HoopClips saved a clean note so we can see the last screen and step."
+    }
+
+    private func unexpectedExitProofText(summary: String) -> String {
+        [
+            "source=HoopClips Player recovery card",
+            "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
+            "appVersion=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String))",
+            "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))",
+            "environment=\(safeUploadProofValue(AppConstants.environmentName))",
+            "cloudLaunchMode=\(safeUploadProofValue(AppConstants.cloudLaunchMode.rawValue))",
+            "recoverySummary=\(safeUploadProofLongValue(summary))",
+            "crashReportDelivery=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
+            "analysisIsAnalyzing=\(viewModel.analysisService.isAnalyzing)",
+            "analysisProgressPercent=\(analysisDisplayPercent)",
+            "analysisStatus=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "clipCount=\(viewModel.clips.count)",
+            "keptClipCount=\(viewModel.keptClips.count)",
+            "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: "\n")
+    }
+
+    private func copyUnexpectedExitProof(_ summary: String) {
+        UIPasteboard.general.string = unexpectedExitProofText(summary: summary)
+        didCopyUnexpectedExitProof = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "player.unexpected_exit_proof_copied",
+            metadata: "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))"
+        )
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+            didCopyUnexpectedExitProof = false
+        }
+    }
+
+    private func dismissUnexpectedExitCard(_ summary: String) {
+        dismissedUnexpectedExitSummary = summary
+        LaunchTelemetry.shared.recordStabilityCheckpoint("player.unexpected_exit_card_hidden")
     }
 
     private func featurePill(icon: String, text: String) -> some View {
