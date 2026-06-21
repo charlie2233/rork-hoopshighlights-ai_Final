@@ -82,6 +82,12 @@ Save the pasted proof as a scratch text file, then run:
 python3 scripts/verify_background_upload_phone_proof.py /path/to/background-upload-proof.txt
 ```
 
+To create a sanitized markdown evidence packet without pasting raw proof into chat, run:
+
+```bash
+python3 scripts/build_background_upload_phone_packet.py /path/to/background-upload-proof.txt --commit <git-sha> --build <testflight-build> --out /path/to/background-upload-proof-packet.md
+```
+
 Passing proof should say:
 
 ```text
