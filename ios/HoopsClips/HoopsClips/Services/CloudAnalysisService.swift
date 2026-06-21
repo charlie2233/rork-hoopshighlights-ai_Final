@@ -1958,13 +1958,14 @@ private extension URLSessionConfiguration {
         allowsCellularAccess = true
         allowsExpensiveNetworkAccess = true
         allowsConstrainedNetworkAccess = true
-        timeoutIntervalForRequest = 2 * 60
 
         if isBackgroundTransfer {
             sessionSendsLaunchEvents = true
             isDiscretionary = false
+            timeoutIntervalForRequest = 10 * 60
             timeoutIntervalForResource = 24 * 60 * 60
         } else {
+            timeoutIntervalForRequest = 2 * 60
             timeoutIntervalForResource = 2 * 60 * 60
         }
     }
