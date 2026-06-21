@@ -155,7 +155,7 @@ class RenderJobTests(unittest.TestCase):
         self.assertEqual(log_payload["traceId"], status_payload["traceId"])
         self.assertEqual(log_payload["outputObjectKey"], status_payload["outputObjectKey"])
         self.assertEqual(log_payload["clipCount"], 2)
-        self.assertEqual(log_payload["ffmpeg"]["rendererVersion"], "ffmpeg-renderer-v1.2")
+        self.assertEqual(log_payload["ffmpeg"]["rendererVersion"], "ffmpeg-renderer-v1.3")
         self.assertGreater(log_payload["ffmpeg"]["segmentCount"], log_payload["clipCount"])
         self.assertTrue(any("setpts=" in command for command in log_payload["ffmpeg"]["commands"]))
         self.assertFalse(any("atempo=" in command for command in log_payload["ffmpeg"]["commands"]))

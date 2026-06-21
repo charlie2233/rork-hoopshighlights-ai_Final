@@ -12,8 +12,10 @@ from ..editing import CaptionStyle, EditPlan, EditPlanClip, get_template_pack
 from ..models import APIError
 
 
-RENDERER_VERSION = "ffmpeg-renderer-v1.2"
-BRANDED_OUTRO_BACKGROUND = "0x1b1208"
+RENDERER_VERSION = "ffmpeg-renderer-v1.3"
+BRANDED_OUTRO_BACKGROUND = "0xf97316"
+BRANDED_OUTRO_ACCENT = "0xfff7ed"
+BRANDED_OUTRO_SHADOW = "0x07111f"
 RENDER_SLOW_MOTION_SEGMENTS = False
 
 
@@ -151,7 +153,8 @@ class FfmpegRenderer:
                 "templateId": plan.templateId,
                 "captionStyle": template.captionStyle.styleId,
                 "templateSignature": template_signature,
-                "outroBackground": "branded_court_slate",
+                "outroBackground": "branded_court_orange",
+                "outroVisualStyle": "bright_end_card_no_black_slate",
                 "watermarkAssetId": plan.watermark.assetId or template.watermarkProfile.assetId,
                 "outroAssetId": plan.outro.assetId or template.outroProfile.assetId,
                 "clipCount": len(plan.clips),
@@ -258,8 +261,11 @@ class FfmpegRenderer:
     def _outro_command(self, output_path: Path, duration: float, width: int, height: int, template_name: str) -> List[str]:
         vf = ",".join(
             [
-                self._drawtext_filter("Hoopclips", width, height, y="(h-text_h)/2-28", size=58),
-                self._text_overlay_filter(template_name, width, height, y="(h-text_h)/2+42", size=28),
+                f"drawbox=x=0:y=0:w=iw:h=18:color={BRANDED_OUTRO_ACCENT}@0.85:t=fill",
+                f"drawbox=x=0:y=h-18:w=iw:h=18:color={BRANDED_OUTRO_ACCENT}@0.85:t=fill",
+                f"drawbox=x=(w*0.12):y=(h*0.58):w=(w*0.76):h=8:color={BRANDED_OUTRO_ACCENT}@0.65:t=fill",
+                self._outro_text_filter("HoopClips", width, height, y="(h-text_h)/2-42", size=64),
+                self._outro_text_filter(template_name, width, height, y="(h-text_h)/2+38", size=30),
                 "format=yuv420p",
             ]
         )
@@ -442,6 +448,31 @@ class FfmpegRenderer:
         size: int = 44,
     ) -> str:
         return self._text_overlay_filter(text, width, height, x=x, y=y, size=size)
+
+    def _outro_text_filter(
+        self,
+        text: str,
+        width: int,
+        height: int,
+        x: str = "(w-text_w)/2",
+        y: str = "h-(text_h*3)",
+        size: int = 44,
+    ) -> str:
+        if not self._has_drawtext:
+            _ = text, width, height, x, y, size
+            return "drawbox=x=(w-560)/2:y=(h-130)/2:w=560:h=130:color=white@0.18:t=fill"
+        _ = width, height
+        escaped = self._escape_drawtext(text)
+        return (
+            "drawtext=text='{text}':fontcolor=white:fontsize={size}:"
+            "shadowcolor={shadow}:shadowx=4:shadowy=4:x={x}:y={y}"
+        ).format(
+            text=escaped,
+            size=size,
+            shadow=BRANDED_OUTRO_SHADOW,
+            x=x,
+            y=y,
+        )
 
     def _target_dimensions(self, aspect_ratio: str) -> Tuple[int, int]:
         if aspect_ratio == "9:16":
