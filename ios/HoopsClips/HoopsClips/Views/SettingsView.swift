@@ -1046,7 +1046,9 @@ struct SettingsView: View {
     }
 
     private func copyUploadStateProof() {
-        UIPasteboard.general.string = uploadStateProofText
+        let savedPlayerBackgroundUploadProofForCopy = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
+        let recoveredUploadStateProofText = savedPlayerBackgroundUploadProofForCopy.isEmpty ? uploadStateProofText : uploadStateProofText + "\n\nsavedPlayerBackgroundUploadProof=\n" + savedPlayerBackgroundUploadProofForCopy
+        UIPasteboard.general.string = recoveredUploadStateProofText
         uploadStateProofCopied = true
         LaunchTelemetry.shared.recordStabilityCheckpoint("background_upload_state.copied", metadata: "build=\(appBuildNumber)")
 
