@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var isSubmittingFeedback = false
     @State private var feedbackBanner: FeedbackBanner?
     @State private var expandedFAQIDs: Set<String> = []
+    @State private var buildSummaryCopied = false
     @State private var smokeProofCopied = false
     @State private var uploadStateProofCopied = false
     @State private var isSendingSmokeProof = false
@@ -509,6 +510,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 settingsBackgroundUploadStatusRow
                 copyUploadStateProofButton
+                copyBuildSummaryButton
 
                 Button {
                     copySmokeProof()
@@ -573,6 +575,29 @@ struct SettingsView: View {
                 .stroke(AppTheme.courtBlue.opacity(0.20), lineWidth: 1)
         }
         .accessibilityIdentifier("settings.smokeProof.toolsDrawer")
+    }
+
+    private var copyBuildSummaryButton: some View {
+        Button {
+            copyBuildSummaryProof()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: buildSummaryCopied ? "checkmark.circle.fill" : "doc.text.fill")
+                Text(buildSummaryCopied ? "Build summary copied" : "Copy build summary")
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(buildSummaryCopied ? .black : .white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(
+                buildSummaryCopied ? AppTheme.successGreen : AppTheme.courtBlue.opacity(0.72),
+                in: .rect(cornerRadius: 15)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.smokeProof.copyBuildSummaryButton")
+        .accessibilityHint("Copies a short sanitized build and runtime summary for TestFlight smoke notes.")
     }
 
     private var settingsBackgroundUploadStatusRow: some View {
@@ -997,6 +1022,31 @@ struct SettingsView: View {
         ].joined(separator: "\n")
     }
 
+    private var buildSummaryProofText: String {
+        let generatedAt = ISO8601DateFormatter().string(from: Date())
+        let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
+        return SmokeProofSummaryCopy.summary(
+            generatedAt: generatedAt,
+            appVersion: appVersionString,
+            build: appBuildNumber,
+            environment: AppConstants.environmentName,
+            cloudLaunchMode: AppConstants.cloudLaunchMode.rawValue,
+            videoLoaded: viewModel.isVideoLoaded,
+            videoDurationSeconds: Int(viewModel.videoDuration.rounded()),
+            importInProgress: viewModel.isVideoImportInProgress,
+            analysisIsAnalyzing: viewModel.analysisService.isAnalyzing,
+            analysisProgressPercent: analysisProgressPercent,
+            analysisStatus: proofTextValue(viewModel.analysisService.statusMessage),
+            clips: viewModel.clips.count,
+            keptClips: viewModel.keptClips.count,
+            needsReviewClips: viewModel.needsReviewClips.count,
+            lastAnalysisBlockReason: viewModel.lastAnalysisStartBlockReason?.rawValue ?? "none",
+            latestUploadProgress: proofTextValue(CloudAnalysisService.latestUploadProgressSummary()),
+            latestUnexpectedExit: proofTextValue(LaunchTelemetry.shared.latestUnexpectedExitSummary),
+            latestCrashReportDelivery: proofTextValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary)
+        )
+    }
+
     private var uploadStateProofText: String {
         let generatedAt = ISO8601DateFormatter().string(from: Date())
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
@@ -1076,6 +1126,16 @@ struct SettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             smokeProofCopied = false
+        }
+    }
+
+    private func copyBuildSummaryProof() {
+        UIPasteboard.general.string = buildSummaryProofText
+        buildSummaryCopied = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.build_summary_copied", metadata: "build=\(appBuildNumber)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            buildSummaryCopied = false
         }
     }
 

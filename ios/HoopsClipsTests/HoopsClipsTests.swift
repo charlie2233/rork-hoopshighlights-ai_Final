@@ -1212,6 +1212,38 @@ struct HoopsClipsTests {
         #expect(teamSelection["includeUncertain"] as? Bool == true)
     }
 
+    @Test func testSmokeProofSummaryCopyIsCompactAndSecretSafe() {
+        let summary = SmokeProofSummaryCopy.summary(
+            generatedAt: "2026-06-20T12:00:00Z",
+            appVersion: "1.0.0",
+            build: "44",
+            environment: "internal_staging",
+            cloudLaunchMode: "internal_only",
+            videoLoaded: true,
+            videoDurationSeconds: 210,
+            importInProgress: false,
+            analysisIsAnalyzing: true,
+            analysisProgressPercent: 240,
+            analysisStatus: "Uploading https://example.test/uploads/source.mp4?X-Amz-Signature=secret",
+            clips: 12,
+            keptClips: 8,
+            needsReviewClips: 2,
+            lastAnalysisBlockReason: "none",
+            latestUploadProgress: "bytes=196/525_MB speed=2.4_MB/s",
+            latestUnexpectedExit: "none",
+            latestCrashReportDelivery: "sent"
+        )
+
+        #expect(summary.contains("HoopClips Build Summary"))
+        #expect(summary.contains("build=44"))
+        #expect(summary.contains("analysisProgressPercent=100"))
+        #expect(summary.contains("analysisStatus=redacted"))
+        #expect(summary.contains("privacy=no secrets"))
+        #expect(!summary.localizedCaseInsensitiveContains("https://"))
+        #expect(!summary.localizedCaseInsensitiveContains("uploads/"))
+        #expect(!summary.localizedCaseInsensitiveContains("x-amz"))
+    }
+
     @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-\(UUID().uuidString).mp4")
         try Data("fake video".utf8).write(to: tempURL)
