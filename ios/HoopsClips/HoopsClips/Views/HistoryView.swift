@@ -520,9 +520,17 @@ struct HistoryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
 
-                    Image(systemName: "pencil")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.subtleText)
+                    Label("Rename", systemImage: "pencil")
+                        .font(.caption2.weight(.bold))
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(AppTheme.neonPurple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppTheme.neonPurple.opacity(0.12), in: .capsule)
+                        .overlay {
+                            Capsule()
+                                .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                        }
                         .accessibilityHidden(true)
                 }
                 .font(.subheadline.weight(.semibold))
