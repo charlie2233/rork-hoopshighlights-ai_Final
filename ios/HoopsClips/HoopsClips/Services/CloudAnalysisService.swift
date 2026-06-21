@@ -10,6 +10,7 @@ private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.prog
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
 private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
 private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudUpload.sourceOptimizationSummary.v1"
+private let optimizedUploadSourceMaximumAge: TimeInterval = 24 * 60 * 60
 private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
 private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
 private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
@@ -1068,6 +1069,8 @@ struct CloudAnalysisService {
         progressValue: Double,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async -> PreparedUploadSource {
+        Self.cleanupStaleOptimizedUploadSources()
+
         let policy = CloudAnalysisProgressCopy.uploadSourceOptimization(
             durationSeconds: duration,
             fileSizeBytes: originalFileSizeBytes,
@@ -1209,6 +1212,31 @@ struct CloudAnalysisService {
     private static func cleanupOptimizedUploadSourceIfNeeded(_ source: PreparedUploadSource) {
         guard source.shouldCleanup, source.url != source.originalURL else { return }
         try? FileManager.default.removeItem(at: source.url)
+    }
+
+    private static func cleanupStaleOptimizedUploadSources(
+        now: Date = Date(),
+        maximumAge: TimeInterval = optimizedUploadSourceMaximumAge
+    ) {
+        guard let directory = try? optimizedUploadSourceDirectory(),
+              let files = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+                options: [.skipsHiddenFiles]
+              ) else {
+            return
+        }
+
+        for file in files where file.pathExtension.lowercased() == "mp4" {
+            guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey]),
+                  values.isRegularFile == true else {
+                continue
+            }
+
+            let modifiedAt = values.contentModificationDate ?? .distantPast
+            guard now.timeIntervalSince(modifiedAt) > maximumAge else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     private static func fileSizeBytes(for url: URL) throws -> Int64 {
