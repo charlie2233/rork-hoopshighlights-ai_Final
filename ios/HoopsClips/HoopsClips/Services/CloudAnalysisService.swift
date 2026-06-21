@@ -120,6 +120,8 @@ struct CloudAnalysisService {
         let partCount = max(manifest.partCount, 0)
         let uploadComplete = partCount > 0 && completedParts >= partCount
         let activeSessions = manifest.activeSessionIdentifiers.count
+        let ageSeconds = max(0, Int(Date().timeIntervalSince(manifest.updatedAt).rounded(.down)))
+        let staleWithoutActiveSession = !uploadComplete && activeSessions == 0 && ageSeconds >= 300
         let nextAction: String
         if activeSessions > 0 {
             nextAction = "wait_for_background_session"
@@ -136,6 +138,8 @@ struct CloudAnalysisService {
             "sessions=\(activeSessions)",
             "activeUploadSessions=\(activeSessions > 0)",
             "nextAction=\(nextAction)",
+            "ageSeconds=\(ageSeconds)",
+            "staleWithoutActiveSession=\(staleWithoutActiveSession)",
             "source=\(sourceAvailability)",
             "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
         ].joined(separator: " ")

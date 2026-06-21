@@ -98,6 +98,7 @@ Required evidence:
   - `pendingBackgroundUploadManifest`
   - `uploadComplete` inside `pendingBackgroundUploadManifest`
   - `nextAction` inside `pendingBackgroundUploadManifest`
+  - `ageSeconds` and `staleWithoutActiveSession` inside `pendingBackgroundUploadManifest`
   - `latestUploadProgress`
   - `latestBackgroundUploadProof`
   - `recentBackgroundUploadProofTrail`
