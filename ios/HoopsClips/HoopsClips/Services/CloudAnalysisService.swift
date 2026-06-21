@@ -7,6 +7,11 @@ private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPla
 private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
 private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
+private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
+private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
+private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
+private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
+private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -154,6 +159,20 @@ struct CloudAnalysisService {
 
     static func latestDeployedUploadCapabilitySummary() -> String {
         UserDefaults.standard.string(forKey: cloudUploadDeployedCapabilitySummaryDefaultsKey) ?? "none"
+    }
+
+    static func backgroundUploadRuntimePolicySummary() -> String {
+        [
+            "mode=ios_background_urlsession",
+            "backgroundRequestTimeoutSeconds=\(Int(cloudUploadBackgroundRequestTimeoutSeconds))",
+            "backgroundResourceTimeoutSeconds=\(Int(cloudUploadBackgroundResourceTimeoutSeconds))",
+            "foregroundRequestTimeoutSeconds=\(Int(cloudUploadForegroundRequestTimeoutSeconds))",
+            "fileProtection=\(cloudUploadFileProtectionName)",
+            "waitsForConnectivity=true",
+            "sessionSendsLaunchEvents=true",
+            "isDiscretionary=false",
+            "privacy=no_urls_no_object_keys_no_local_file_paths"
+        ].joined(separator: " ")
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -1962,11 +1981,11 @@ private extension URLSessionConfiguration {
         if isBackgroundTransfer {
             sessionSendsLaunchEvents = true
             isDiscretionary = false
-            timeoutIntervalForRequest = 10 * 60
-            timeoutIntervalForResource = 24 * 60 * 60
+            timeoutIntervalForRequest = cloudUploadBackgroundRequestTimeoutSeconds
+            timeoutIntervalForResource = cloudUploadBackgroundResourceTimeoutSeconds
         } else {
-            timeoutIntervalForRequest = 2 * 60
-            timeoutIntervalForResource = 2 * 60 * 60
+            timeoutIntervalForRequest = cloudUploadForegroundRequestTimeoutSeconds
+            timeoutIntervalForResource = cloudUploadForegroundResourceTimeoutSeconds
         }
     }
 }

@@ -757,6 +757,7 @@ struct SettingsView: View {
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
         let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
@@ -782,6 +783,7 @@ struct SettingsView: View {
             "backgroundUploadMode=ios_background_urlsession",
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
+            "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
             "pendingBackgroundUploadManifest=\(pendingBackgroundUploadManifest)",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
@@ -814,6 +816,7 @@ struct SettingsView: View {
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
+        let backgroundUploadRuntimePolicy = CloudAnalysisService.backgroundUploadRuntimePolicySummary()
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
 
@@ -832,6 +835,7 @@ struct SettingsView: View {
             "backgroundUploadMode=ios_background_urlsession",
             "backgroundUploadChunkedCompatible=true",
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
+            "backgroundUploadRuntimePolicy=\(proofTextValue(backgroundUploadRuntimePolicy))",
             "pendingBackgroundUploadManifest=\(proofTextValue(pendingManifest))",
             "latestUploadProgress=\(proofTextValue(latestProgress))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
