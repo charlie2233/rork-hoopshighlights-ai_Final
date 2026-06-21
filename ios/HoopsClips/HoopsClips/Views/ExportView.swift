@@ -156,11 +156,11 @@ struct ExportView: View {
     private var summaryCard: some View {
         VStack(spacing: 12) {
             RorkSectionHeader(
-                title: viewModel.keptClips.isEmpty ? "AI Edit Ready" : "Highlight Reel",
-                icon: "film.stack.fill",
+                title: "Tell HoopClips what reel you want",
+                icon: "sparkles.tv.fill",
                 subtitle: viewModel.keptClips.isEmpty
-                    ? "HoopClips will pick the best plays from cloud candidates"
-                    : "Kept clips and review candidates go to AI Edit"
+                    ? "Use AI Edit below: my highlights, defense, recap, or longer reel."
+                    : "Your kept clips stay included; AI Edit below fills the story."
             )
 
             LazyVGrid(columns: summaryMetricGridColumns, alignment: .leading, spacing: 10) {
@@ -198,9 +198,10 @@ struct ExportView: View {
 
             LazyVGrid(columns: summaryClipGridColumns, alignment: .leading, spacing: 8) {
                 if viewModel.keptClips.isEmpty {
-                    summaryClipChip(icon: "wand.and.stars", text: "AI will select clips")
-                    summaryClipChip(icon: "checkmark.seal.fill", text: "Review is optional")
+                    summaryClipChip(icon: "text.bubble.fill", text: "Describe it below")
+                    summaryClipChip(icon: "wand.and.stars", text: "AI picks clips")
                 } else {
+                    summaryClipChip(icon: "text.bubble.fill", text: "Describe it below")
                     ForEach(Array(viewModel.keptClips.prefix(summaryClipPreviewLimit))) { clip in
                         summaryClipChip(icon: clip.action.icon, text: clip.label)
                     }
