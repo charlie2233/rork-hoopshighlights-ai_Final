@@ -109,7 +109,6 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
-                            reviewProgressStrip
                             reviewCarousel
                             aiEditEntryCard
                             filterBar
@@ -296,25 +295,49 @@ struct ReviewView: View {
     }
 
     private var headerStats: some View {
-        HStack(spacing: 10) {
-            reviewStatusPill(
-                value: "\(viewModel.keptClips.count)",
-                label: "Keep",
-                icon: "checkmark.circle.fill",
-                color: AppTheme.successGreen
-            )
-            reviewStatusPill(
-                value: "\(viewModel.discardedClips.count)",
-                label: "Nah",
-                icon: "xmark.circle.fill",
-                color: AppTheme.dangerRed
-            )
-            reviewStatusPill(
-                value: Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration }),
-                label: "Reel",
-                icon: "clock.fill",
-                color: AppTheme.neonPurple
-            )
+        let totalCount = viewModel.clips.count
+        let selectedCount = viewModel.keptClips.count
+        let needsCheckCount = viewModel.needsReviewClips.count
+        let reelTime = Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration })
+        let progress = Double(selectedCount) / Double(max(totalCount, 1))
+        let summary = ReviewProgressCopy.summary(
+            selectedCount: selectedCount,
+            totalCount: totalCount,
+            needsCheckCount: needsCheckCount
+        )
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                reviewStatusPill(
+                    value: "\(selectedCount)",
+                    label: "Keep",
+                    icon: "checkmark.circle.fill",
+                    color: AppTheme.successGreen
+                )
+                reviewStatusPill(
+                    value: "\(viewModel.discardedClips.count)",
+                    label: "Nah",
+                    icon: "xmark.circle.fill",
+                    color: AppTheme.dangerRed
+                )
+                reviewStatusPill(
+                    value: reelTime,
+                    label: "Reel",
+                    icon: "clock.fill",
+                    color: AppTheme.neonPurple
+                )
+            }
+
+            ProgressView(value: progress)
+                .tint(AppTheme.neonPurple)
+                .scaleEffect(y: 1.45)
+                .accessibilityHidden(true)
+
+            Text(summary)
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
         }
         .padding(10)
         .background(AppTheme.surfaceBg.opacity(0.72), in: .rect(cornerRadius: 18))
@@ -324,7 +347,7 @@ struct ReviewView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Review status")
-        .accessibilityValue("\(viewModel.keptClips.count) kept, \(viewModel.discardedClips.count) skipped, \(Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration })) reel time")
+        .accessibilityValue("\(selectedCount) kept, \(viewModel.discardedClips.count) skipped, \(reelTime) reel time. \(summary)")
     }
 
     private func reviewStatusPill(value: String, label: String, icon: String, color: Color) -> some View {
