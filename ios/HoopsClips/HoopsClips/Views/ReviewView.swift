@@ -175,10 +175,62 @@ struct ReviewView: View {
 
     private var emptyState: some View {
         HoopsEmptyStateCard(
-            title: "Review opens after analysis",
-            message: "Go to Player, import a video, then tap AI Analysis. Your best plays will show here ready to keep or skip.",
-            icon: "film.stack.fill"
+            title: reviewEmptyStateTitle,
+            message: reviewEmptyStateMessage,
+            icon: reviewEmptyStateIcon
         )
+    }
+
+    private var reviewEmptyStateTitle: String {
+        isWaitingForReviewClips ? "Analyzing, please wait" : "Review opens after analysis"
+    }
+
+    private var reviewEmptyStateMessage: String {
+        guard isWaitingForReviewClips else {
+            return "Go to Player, import a video, then tap AI Analysis. Your best plays will show here ready to keep or skip."
+        }
+
+        let progressText = reviewEmptyStateProgressText.map { " \($0) done." } ?? ""
+        let statusText = reviewEmptyStateStatusText.map { " \($0)" } ?? ""
+        return "HoopClips is \(reviewEmptyStateWorkLabel).\(progressText)\(statusText) Review opens automatically when clips are ready."
+    }
+
+    private var reviewEmptyStateIcon: String {
+        isWaitingForReviewClips ? "brain.head.profile.fill" : "film.stack.fill"
+    }
+
+    private var isWaitingForReviewClips: Bool {
+        viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing
+    }
+
+    private var reviewEmptyStateWorkLabel: String {
+        let status = reviewEmptyStateRawStatus.lowercased()
+        if viewModel.isVideoImportInProgress || status.contains("upload") {
+            return "uploading your video"
+        }
+        return "scanning your video"
+    }
+
+    private var reviewEmptyStateProgressText: String? {
+        let progress = viewModel.analysisService.progress
+        guard progress.isFinite, progress > 0 else { return nil }
+        let percent = Int((min(max(progress, 0), 1) * 100).rounded(.down))
+        guard percent > 0 else { return nil }
+        return "\(percent)%"
+    }
+
+    private var reviewEmptyStateStatusText: String? {
+        let status = reviewEmptyStateRawStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !status.isEmpty else { return nil }
+        return status.hasSuffix(".") ? status : "\(status)."
+    }
+
+    private var reviewEmptyStateRawStatus: String {
+        if let importStatus = viewModel.videoImportStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !importStatus.isEmpty {
+            return importStatus
+        }
+        return viewModel.analysisService.statusMessage
     }
 
     @ViewBuilder
