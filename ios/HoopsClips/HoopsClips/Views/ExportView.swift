@@ -38,7 +38,9 @@ struct ExportView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 24) {
-                            summaryCard
+                            if !AppConstants.requiresCloudVideoPipeline {
+                                summaryCard
+                            }
                             aiEditAgentSection
                             if AppConstants.requiresCloudVideoPipeline {
                                 if viewModel.exportService.exportedURL != nil {

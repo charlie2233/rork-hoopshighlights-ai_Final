@@ -1769,25 +1769,6 @@ private struct ReviewUnavailableRecoveryCard: View {
     let onRerunAnalysis: () -> Void
     let onDismiss: () -> Void
 
-    private var reasonCopy: String {
-        switch notice.reason {
-        case "video_not_loaded":
-            return "No source video is loaded."
-        case "missing_source_url":
-            return "The source video file is missing."
-        case "no_clips":
-            return "This video has no review clips yet."
-        case "invalid_source_duration":
-            return "The source video duration could not be verified."
-        case "empty_window":
-            return "The clip windows are empty or outside the video."
-        case "non_finite_window", "non_finite_score", "non_finite_event_center", "non_finite_audio_confidence", "non_finite_audio_time":
-            return "Some clip data is not safe to preview."
-        default:
-            return "Clip data needs a fresh analysis pass."
-        }
-    }
-
     private var titleCopy: String {
         switch notice.reason {
         case "video_not_loaded", "missing_source_url":
@@ -1848,12 +1829,6 @@ private struct ReviewUnavailableRecoveryCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss Review unavailable message")
             }
-
-            Text("\(notice.reviewableClipCount)/\(notice.clipCount) clips reviewable. \(reasonCopy)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.warningYellow)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onRerunAnalysis) {
                 Label(actionTitle, systemImage: "play.circle.fill")

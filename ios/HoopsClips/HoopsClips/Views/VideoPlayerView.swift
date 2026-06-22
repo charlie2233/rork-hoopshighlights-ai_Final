@@ -1264,7 +1264,7 @@ struct VideoPlayerView: View {
             return "HoopClips closed during upload/background work. Your upload proof is saved, and reopening refreshes progress."
         }
         if lowercased.contains("review") || lowercased.contains("no_reviewable_clips") {
-            return "Review was blocked because clips were not ready yet. Re-run analysis or wait for Review ready before switching."
+            return "Review was safely blocked because clips were not ready yet. Stay on Player while analysis finishes, then open Review."
         }
         return "The last session ended before a normal close. HoopClips saved a clean note so we can see the last screen and step."
     }
