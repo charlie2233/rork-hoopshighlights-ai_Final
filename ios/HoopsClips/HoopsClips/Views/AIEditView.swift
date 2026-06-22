@@ -2563,7 +2563,7 @@ struct AIEditView: View {
 
     private var launchReadinessFlagMessage: String? {
         guard let flags = serviceVersion?.featureFlags, !flags.hasRequiredLaunchReadinessFlags else { return nil }
-        return "HoopClips cloud is missing required launch flags; deploy the current service before TestFlight smoke."
+        return "Reel is temporarily unavailable while cloud setup finishes. Try again shortly."
     }
 
     private var cloudEditVersionBlockMessage: String? {
