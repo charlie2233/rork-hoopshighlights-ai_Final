@@ -232,8 +232,10 @@ struct AIEditView: View {
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
-            aiEditDetailsToggle
-            if showAdvancedAIEditDetails {
+            if shouldShowAIEditDetailsToggle {
+                aiEditDetailsToggle
+            }
+            if shouldShowAIEditDetailsToggle && showAdvancedAIEditDetails {
                 planTierCard
                 if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
                     proValueCard
@@ -1068,23 +1070,6 @@ struct AIEditView: View {
                         .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-
-            if let smartSetupSummary {
-                Label(smartSetupSummary, systemImage: "slider.horizontal.3")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AppTheme.accentPurple.opacity(0.16), in: .rect(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
-                    }
-                    .accessibilityIdentifier("export.aiEdit.smartSetupSummary")
             }
 
             if let proIntentWarningText {
@@ -2219,6 +2204,12 @@ struct AIEditView: View {
 
     private var shouldShowExportBottomDock: Bool {
         downloadResponse != nil
+    }
+
+    private var shouldShowAIEditDetailsToggle: Bool {
+        hasStartedAIEditJob
+            || shouldShowCloudLocker
+            || activeWorkReceipt != nil
     }
 
     private var shouldShowCloudLocker: Bool {
