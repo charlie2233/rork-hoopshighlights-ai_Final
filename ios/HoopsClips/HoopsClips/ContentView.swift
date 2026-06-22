@@ -755,7 +755,7 @@ struct ContentView: View {
         if let nextAction {
             switch nextAction {
             case "wait for background session":
-                parts.append(ageSeconds.map { "still uploading \(savedUploadAgeLabel($0))" } ?? "still uploading")
+                parts.append(ageSeconds.map { "background session active \(savedUploadAgeLabel($0))" } ?? "background session active")
             case "resume upload":
                 let resumeLabel = staleWithoutActiveSession ? "tap resume" : "resume ready"
                 parts.append(ageSeconds.map { "\(resumeLabel) \(savedUploadAgeLabel($0))" } ?? resumeLabel)
