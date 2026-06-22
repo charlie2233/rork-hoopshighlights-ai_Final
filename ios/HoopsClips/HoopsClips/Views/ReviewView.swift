@@ -394,14 +394,10 @@ struct ReviewView: View {
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.white.opacity(0.88))
                     Spacer(minLength: 8)
-                    if let eta = reviewWaitingCompactETA {
-                        Text(eta)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(1)
-                    }
                 }
             }
+
+            reviewWaitingFactsView
 
             if let waitingHint = reviewWaitingHint {
                 Label(waitingHint, systemImage: "iphone.and.arrow.forward")
