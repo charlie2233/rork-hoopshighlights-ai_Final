@@ -1902,8 +1902,6 @@ private struct GlobalImportProgressBanner: View {
                 if canResumeUpload {
                     resumeButton
                 }
-                copyProofButton
-                sendProofButton
                 cancelButton
             }
 

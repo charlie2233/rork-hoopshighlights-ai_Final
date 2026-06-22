@@ -2167,10 +2167,6 @@ struct VideoPlayerView: View {
                 backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
             }
 
-            if shouldShowSlowUploadProofTools {
-                backgroundUploadDiagnosticsTray
-            }
-
             if analysisBackgroundUploadBadgeText != nil,
                analysisBackgroundUploadStillRunningText == nil,
                let analysisRecoveredUploadProofPromptText {
