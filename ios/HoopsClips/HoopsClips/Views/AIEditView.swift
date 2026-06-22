@@ -306,13 +306,6 @@ struct AIEditView: View {
                             .font(.caption2.bold())
                             .tracking(1.4)
                             .foregroundStyle(AppTheme.warningYellow)
-
-                        Text(appBuildPillText)
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AppTheme.cardBg.opacity(0.66), in: .capsule)
                     }
 
                     Text("Make the reel")
@@ -348,24 +341,6 @@ struct AIEditView: View {
                 exportHeroMetric(icon: "film.stack.fill", value: clipPoolChipText)
                 exportHeroMetric(icon: selectedAspectRatio.icon, value: selectedAspectRatio.rawValue)
                 exportHeroMetric(icon: "timer", value: formattedDuration(selectedDuration))
-            }
-
-            HStack(spacing: 8) {
-                Label(activePolicy.displayName, systemImage: activePolicy.planTier.isFree ? "person.crop.circle" : "crown.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(AppTheme.cardBg.opacity(0.68), in: .capsule)
-
-                Label(teamTargetChipText, systemImage: viewModel.settings.highlightTeamSelection.mode == .team ? "person.2.fill" : "person.3.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(AppTheme.cardBg.opacity(0.5), in: .capsule)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2607,12 +2582,6 @@ struct AIEditView: View {
             || (!serviceStatusIsChecking && serviceStatusErrorMessage != nil)
     }
 
-    private var appBuildPillText: String {
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-        guard let build, !build.isEmpty else { return "Build -" }
-        return "Build \(build)"
-    }
-
     private var exportProgressValue: CGFloat {
         switch phase {
         case .planning:
@@ -2882,14 +2851,6 @@ struct AIEditView: View {
         }
 
         return summary.joined(separator: " - ")
-    }
-
-    private var teamTargetChipText: String {
-        let selection = viewModel.settings.highlightTeamSelection
-        if selection.mode == .team {
-            return "Team: \(selection.displayTitle)"
-        }
-        return "All teams"
     }
 
     private var sanitizedUserEditPrompt: String? {
