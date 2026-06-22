@@ -611,7 +611,9 @@ struct ReviewView: View {
             )
         }
 
-        if let reminder = CloudAnalysisProgressCopy.backgroundReminder(
+        let hasUploadFact = facts.contains { $0.id == "upload" }
+        if !hasUploadFact,
+           let reminder = CloudAnalysisProgressCopy.backgroundReminder(
             statusMessage: reviewEmptyStateRawStatus,
             analysisMode: viewModel.analysisMode
         ) {
