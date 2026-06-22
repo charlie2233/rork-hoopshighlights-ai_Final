@@ -360,7 +360,7 @@ extension AppLanguage {
     private static let englishText: [AppTextKey: String] = [
         .tabPlayer: "Player",
         .tabReview: "Review",
-        .tabExport: "Export",
+        .tabExport: "Reel",
         .tabHistory: "History",
         .tabSettings: "Settings",
         .settingsTitle: "Settings",
@@ -628,7 +628,7 @@ extension AppLanguage {
     private static let chineseText: [AppTextKey: String] = [
         .tabPlayer: "播放器",
         .tabReview: "回看",
-        .tabExport: "导出",
+        .tabExport: "集锦",
         .tabHistory: "历史",
         .tabSettings: "设置",
         .settingsTitle: "设置",
@@ -896,7 +896,7 @@ extension AppLanguage {
     private static let spanishText: [AppTextKey: String] = [
         .tabPlayer: "Video",
         .tabReview: "Revisar",
-        .tabExport: "Exportar",
+        .tabExport: "Reel",
         .tabHistory: "Historial",
         .tabSettings: "Ajustes",
         .settingsTitle: "Ajustes",
@@ -1164,7 +1164,7 @@ extension AppLanguage {
     private static let frenchText: [AppTextKey: String] = [
         .tabPlayer: "Lecteur",
         .tabReview: "Revoir",
-        .tabExport: "Exporter",
+        .tabExport: "Reel",
         .tabHistory: "Historique",
         .tabSettings: "Réglages",
         .settingsTitle: "Réglages",
