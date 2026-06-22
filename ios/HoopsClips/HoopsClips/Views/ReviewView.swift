@@ -1674,12 +1674,6 @@ struct ReviewView: View {
                             .lineLimit(2)
                             .minimumScaleFactor(0.86)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(viewModel.priorityReviewSummary ?? "Team calls, blocks, steals, sound cues, and unclear outcomes.")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                            .minimumScaleFactor(0.84)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .layoutPriority(1)
 
