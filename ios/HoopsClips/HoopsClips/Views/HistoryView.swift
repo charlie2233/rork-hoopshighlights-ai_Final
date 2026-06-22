@@ -43,9 +43,9 @@ struct HistoryView: View {
 
                             if !viewModel.pastProjectRecords.isEmpty {
                                 projectSection(
-                                    title: "Past Projects",
+                                    title: "Saved Projects",
                                     icon: "clock.arrow.circlepath",
-                                    subtitle: "Reopen past runs and replay saved videos",
+                                    subtitle: "Find saved reels and reopen videos",
                                     accent: historySecondaryAccent,
                                     accessibilityIdentifier: "history.section.pastProjects",
                                     projects: viewModel.pastProjectRecords
@@ -897,7 +897,6 @@ private struct HistoryProjectDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 detailLine(label: "Source", value: project.sourceDisplayName)
                 detailLine(label: "Created", value: project.createdAt.formatted(date: .abbreviated, time: .shortened))
-                detailLine(label: "Updated", value: project.updatedAt.formatted(date: .abbreviated, time: .shortened))
                 if let lastExportedAt = project.lastExportedAt {
                     detailLine(label: "Saved Reel", value: lastExportedAt.formatted(date: .abbreviated, time: .shortened))
                 }
@@ -1299,7 +1298,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let sourceAvailableSubtitle = ""
     static let sourceMissingSubtitle = "Source not on this device"
     static let exportAvailableSubtitle = ""
-    static let exportMissingSubtitle = "No saved export yet"
+    static let exportMissingSubtitle = "No saved reel yet; project is still saved"
     static let shareAvailableSubtitle = ""
     static let shareMissingMessage = "Make the reel again before sharing."
     static let deleteSubtitle = ""
