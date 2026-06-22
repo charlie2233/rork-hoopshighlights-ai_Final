@@ -558,11 +558,11 @@ struct SettingsView: View {
     private var phoneSmokeStatusTitle: String {
         switch phoneSmokeResult {
         case .passed:
-            return "Phone smoke passed"
+            return "Phone check passed"
         case .issue:
             return phoneSmokeIssueNoteForProof == "none" ? "Phone issue noted" : "Phone issue: \(phoneSmokeIssueNoteForProof)"
         case .notRun:
-            return "Phone smoke not run"
+            return "Phone check not run"
         }
     }
 
@@ -592,19 +592,19 @@ struct SettingsView: View {
         let playerProof = UserDefaults.standard.string(forKey: "hoopclips.lastBackgroundUploadProofText") ?? ""
         let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? ""
         if !playerProof.isEmpty || !latestProof.isEmpty {
-            return "Upload proof ready"
+            return "Upload diagnostics ready"
         }
         if viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing {
-            return "Upload proof live"
+            return "Upload diagnostics live"
         }
-        return "Upload proof pending"
+        return "Upload diagnostics pending"
     }
 
     private var uploadProofStatusIcon: String {
         switch uploadProofStatusTitle {
-        case "Upload proof ready":
+        case "Upload diagnostics ready":
             return "paperplane.circle.fill"
-        case "Upload proof live":
+        case "Upload diagnostics live":
             return "arrow.up.circle.fill"
         default:
             return "paperplane"
@@ -613,9 +613,9 @@ struct SettingsView: View {
 
     private var uploadProofStatusTint: Color {
         switch uploadProofStatusTitle {
-        case "Upload proof ready":
+        case "Upload diagnostics ready":
             return AppTheme.successGreen
-        case "Upload proof live":
+        case "Upload diagnostics live":
             return AppTheme.courtBlue
         default:
             return AppTheme.subtleText
@@ -781,7 +781,7 @@ struct SettingsView: View {
             }
             .padding(.top, 10)
         } label: {
-            Label("Test tools", systemImage: "wrench.and.screwdriver.fill")
+            Label("Support tools", systemImage: "wrench.and.screwdriver.fill")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(AppTheme.courtBlue)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -798,7 +798,7 @@ struct SettingsView: View {
 
     private var phoneSmokeResultPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Phone smoke result", systemImage: "iphone.gen3")
+            Label("Phone check result", systemImage: "iphone.gen3")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(AppTheme.courtBlue)
 
@@ -908,7 +908,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: testFlightChecklistCopied ? "checkmark.circle.fill" : "checklist.checked")
-                Text(testFlightChecklistCopied ? "Packet copied" : "Copy smoke packet")
+                Text(testFlightChecklistCopied ? "Packet copied" : "Copy check packet")
                     .font(.subheadline.weight(.bold))
                 Spacer(minLength: 0)
             }
@@ -922,7 +922,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings.smokeProof.copyTestFlightChecklistButton")
-        .accessibilityHint("Copies import, analysis, review, export, and share steps for this TestFlight build.")
+        .accessibilityHint("Copies import, analysis, review, reel, and share checks for this build.")
     }
 
     private var settingsBackgroundUploadStatusRow: some View {
