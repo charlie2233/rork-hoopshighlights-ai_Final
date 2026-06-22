@@ -1654,7 +1654,9 @@ struct ReviewView: View {
 
     @ViewBuilder
     private var priorityReviewCard: some View {
-        if !priorityReviewClips.isEmpty {
+        if !priorityReviewClips.isEmpty,
+           filterOption != priorityReviewFilter,
+           !visibleFilterOptions.contains(.priority) {
             Button {
                 HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                     filterOption = priorityReviewFilter
