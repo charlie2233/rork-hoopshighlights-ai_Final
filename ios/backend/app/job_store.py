@@ -333,8 +333,6 @@ class FirestoreJobStore(JobStoreBase):
             asset_id=payload.get("assetId"),
             storage_key=payload.get("storageKey") or payload.get("objectKey"),
             upload_headers=dict(payload.get("uploadHeaders") or {}),
-            asset_id=payload.get("assetId"),
-            storage_key=payload.get("storageKey") or payload.get("objectKey"),
             team_selection=TeamSelection.model_validate(payload.get("teamSelection")) if payload.get("teamSelection") else None,
             detected_teams=[TeamOption.model_validate(team) for team in payload.get("detectedTeams") or []],
             team_scan_status=payload.get("teamScanStatus"),

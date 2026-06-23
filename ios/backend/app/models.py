@@ -587,8 +587,6 @@ class StoredJob:
             errorCode=self.error_code,
             errorMessage=self.error_message,
             analysisVersion=self.analysis_version,
-            assetId=self.asset_id,
-            storageKey=self.storage_key,
             results=self.results,
             sourceObjectKey=self.object_key,
             resultObjectKey=None,

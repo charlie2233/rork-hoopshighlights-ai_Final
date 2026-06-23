@@ -419,18 +419,13 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     let fileSizeBytes: Int64?
     let assetFailureReason: String?
     let sourceObjectKey: String?
-    let assetId: String?
-    let assetStorageKey: String?
-    let proxyStorageKey: String?
-    let assetStatus: String?
-    let assetUploadedBytes: Int64?
-    let assetFileSizeBytes: Int64?
-    let assetFailureReason: String?
     let clipCount: Int
     let clips: [CloudClip]
     let diagnostics: CloudDiagnostics
     var detectedTeams: [CloudTeamOption] = []
     var teamSelection: HighlightTeamSelection? = nil
+    var assetUploadedBytes: Int64? { uploadedBytes }
+    var assetFileSizeBytes: Int64? { fileSizeBytes }
 
     init(
         analysisJobId: String? = nil,
@@ -443,13 +438,8 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         fileSizeBytes: Int64? = nil,
         assetFailureReason: String? = nil,
         sourceObjectKey: String? = nil,
-        assetId: String? = nil,
-        assetStorageKey: String? = nil,
-        proxyStorageKey: String? = nil,
-        assetStatus: String? = nil,
         assetUploadedBytes: Int64? = nil,
         assetFileSizeBytes: Int64? = nil,
-        assetFailureReason: String? = nil,
         clipCount: Int,
         clips: [CloudClip],
         diagnostics: CloudDiagnostics,
@@ -462,17 +452,10 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         self.storageKey = storageKey
         self.proxyStorageKey = proxyStorageKey
         self.assetStatus = assetStatus
-        self.uploadedBytes = uploadedBytes
-        self.fileSizeBytes = fileSizeBytes
+        self.uploadedBytes = uploadedBytes ?? assetUploadedBytes
+        self.fileSizeBytes = fileSizeBytes ?? assetFileSizeBytes
         self.assetFailureReason = assetFailureReason
         self.sourceObjectKey = sourceObjectKey
-        self.assetId = assetId
-        self.assetStorageKey = assetStorageKey
-        self.proxyStorageKey = proxyStorageKey
-        self.assetStatus = assetStatus
-        self.assetUploadedBytes = assetUploadedBytes
-        self.assetFileSizeBytes = assetFileSizeBytes
-        self.assetFailureReason = assetFailureReason
         self.clipCount = clipCount
         self.clips = clips
         self.diagnostics = diagnostics
@@ -491,17 +474,9 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         case fileSizeBytes
         case assetFailureReason
         case sourceObjectKey
-        case assetId
-        case assetStorageKey
-        case storageKey
-        case proxyStorageKey
-        case assetStatus
         case status
         case assetUploadedBytes
-        case uploadedBytes
         case assetFileSizeBytes
-        case fileSizeBytes
-        case assetFailureReason
         case failureReason
         case clipCount
         case clips
@@ -514,26 +489,19 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         analysisJobId = try container.decodeIfPresent(String.self, forKey: .analysisJobId)
         assetId = try container.decodeIfPresent(String.self, forKey: .assetId)
-        assetStorageKey = try container.decodeIfPresent(String.self, forKey: .assetStorageKey)
         storageKey = try container.decodeIfPresent(String.self, forKey: .storageKey)
         proxyStorageKey = try container.decodeIfPresent(String.self, forKey: .proxyStorageKey)
-        assetStatus = try container.decodeIfPresent(String.self, forKey: .assetStatus)
-        uploadedBytes = try container.decodeIfPresent(Int64.self, forKey: .uploadedBytes)
-        fileSizeBytes = try container.decodeIfPresent(Int64.self, forKey: .fileSizeBytes)
-        assetFailureReason = try container.decodeIfPresent(String.self, forKey: .assetFailureReason)
-        sourceObjectKey = try container.decodeIfPresent(String.self, forKey: .sourceObjectKey)
-        assetId = try container.decodeIfPresent(String.self, forKey: .assetId)
-        assetStorageKey = try container.decodeIfPresent(String.self, forKey: .assetStorageKey)
-            ?? container.decodeIfPresent(String.self, forKey: .storageKey)
-        proxyStorageKey = try container.decodeIfPresent(String.self, forKey: .proxyStorageKey)
-        assetStatus = try container.decodeIfPresent(String.self, forKey: .assetStatus)
-            ?? container.decodeIfPresent(String.self, forKey: .status)
-        assetUploadedBytes = try container.decodeIfPresent(Int64.self, forKey: .assetUploadedBytes)
-            ?? container.decodeIfPresent(Int64.self, forKey: .uploadedBytes)
-        assetFileSizeBytes = try container.decodeIfPresent(Int64.self, forKey: .assetFileSizeBytes)
-            ?? container.decodeIfPresent(Int64.self, forKey: .fileSizeBytes)
         assetFailureReason = try container.decodeIfPresent(String.self, forKey: .assetFailureReason)
             ?? container.decodeIfPresent(String.self, forKey: .failureReason)
+        sourceObjectKey = try container.decodeIfPresent(String.self, forKey: .sourceObjectKey)
+        assetStorageKey = try container.decodeIfPresent(String.self, forKey: .assetStorageKey)
+            ?? container.decodeIfPresent(String.self, forKey: .storageKey)
+        assetStatus = try container.decodeIfPresent(String.self, forKey: .assetStatus)
+            ?? container.decodeIfPresent(String.self, forKey: .status)
+        uploadedBytes = try container.decodeIfPresent(Int64.self, forKey: .assetUploadedBytes)
+            ?? container.decodeIfPresent(Int64.self, forKey: .uploadedBytes)
+        fileSizeBytes = try container.decodeIfPresent(Int64.self, forKey: .assetFileSizeBytes)
+            ?? container.decodeIfPresent(Int64.self, forKey: .fileSizeBytes)
         clipCount = try container.decode(Int.self, forKey: .clipCount)
         clips = try container.decode([CloudClip].self, forKey: .clips)
         diagnostics = try container.decode(CloudDiagnostics.self, forKey: .diagnostics)
@@ -549,8 +517,8 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         try container.encodeIfPresent(assetStorageKey, forKey: .assetStorageKey)
         try container.encodeIfPresent(proxyStorageKey, forKey: .proxyStorageKey)
         try container.encodeIfPresent(assetStatus, forKey: .assetStatus)
-        try container.encodeIfPresent(assetUploadedBytes, forKey: .assetUploadedBytes)
-        try container.encodeIfPresent(assetFileSizeBytes, forKey: .assetFileSizeBytes)
+        try container.encodeIfPresent(uploadedBytes, forKey: .uploadedBytes)
+        try container.encodeIfPresent(fileSizeBytes, forKey: .fileSizeBytes)
         try container.encodeIfPresent(assetFailureReason, forKey: .assetFailureReason)
         try container.encode(clipCount, forKey: .clipCount)
         try container.encode(clips, forKey: .clips)
@@ -571,13 +539,6 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
             fileSizeBytes: fileSizeBytes,
             assetFailureReason: assetFailureReason,
             sourceObjectKey: sourceObjectKey ?? self.sourceObjectKey,
-            assetId: assetId,
-            assetStorageKey: assetStorageKey,
-            proxyStorageKey: proxyStorageKey,
-            assetStatus: assetStatus,
-            assetUploadedBytes: assetUploadedBytes,
-            assetFileSizeBytes: assetFileSizeBytes,
-            assetFailureReason: assetFailureReason,
             clipCount: clipCount,
             clips: clips,
             diagnostics: diagnostics,

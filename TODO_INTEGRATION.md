@@ -50,6 +50,8 @@
 - [x] Add workflow UI smoke coverage for Uploads -> Review -> AI Edit -> Exports navigation.
 - [x] Add edit request encoding coverage for `assetId`, `sourceClipIds`, `editIntent`, and `idempotencyKey`.
 - [x] Add backend/service idempotency replay coverage for edit-job creation.
-- [ ] Re-run `HoopsClipsTests` after this integration branch resolves conflicts.
-- [ ] Re-run the workflow UI smoke after this integration branch resolves conflicts.
+- [x] Re-run iOS build-for-testing after this integration branch resolves conflicts.
+- [x] Re-run focused `HoopsClipsTests` integration lanes: `WorkflowStateTests`, edit request encoding, asset upload decode, and asset queue decode.
+- [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
+- [ ] Re-run the full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
 - [ ] Add managed object-storage smoke after Worker/provider deployment is available.

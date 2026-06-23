@@ -285,7 +285,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "uploadTraceId": request.uploadTraceId,
             "inferenceAttemptId": request.inferenceAttemptId,
             "traceId": request.traceId,
-            "results": result.model_dump(mode="json") if result is not None else None,
+            "results": result.model_dump(mode="json", exclude_none=True) if result is not None else None,
         }
         if result is not None:
             result_confidence = analysis_result_confidence(result)

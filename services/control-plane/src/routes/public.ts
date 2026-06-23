@@ -1003,8 +1003,6 @@ async function requestInferenceTeamScan(
       requestId,
       uploadTraceId: job.uploadTraceId ?? requestId,
       traceId: job.traceId,
-      assetId: job.jobId,
-      storageKey: job.sourceObjectKey,
       sourceObjectKey: job.sourceObjectKey,
       sourceUrl: readTarget.sourceUrl,
       filename: job.filename,
@@ -1573,8 +1571,6 @@ function toCloudAnalysisJobResponse(
           teamSelection: job.results.teamSelection ?? job.teamSelection ?? null
         }
       : null,
-    assetId: job.jobId,
-    storageKey: null,
     sourceObjectKey: job.sourceObjectKey,
     resultObjectKey: job.resultObjectKey,
     createdAt: job.createdAt,
