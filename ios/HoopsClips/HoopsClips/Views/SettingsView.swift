@@ -147,9 +147,6 @@ struct SettingsView: View {
                         AnyView(languageSettingsCard)
                         AnyView(workflowHubLink)
                         AnyView(supportHubLink)
-                        if shouldShowSmokeProofCard && shouldSurfaceSmokeProofCard {
-                            AnyView(smokeProofCard)
-                        }
                         AnyView(aboutHubLink)
                         #if DEBUG
                         AnyView(runtimeStatusCard)
@@ -1955,6 +1952,9 @@ struct SettingsView: View {
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
             accent: AppTheme.rimOrange
         ) {
+            if shouldShowSmokeProofCard {
+                smokeProofCard
+            }
             contactSuggestionsSection
             commonFAQSection
         }
