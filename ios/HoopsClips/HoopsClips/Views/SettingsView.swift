@@ -774,7 +774,7 @@ struct SettingsView: View {
             }
             .padding(.top, 10)
         } label: {
-            Label("Support tools", systemImage: "wrench.and.screwdriver.fill")
+            Label("Help tools", systemImage: "wrench.and.screwdriver.fill")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(AppTheme.courtBlue)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -892,7 +892,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings.smokeProof.copyBuildSummaryButton")
-        .accessibilityHint("Copies a short sanitized build and runtime summary for TestFlight smoke notes.")
+        .accessibilityHint("Copies a short sanitized build and runtime summary for support notes.")
     }
 
     private var copyTestFlightSmokeChecklistButton: some View {
@@ -901,7 +901,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: testFlightChecklistCopied ? "checkmark.circle.fill" : "checklist.checked")
-                Text(testFlightChecklistCopied ? "Packet copied" : "Copy check packet")
+                Text(testFlightChecklistCopied ? "Checklist copied" : "Copy check checklist")
                     .font(.subheadline.weight(.bold))
                 Spacer(minLength: 0)
             }
@@ -1109,7 +1109,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(uploadStateProofCopied ? "Upload status copied" : "Copy upload status")
                         .font(.caption.weight(.bold))
-                    Text("Use this if upload feels stuck.")
+                    Text("Use this if progress stops updating.")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(uploadStateProofCopied ? .black.opacity(0.72) : AppTheme.subtleText)
                         .lineLimit(2)

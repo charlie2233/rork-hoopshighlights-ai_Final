@@ -1646,7 +1646,7 @@ struct AIEditView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
-                Text(receiptPlanTier.isFree ? "Free" : "Pro/Internal")
+                Text(receiptPlanTier.isFree ? "Free" : "Pro")
                     .font(.caption2.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)

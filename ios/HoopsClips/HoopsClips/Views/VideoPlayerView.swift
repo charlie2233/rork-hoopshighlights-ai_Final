@@ -3170,9 +3170,9 @@ struct VideoPlayerView: View {
         }
 
         if summary.contains("uploadExpired=true") {
-            return "Saved upload expired. Start AI Analysis will create a fresh cloud upload instead of waiting on the old one."
+            return "Previous upload expired. Tap AI Analysis to start a fresh cloud upload."
         }
-        return "Saved upload looks stale. Start AI Analysis will create a fresh cloud upload instead of waiting on the old one."
+        return "Previous upload stopped updating. Tap AI Analysis to start a fresh cloud upload."
     }
 
     private var missingUploadSourcePromptText: String? {
