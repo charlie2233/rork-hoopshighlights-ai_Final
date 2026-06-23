@@ -9,6 +9,7 @@ struct ExportView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable var viewModel: HighlightsViewModel
+    var showsAIEditAgentSection = true
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
     @State private var shareTrigger = 0
@@ -39,7 +40,11 @@ struct ExportView: View {
                     ScrollView {
                         VStack(spacing: 24) {
                             summaryCard
-                            aiEditAgentSection
+                            if showsAIEditAgentSection {
+                                aiEditAgentSection
+                            } else {
+                                renderOutputSection
+                            }
                             if AppConstants.requiresCloudVideoPipeline {
                                 if viewModel.exportService.exportedURL != nil {
                                     quickActionsSection
@@ -221,6 +226,83 @@ struct ExportView: View {
             presentation: .exportSection,
             onRequestProUpgrade: { showingPaywall = true }
         )
+    }
+
+    private var renderOutputSubtitle: String {
+        if viewModel.exportService.exportedURL != nil {
+            return "Downloaded cloud render is ready for preview, Photos, Files, editors, and share sheet."
+        }
+        if let renderStatus = viewModel.latestCloudEditRenderStatus {
+            switch renderStatus.status {
+            case .rendered:
+                return "Cloud render is complete. Open AI Edit to download the MP4 into Exports."
+            case .failed, .failedTimeout, .cancelled:
+                return renderStatus.failureReason ?? "Cloud render needs attention in AI Edit before Exports can handle the MP4."
+            default:
+                return "\(renderStatus.status.displayLabel). Exports will unlock preview, save, and share after download."
+            }
+        }
+        if viewModel.canRequestCloudEdit {
+            return "AI Edit owns planning and cloud rendering; Exports owns finished MP4 handling."
+        }
+        return viewModel.cloudEditUnavailableReason ?? "Run Uploads and Review before exporting a rendered MP4."
+    }
+
+    private var renderOutputStatusTitle: String {
+        if viewModel.exportService.exportedURL != nil {
+            return "Ready"
+        }
+        return viewModel.latestCloudEditRenderStatus?.status.displayLabel ?? "Waiting"
+    }
+
+    private var renderOutputStatusIcon: String {
+        if viewModel.exportService.exportedURL != nil {
+            return "checkmark.seal.fill"
+        }
+        switch viewModel.latestCloudEditRenderStatus?.status {
+        case .failed, .failedTimeout, .cancelled:
+            return "exclamationmark.triangle.fill"
+        case .renderRequested, .created, .queued, .rendering:
+            return "arrow.triangle.2.circlepath"
+        case .rendered:
+            return "icloud.and.arrow.down.fill"
+        case .planning, .planReady, .none:
+            return "clock.badge.exclamationmark.fill"
+        }
+    }
+
+    private var renderOutputSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: "Render output",
+                icon: "shippingbox.and.arrow.down.fill",
+                subtitle: renderOutputSubtitle
+            )
+
+            HStack(spacing: 10) {
+                exportContextPill(
+                    icon: renderOutputStatusIcon,
+                    title: renderOutputStatusTitle,
+                    subtitle: viewModel.latestCloudEditRenderStatus == nil ? "MP4 output" : "Cloud render"
+                )
+                exportContextPill(
+                    icon: viewModel.cloudEditSourceObjectKey == nil ? "icloud.slash.fill" : "icloud.fill",
+                    title: viewModel.cloudEditSourceObjectKey == nil ? "Pending" : "Cloud",
+                    subtitle: "Source"
+                )
+            }
+
+            if viewModel.exportService.exportedURL == nil {
+                Text("Open AI Edit to request or monitor the cloud render job. Exports will show preview, save, and share actions after the MP4 is downloaded.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.courtBlue.opacity(0.18), glow: AppTheme.courtBlue, glowOpacity: 0.05)
+        .accessibilityIdentifier("exports.renderOutput.section")
     }
 
     private var localExportSetupCard: some View {

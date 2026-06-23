@@ -962,6 +962,7 @@ struct HoopsClipsTests {
             videoId: "video_123",
             analysisJobId: "analysis_123",
             installId: "install-123",
+            assetId: "asset_123",
             sourceObjectKey: "uploads/source.mp4",
             preset: CloudEditPreset.personalHighlight.rawValue,
             templateId: CloudEditPreset.personalHighlight.templateID,
@@ -1001,7 +1002,9 @@ struct HoopsClipsTests {
         let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         #expect(payload["userPrompt"] as? String == "Make it more hype and focus on defense.")
+        #expect(payload["assetId"] as? String == "asset_123")
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
+        #expect(payload["sourceClipIds"] as? [String] == ["clip_1"])
         let clips = try #require(payload["clips"] as? [[String: Any]])
 	        let firstClip = try #require(clips.first)
 	        let encodedSignals = try #require(firstClip["nativeShotSignals"] as? [String: Any])
@@ -1300,7 +1303,9 @@ struct HoopsClipsTests {
             keptClips: 8,
             needsReviewClips: 2,
             lastAnalysisBlockReason: "none",
+            fastUploadMode: true,
             latestUploadProgress: "bytes=196/525_MB speed=2.4_MB/s",
+            latestUploadSourceOptimization: "profile=compact_540p reason=fast_upload_mode",
             latestUnexpectedExit: "none",
             latestCrashReportDelivery: "sent"
         )
@@ -1311,6 +1316,8 @@ struct HoopsClipsTests {
         #expect(summary.contains("phoneSmokeIssueNote=redacted"))
         #expect(summary.contains("analysisProgressPercent=100"))
         #expect(summary.contains("analysisStatus=redacted"))
+        #expect(summary.contains("fastUploadMode=true"))
+        #expect(summary.contains("latestUploadSourceOptimization=profile=compact_540p_reason=fast_upload_mode"))
         #expect(summary.contains("privacy=no secrets"))
         #expect(!summary.localizedCaseInsensitiveContains("https://"))
         #expect(!summary.localizedCaseInsensitiveContains("uploads/"))
@@ -5103,6 +5110,43 @@ struct HoopsClipsTests {
         #expect(clips.count == 3)
         #expect(kept.count == 2)
         #expect(kept.reduce(0.0) { $0 + $1.duration } <= settings.targetHighlightDuration + 0.001)
+    }
+
+    @Test func testCloudAnalysisResultDecodesAssetQueueFields() throws {
+        let data = Data(
+            """
+            {
+              "analysisJobId": "analysis_123",
+              "sourceObjectKey": "uploads/analysis/source.mp4",
+              "assetId": "asset_123",
+              "storageKey": "assets/asset_123/source/game.mp4",
+              "proxyStorageKey": "assets/asset_123/proxy/proxy.mp4",
+              "status": "proxy_ready",
+              "uploadedBytes": 4200,
+              "fileSizeBytes": 8400,
+              "failureReason": null,
+              "clipCount": 0,
+              "clips": [],
+              "diagnostics": {
+                "processingMs": 0,
+                "backendModelVersion": "asset-test",
+                "usedVideoIntelligence": false,
+                "usedGeminiRelabeling": false,
+                "candidateSegments": 0,
+                "finalSegments": 0
+              }
+            }
+            """.utf8
+        )
+
+        let result = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
+
+        #expect(result.assetId == "asset_123")
+        #expect(result.assetStorageKey == "assets/asset_123/source/game.mp4")
+        #expect(result.proxyStorageKey == "assets/asset_123/proxy/proxy.mp4")
+        #expect(result.assetStatus == "proxy_ready")
+        #expect(result.assetUploadedBytes == 4200)
+        #expect(result.assetFileSizeBytes == 8400)
     }
 
     @Test func testDefaultRedundantSuppressionPrefersHigherScoreWhenClipsOverlap() {

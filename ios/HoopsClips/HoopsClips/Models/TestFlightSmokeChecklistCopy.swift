@@ -57,7 +57,7 @@ nonisolated enum TestFlightSmokeChecklistCopy {
             "- Review says Analyzing, please wait while cloud is active",
             "1. Install this exact TestFlight build.",
             "2. In Settings, choose Fast Upload Mode on/off for this run and note it in proof.",
-            "3. Import the long basketball video.",
+            "3. Import a long basketball video.",
             "4. Start AI Analysis and confirm Uploading -> Analyzing -> Review ready stays readable.",
             "5. Switch apps during upload, return, and confirm progress resumes instead of restarting.",
             "6. Copy upload proof after return; look for compact upload, chunk, saved, resume, or fast-lane wording.",

@@ -518,7 +518,9 @@ export interface CreateEditJobRequest {
   videoId: string;
   analysisJobId: string;
   installId: string;
+  assetId?: string | null;
   sourceObjectKey?: string | null;
+  sourceClipIds?: string[];
   preset: "personal_highlight" | "full_game_highlight" | "coach_review" | "fast_break_mix" | "best_five";
   templateId?:
     | "personal_highlight_v1"

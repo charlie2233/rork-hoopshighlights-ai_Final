@@ -893,7 +893,9 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let videoId: String
     let analysisJobId: String
     let installId: String
+    let assetId: String?
     let sourceObjectKey: String
+    let sourceClipIds: [String]
     let preset: String
     let templateId: String
     let targetDurationSeconds: Int
@@ -903,6 +905,64 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let userPrompt: String?
     var teamSelection: HighlightTeamSelection? = nil
     let clips: [CloudEditCandidateClip]
+
+    init(
+        videoId: String,
+        analysisJobId: String,
+        installId: String,
+        assetId: String? = nil,
+        sourceObjectKey: String,
+        sourceClipIds: [String]? = nil,
+        preset: String,
+        templateId: String,
+        targetDurationSeconds: Int,
+        aspectRatio: CloudEditAspectRatio,
+        planTier: CloudEditPlanTier,
+        revenueCatAppUserID: String?,
+        userPrompt: String?,
+        teamSelection: HighlightTeamSelection? = nil,
+        clips: [CloudEditCandidateClip]
+    ) {
+        self.videoId = videoId
+        self.analysisJobId = analysisJobId
+        self.installId = installId
+        self.assetId = assetId
+        self.sourceObjectKey = sourceObjectKey
+        self.sourceClipIds = sourceClipIds ?? clips.map(\.id)
+        self.preset = preset
+        self.templateId = templateId
+        self.targetDurationSeconds = targetDurationSeconds
+        self.aspectRatio = aspectRatio
+        self.planTier = planTier
+        self.revenueCatAppUserID = revenueCatAppUserID
+        self.userPrompt = userPrompt
+        self.teamSelection = teamSelection
+        self.clips = clips
+    }
+}
+
+struct CloudEditAssetJobContract: Codable, Equatable, Sendable {
+    let assetId: String?
+    let sourceObjectKey: String
+    let analysisJobId: String
+    let sourceClipIds: [String]
+    let style: String
+    let targetDurationSeconds: Int
+    let aspectRatio: CloudEditAspectRatio
+}
+
+extension CreateCloudEditJobRequest {
+    func assetJobContract(assetId: String? = nil) -> CloudEditAssetJobContract {
+        CloudEditAssetJobContract(
+            assetId: assetId ?? self.assetId,
+            sourceObjectKey: sourceObjectKey,
+            analysisJobId: analysisJobId,
+            sourceClipIds: sourceClipIds,
+            style: preset,
+            targetDurationSeconds: targetDurationSeconds,
+            aspectRatio: aspectRatio
+        )
+    }
 }
 
 struct CloudEditJobResponse: Codable, Sendable {

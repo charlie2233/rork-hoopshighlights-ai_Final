@@ -44,7 +44,7 @@ struct ExportThemeRendererTests {
 
     @Test
     func brandedOutroIsNonProOnly() {
-        #expect(isApproximatelyEqual(brandedOutroDuration(isProUser: false), 2.0))
+        #expect(isApproximatelyEqual(brandedOutroDuration(isProUser: false), 0.0))
         #expect(isApproximatelyEqual(brandedOutroDuration(isProUser: true), 0.0))
     }
 

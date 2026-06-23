@@ -1047,7 +1047,9 @@ class CreateEditJobRequest(APIModel):
     videoId: str = Field(min_length=1, max_length=120)
     analysisJobId: str = Field(min_length=1, max_length=120)
     installId: str = Field(min_length=8, max_length=128)
+    assetId: Optional[str] = Field(default=None, min_length=1, max_length=80)
     sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
+    sourceClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     preset: PresetId = "personal_highlight"
     templateId: Optional[TemplateId] = None
     theme: Optional[str] = Field(default=None, max_length=80)

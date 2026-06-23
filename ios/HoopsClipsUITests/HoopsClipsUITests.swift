@@ -32,7 +32,7 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsLaunchStatusOpensForGuestSession() throws {
+    func testSettingsLaunchStatusOpensFromUploadsForGuestSession() throws {
         XCUIDevice.shared.orientation = .portrait
 
         let app = XCUIApplication()
@@ -46,12 +46,41 @@ final class HoopsClipsUITests: XCTestCase {
             guestButton.tap()
         }
 
-        let settingsTab = waitForAppTab(named: "Settings", identifier: "app.tab.settings", in: app, timeout: 5)
-        XCTAssertTrue(settingsTab.exists, "Settings tab should be available after authentication.")
-        settingsTab.tap()
+        let settingsButton = app.buttons["uploads.settingsButton"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5), "Uploads should expose Settings as a utility route.")
+        settingsButton.tap()
 
         XCTAssertTrue(app.staticTexts["Launch Status"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Analysis Path"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testWorkflowSectionsNavigateEndToEndWithSmokeFixture() throws {
+        let app = launchAIEditSmokeApp(
+            fixture: "staging_render_ready",
+            sourceObjectKey: "uploads/25a101ba8d234fd98094bd112276161f/source.mp4",
+            workerURL: "http://127.0.0.1:9",
+            installID: "workflow-sections-ui-smoke"
+        )
+
+        XCTAssertTrue(waitForAppTab(named: "Uploads", identifier: "app.tab.uploads", in: app, timeout: 10).exists)
+        XCTAssertTrue(app.descendants(matching: .any)["uploads.queue.panel"].waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForAppTab(named: "Review", identifier: "app.tab.review", in: app, timeout: 10).exists)
+        XCTAssertTrue(waitForAppTab(named: "AI Edit", identifier: "app.tab.aiEdit", in: app, timeout: 10).exists)
+        XCTAssertTrue(waitForAppTab(named: "Exports", identifier: "app.tab.export", in: app, timeout: 10).exists)
+
+        let reviewTab = waitForAppTab(named: "Review", identifier: "app.tab.review", in: app, timeout: 5)
+        reviewTab.tap()
+        XCTAssertTrue(app.buttons["review.carousel.keepButton"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["review.carousel.boundaryNudgeControls"].waitForExistence(timeout: 10))
+
+        tapWhenReady(app.buttons["review.continueToExportButton"], in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["aiEdit.workflow.header"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.section"].waitForExistence(timeout: 10))
+
+        let exportsTab = waitForAppTab(named: "Exports", identifier: "app.tab.export", in: app, timeout: 5)
+        exportsTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["exports.renderOutput.section"].waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -370,10 +399,10 @@ final class HoopsClipsUITests: XCTestCase {
         attachScreenshot(named: "01 Review Continue To Export", app: app)
         tapWhenReady(entryButton, in: app)
 
-        let exportTab = waitForAppTab(named: "Export", identifier: "app.tab.export", in: app, timeout: 10)
-        XCTAssertTrue(exportTab.exists, "Export tab should be visible after routing from Review.")
+        let exportTab = waitForAppTab(named: "AI Edit", identifier: "app.tab.aiEdit", in: app, timeout: 10)
+        XCTAssertTrue(exportTab.exists, "AI Edit tab should be visible after routing from Review.")
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.section"].waitForExistence(timeout: 10))
-        attachScreenshot(named: "02 Export AI Edit Agent", app: app)
+        attachScreenshot(named: "02 AI Edit Agent", app: app)
     }
 
     @MainActor

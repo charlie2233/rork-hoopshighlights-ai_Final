@@ -24,7 +24,7 @@ enum AIEditQuickPromptLibrary {
             id: "personal",
             title: "Solo",
             subtitle: "One-player highlight feel",
-            prompt: "Solo/player highlight: focus on one player when clear. Do not require team scan; use visible player cues, full makes, assists, blocks, steals, and best defense.",
+            prompt: "Solo/player highlight: visible player cues, full makes, assists, blocks, steals, best defense.",
             icon: "person.crop.circle.fill"
         ),
         AIEditQuickPrompt(
@@ -45,22 +45,29 @@ enum AIEditQuickPromptLibrary {
             id: "recruiting",
             title: "Recruit",
             subtitle: "Clean full-play proof",
-            prompt: "Recruiting reel: keep full plays with clear outcomes, strong scoring, assists, defense, hustle, and no weak or unclear clips.",
+            prompt: "Recruiting reel: full plays, clear outcomes, scoring, assists, defense, hustle, no unclear clips.",
             icon: "star.circle.fill"
         ),
         AIEditQuickPrompt(
             id: "recap",
             title: "Recap",
             subtitle: "Broadcast story flow",
-            prompt: "NBA-style recap: story flow, best makes, stops, assists, crowd pops, clean pacing, and clear outcomes.",
+            prompt: "NBA-style recap: story flow, best makes, stops, assists, crowd pops, clean pacing, clear outcomes.",
             icon: "sparkles"
         ),
         AIEditQuickPrompt(
             id: "long-reel",
-            title: "Long",
+            title: "Long reel",
             subtitle: "About 4:30 reel",
             prompt: "Make this a longer 4:30 highlight reel with clear outcomes, defense, and crowd pops.",
             icon: "timer"
+        ),
+        AIEditQuickPrompt(
+            id: "clear-outcomes",
+            title: "Full plays",
+            subtitle: "Action to result",
+            prompt: "Keep full action-to-result plays with a visible outcome for review.",
+            icon: "checkmark.seal.fill"
         )
     ]
 }
