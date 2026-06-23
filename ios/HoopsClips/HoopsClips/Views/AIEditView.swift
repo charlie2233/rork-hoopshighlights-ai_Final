@@ -2563,7 +2563,7 @@ struct AIEditView: View {
 
     private var launchReadinessFlagMessage: String? {
         guard let flags = serviceVersion?.featureFlags, !flags.hasRequiredLaunchReadinessFlags else { return nil }
-        return "Reel is temporarily unavailable while cloud setup finishes. Try again shortly."
+        return "Your video is safe. Reel creation is getting ready. Try again in a few minutes."
     }
 
     private var cloudEditVersionBlockMessage: String? {
