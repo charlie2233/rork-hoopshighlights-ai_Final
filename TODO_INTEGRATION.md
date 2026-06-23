@@ -35,6 +35,9 @@
 - [ ] Consume `proxyStorageKey` for first-preview/edit planning when available.
 - [ ] Do not start expensive analysis/edit planning before `proxy_ready`.
 - [x] Confirm AI Edit tab still calls cloud edit plan and render endpoints through `CloudEditService`; `assetId` and `sourceClipIds` are additive live fields and `sourceObjectKey` plus full `clips` remain the compatibility route.
+- [x] Send structured `editIntent` with style, pace, audio preference, chronology, caption density, and hard constraints.
+- [x] Send an edit-job `idempotencyKey` and preserve replay-safe edit creation in backend/service storage.
+- [x] Echo `assetId`, `sourceObjectKey`, `sourceClipIds`, `editIntent`, candidate clip count, and full candidate clips on edit-job responses.
 - [x] Confirm boundary nudges remain metadata-only and are reflected in cloud edit candidate clips through `CreateCloudEditJobRequest.clips`.
 
 ## Verification
@@ -45,6 +48,8 @@
 - [x] Add Swift contract decode tests once UI models land.
 - [x] Add workflow projection unit tests.
 - [x] Add workflow UI smoke coverage for Uploads -> Review -> AI Edit -> Exports navigation.
+- [x] Add edit request encoding coverage for `assetId`, `sourceClipIds`, `editIntent`, and `idempotencyKey`.
+- [x] Add backend/service idempotency replay coverage for edit-job creation.
 - [ ] Re-run `HoopsClipsTests` after this integration branch resolves conflicts.
 - [ ] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [ ] Add managed object-storage smoke after Worker/provider deployment is available.

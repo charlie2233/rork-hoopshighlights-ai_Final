@@ -644,6 +644,42 @@ export interface MetadataJobRecord extends ResponseEnvelope {
 
 export type RenderStatus = "render_requested" | "created" | "queued" | "rendering" | "rendered" | "failed" | "failed_timeout" | "cancelled";
 export type EditPlanTier = "free" | "pro" | "internal" | "dev";
+export type EditIntentStyle =
+  | "personal_highlight"
+  | "full_game_highlight"
+  | "coach_review"
+  | "recruiting_reel"
+  | "cinematic_mixtape"
+  | "nba_recap"
+  | "team_highlight"
+  | "defense_focus"
+  | "custom";
+export type EditIntentPace = "fast" | "balanced" | "cinematic" | "coach_review" | "deliberate";
+export type EditIntentAudioPreference = "music_forward" | "game_audio" | "balanced" | "muted";
+export type EditIntentChronology = "best_first" | "chronological" | "story_arc" | "coach_review";
+export type EditIntentCaptionDensity = "minimal" | "clean" | "medium" | "high";
+
+export interface EditIntentHardConstraints {
+  requireVisibleOutcome: boolean;
+  requireFullPlayContext: boolean;
+  rejectDuplicates: boolean;
+  rejectDeadBall: boolean;
+  defenseOnly: boolean;
+  selectedTeamOnly: boolean;
+  maxCaptionCharacters: number;
+}
+
+export interface StructuredEditIntent {
+  schemaVersion: "edit-intent-v1";
+  source: "client" | "server_derived" | "legacy_prompt";
+  style: EditIntentStyle;
+  pace: EditIntentPace;
+  audioPreference: EditIntentAudioPreference;
+  chronology: EditIntentChronology;
+  captionDensity: EditIntentCaptionDensity;
+  hardConstraints: EditIntentHardConstraints;
+  promptSummary?: string | null;
+}
 
 export interface EditCandidateClip {
   id: string;
@@ -689,6 +725,8 @@ export interface CreateEditJobRequest {
   planTier?: EditPlanTier;
   revenueCatAppUserID?: string | null;
   userPrompt?: string | null;
+  editIntent?: StructuredEditIntent | null;
+  idempotencyKey?: string | null;
   teamSelection?: TeamSelection | null;
   clips: EditCandidateClip[];
 }
@@ -697,19 +735,29 @@ export interface EditJobResponse extends ResponseEnvelope {
   editJobId: string;
   videoId: string;
   analysisJobId: string;
+  assetId?: string | null;
+  sourceObjectKey?: string | null;
+  sourceClipIds?: string[];
   status: string;
   preset: string;
   templateId?: string | null;
+  editIntent?: StructuredEditIntent | null;
   targetDurationSeconds: number;
   aspectRatio: "9:16" | "16:9" | "source";
   clipCount: number;
+  candidateClipCount?: number;
+  candidateClips?: EditCandidateClip[];
   validationErrors?: Array<Record<string, unknown>>;
 }
 
 export interface EditPlanResponse extends ResponseEnvelope {
   editJobId: string;
+  assetId?: string | null;
+  sourceObjectKey?: string | null;
+  sourceClipIds?: string[];
   status: string;
   plan: Record<string, unknown>;
+  editIntent?: StructuredEditIntent | null;
   validationErrors?: Array<Record<string, unknown>>;
 }
 

@@ -175,6 +175,27 @@ class EditingServiceTests(unittest.TestCase):
             clips=[_clip("c1", 0.0, "Fast Break", 0.95), _clip("c2", 8.0, "Made Shot", 0.9)],
         )
 
+    def _structured_edit_intent(self, *, style: str = "defense_focus") -> dict:
+        return {
+            "schemaVersion": "edit-intent-v1",
+            "source": "client",
+            "style": style,
+            "pace": "fast",
+            "audioPreference": "music_forward",
+            "chronology": "best_first",
+            "captionDensity": "high",
+            "hardConstraints": {
+                "requireVisibleOutcome": True,
+                "requireFullPlayContext": True,
+                "rejectDuplicates": True,
+                "rejectDeadBall": True,
+                "defenseOnly": style == "defense_focus",
+                "selectedTeamOnly": False,
+                "maxCaptionCharacters": 24,
+            },
+            "promptSummary": "Prefer defense stops, visible outcomes, and hype pacing.",
+        }
+
     def _render_payload(self, edit_request: CreateEditJobRequest) -> dict:
         edit_job = build_edit_job(edit_request, "edit_service_test")
         self.assertFalse(edit_job.validation_errors)
@@ -477,6 +498,77 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(plan_payload["plan"]["templateId"], "personal_highlight_v1")
         self.assertEqual(plan_payload["plan"]["captionStyle"], "bold_hype")
         self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
+
+    def test_create_edit_job_accepts_asset_source_clip_ids_and_structured_intent(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        request_payload = self._edit_request(source_key="uploads/test/source.mp4").model_dump(mode="json")
+        request_payload.update(
+            {
+                "assetId": "asset_123",
+                "sourceClipIds": ["c2"],
+                "editIntent": self._structured_edit_intent(),
+                "idempotencyKey": "idem-edit-contract-001",
+                "userPrompt": "Defense stops only, make it hype.",
+            }
+        )
+
+        response = client.post("/v1/edit-jobs", json=request_payload)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assetId"], "asset_123")
+        self.assertEqual(payload["sourceObjectKey"], "uploads/test/source.mp4")
+        self.assertEqual(payload["sourceClipIds"], ["c2"])
+        self.assertEqual(payload["candidateClipCount"], 2)
+        self.assertEqual([clip["id"] for clip in payload["candidateClips"]], ["c1", "c2"])
+        self.assertEqual(payload["clipCount"], 1)
+        self.assertEqual(payload["editIntent"]["schemaVersion"], "edit-intent-v1")
+        self.assertEqual(payload["editIntent"]["style"], "defense_focus")
+
+        plan_response = client.get(
+            f"/v1/edit-jobs/{payload['editJobId']}/plan",
+            params={"installId": request_payload["installId"]},
+        )
+        self.assertEqual(plan_response.status_code, 200)
+        plan_payload = plan_response.json()
+        self.assertEqual(plan_payload["assetId"], "asset_123")
+        self.assertEqual(plan_payload["sourceClipIds"], ["c2"])
+        self.assertEqual([clip["clipId"] for clip in plan_payload["plan"]["clips"]], ["c2"])
+        self.assertEqual(plan_payload["editIntent"]["style"], "defense_focus")
+
+    def test_create_edit_job_idempotency_replays_after_app_reload(self) -> None:
+        settings = self._settings()
+        request_payload = self._edit_request(source_key="uploads/test/source.mp4").model_dump(mode="json")
+        request_payload.update(
+            {
+                "assetId": "asset_replay_123",
+                "sourceClipIds": ["c1"],
+                "editIntent": self._structured_edit_intent(style="personal_highlight"),
+                "idempotencyKey": "idem-edit-reload-001",
+            }
+        )
+
+        first_client = TestClient(create_app(settings))
+        first_response = first_client.post("/v1/edit-jobs", json=request_payload)
+        self.assertEqual(first_response.status_code, 200)
+        first_payload = first_response.json()
+
+        reloaded_client = TestClient(create_app(settings))
+        replay_response = reloaded_client.post("/v1/edit-jobs", json=request_payload)
+        self.assertEqual(replay_response.status_code, 200)
+        replay_payload = replay_response.json()
+        self.assertEqual(replay_payload["editJobId"], first_payload["editJobId"])
+        self.assertEqual(replay_payload["assetId"], "asset_replay_123")
+        self.assertEqual(replay_payload["sourceClipIds"], ["c1"])
+        self.assertEqual(replay_payload["candidateClipCount"], 2)
+        self.assertEqual([clip["id"] for clip in replay_payload["candidateClips"]], ["c1", "c2"])
+
+        plan_response = reloaded_client.get(
+            f"/v1/edit-jobs/{replay_payload['editJobId']}/plan",
+            params={"installId": request_payload["installId"]},
+        )
+        self.assertEqual(plan_response.status_code, 200)
+        self.assertEqual(plan_response.json()["sourceClipIds"], ["c1"])
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_create_edit_job_expands_thin_shot_context_even_when_gpt_disabled(self) -> None:

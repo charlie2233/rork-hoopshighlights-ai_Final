@@ -61,10 +61,10 @@ from app.editing import (  # noqa: E402
     build_revision_response,
     default_ai_edit_feature_flags,
     estimate_render_cost,
-    filter_clips_for_team_selection,
     get_plan_tier_policy,
     get_template_pack,
     policy_summary_for_client,
+    source_clips_for_edit_request,
     validate_edit_plan,
 )
 from app.config import get_settings as get_analysis_settings  # noqa: E402
@@ -509,6 +509,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         return job
 
     def persist_edit_job(job: StoredEditJob, plan_id: Optional[str] = None) -> None:
+        if job.request.idempotencyKey and not render_state_store.reserve_edit_job_idempotency_key(
+            job.edit_job_id,
+            job.install_id,
+            job.request.idempotencyKey,
+            job.updated_at,
+        ):
+            raise EditingServiceError(409, "edit_job_idempotency_conflict", "Edit job idempotency key already belongs to another edit job.")
         cache_edit_job(job)
         render_state_store.save_edit_job_payload(job.edit_job_id, edit_job_to_durable_payload(job))
         if plan_id:
@@ -525,6 +532,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             return cache_edit_job(edit_job_from_durable_payload(payload))
         except Exception:
             return None
+
+    def load_idempotent_edit_job(idempotency_key: str) -> Optional[StoredEditJob]:
+        edit_job_id = render_state_store.load_edit_job_id_by_idempotency_key(idempotency_key)
+        if not edit_job_id:
+            return None
+        return load_edit_job(edit_job_id)
 
     def require_edit_job(edit_job_id: str) -> StoredEditJob:
         job = load_edit_job(edit_job_id)
@@ -670,11 +683,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=job.plan_tier,
             revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
-            sourceClips=filter_clips_for_team_selection(
-                edit_job.request.clips,
-                edit_job.request.teamSelection,
-                include_review_only_uncertain=False,
-            ),
+            sourceClips=source_clips_for_edit_request(edit_job.request),
             gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
@@ -801,11 +810,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=stored_edit_job.request.planTier,
             revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
             editPlan=edit_plan,
-            sourceClips=filter_clips_for_team_selection(
-                stored_edit_job.request.clips,
-                stored_edit_job.request.teamSelection,
-                include_review_only_uncertain=False,
-            ),
+            sourceClips=source_clips_for_edit_request(stored_edit_job.request),
             gptRerankSummary=stored_edit_job.request.gptRerankSummary,
             idempotencyKey=request.idempotencyKey,
         )
@@ -1364,6 +1369,17 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ):
         try:
             require_secret(x_hoops_editing_secret)
+            if request.idempotencyKey:
+                existing_job = load_idempotent_edit_job(request.idempotencyKey)
+                if existing_job is not None:
+                    require_edit_owner(existing_job, request.installId)
+                    emit_event(
+                        "edit_plan.replayed",
+                        editJobId=existing_job.edit_job_id,
+                        templateId=existing_job.plan.templateId,
+                        planTier=existing_job.request.planTier,
+                    )
+                    return existing_job.to_response()
             validate_create_request_policy(request)
             edit_job_id = "edit_" + uuid4().hex
             effective_request = maybe_apply_gpt_highlight_rerank(request)
@@ -1509,11 +1525,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     planTier=stored_edit_job.request.planTier,
                     revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
-                    sourceClips=filter_clips_for_team_selection(
-                        stored_edit_job.request.clips,
-                        stored_edit_job.request.teamSelection,
-                        include_review_only_uncertain=False,
-                    ),
+                    sourceClips=source_clips_for_edit_request(stored_edit_job.request),
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary,
                     revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
@@ -1556,11 +1568,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
             if stored_edit_job is not None:
                 edit_plan = stored_edit_job.plan
-                source_clips = filter_clips_for_team_selection(
-                    stored_edit_job.request.clips,
-                    stored_edit_job.request.teamSelection,
-                    include_review_only_uncertain=False,
-                )
+                source_clips = source_clips_for_edit_request(stored_edit_job.request)
                 source_object_key = stored_edit_job.request.sourceObjectKey
                 plan_tier = stored_edit_job.request.planTier
                 revenuecat_app_user_id = stored_edit_job.request.revenueCatAppUserID

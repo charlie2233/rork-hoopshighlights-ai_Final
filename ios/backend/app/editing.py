@@ -84,6 +84,21 @@ UserPromptTone = Literal["hype", "broadcast_clean", "coach_clean", "cinematic", 
 UserPromptPacing = Literal["fast", "balanced", "cinematic", "chronological", "coach_review"]
 UserPromptEffectIntensity = Literal["low", "medium", "high"]
 UserPromptAudioPreference = Literal["music_forward", "game_audio", "balanced"]
+EditIntentStyle = Literal[
+    "personal_highlight",
+    "full_game_highlight",
+    "coach_review",
+    "recruiting_reel",
+    "cinematic_mixtape",
+    "nba_recap",
+    "team_highlight",
+    "defense_focus",
+    "custom",
+]
+EditIntentPace = Literal["fast", "balanced", "cinematic", "coach_review", "deliberate"]
+EditIntentAudioPreference = Literal["music_forward", "game_audio", "balanced", "muted"]
+EditIntentChronology = Literal["best_first", "chronological", "story_arc", "coach_review"]
+EditIntentCaptionDensity = Literal["minimal", "clean", "medium", "high"]
 RevisionCommand = Literal[
     "make_shorter",
     "make_longer",
@@ -1043,11 +1058,41 @@ THEME_REGISTRY: Dict[str, EditTheme] = {
 }
 
 
+class EditIntentHardConstraints(APIModel):
+    requireVisibleOutcome: bool = True
+    requireFullPlayContext: bool = True
+    rejectDuplicates: bool = True
+    rejectDeadBall: bool = True
+    defenseOnly: bool = False
+    selectedTeamOnly: bool = False
+    maxCaptionCharacters: int = Field(default=MAX_CAPTION_LENGTH, gt=0, le=MAX_CAPTION_LENGTH)
+
+
+class StructuredEditIntent(APIModel):
+    schemaVersion: Literal["edit-intent-v1"] = "edit-intent-v1"
+    source: Literal["client", "server_derived", "legacy_prompt"] = "client"
+    style: EditIntentStyle
+    pace: EditIntentPace
+    audioPreference: EditIntentAudioPreference
+    chronology: EditIntentChronology
+    captionDensity: EditIntentCaptionDensity
+    hardConstraints: EditIntentHardConstraints
+    promptSummary: Optional[str] = Field(default=None, max_length=240)
+
+    @field_validator("promptSummary")
+    @classmethod
+    def sanitize_prompt_summary(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = " ".join(value.strip().split())
+        return trimmed or None
+
+
 class CreateEditJobRequest(APIModel):
     videoId: str = Field(min_length=1, max_length=120)
     analysisJobId: str = Field(min_length=1, max_length=120)
     installId: str = Field(min_length=8, max_length=128)
-    assetId: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    assetId: Optional[str] = Field(default=None, min_length=1, max_length=160)
     sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
     sourceClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     preset: PresetId = "personal_highlight"
@@ -1058,6 +1103,8 @@ class CreateEditJobRequest(APIModel):
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     userPrompt: Optional[str] = Field(default=None, max_length=320)
+    editIntent: Optional["StructuredEditIntent"] = None
+    idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
     teamSelection: Optional[TeamSelection] = None
     clips: List[EditCandidateClip] = Field(min_length=1, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None
@@ -1095,6 +1142,32 @@ class CreateEditJobRequest(APIModel):
         if any(marker in lowered for marker in forbidden_markers):
             raise ValueError("userPrompt must not contain render commands, URLs, presigned URL markers, or storage keys.")
         return trimmed
+
+    @field_validator("sourceClipIds")
+    @classmethod
+    def normalize_source_clip_ids(cls, value: List[str]) -> List[str]:
+        normalized: List[str] = []
+        seen = set()
+        for raw_id in value:
+            clip_id = raw_id.strip()
+            if not clip_id:
+                raise ValueError("sourceClipIds must not contain blank IDs")
+            if len(clip_id) > 80:
+                raise ValueError("sourceClipIds entries must be 80 characters or fewer")
+            if clip_id not in seen:
+                normalized.append(clip_id)
+                seen.add(clip_id)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_source_clip_ids(self) -> "CreateEditJobRequest":
+        if not self.sourceClipIds:
+            return self
+        candidate_ids = {clip.id for clip in self.clips}
+        missing = [clip_id for clip_id in self.sourceClipIds if clip_id not in candidate_ids]
+        if missing:
+            raise ValueError("sourceClipIds must reference clips present in the compatibility clips payload")
+        return self
 
 
 class GPTHighlightSuggestedEdit(APIModel):
@@ -1437,12 +1510,134 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
     )
 
 
+def structured_edit_intent_for_request(request: CreateEditJobRequest) -> StructuredEditIntent:
+    if request.editIntent is not None:
+        return request.editIntent
+
+    prompt_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
+    template = get_template_pack_for_plan(request.preset, request.templateId)
+    defense_only = bool(prompt_intent and "defense_only" in prompt_intent.styleIntents)
+    selected_team_only = bool(
+        request.teamSelection is not None
+        and request.teamSelection.mode == "team"
+        and not request.teamSelection.includeUncertain
+    )
+    return StructuredEditIntent(
+        source="legacy_prompt" if request.userPrompt else "server_derived",
+        style=_structured_style_for_request(request, prompt_intent, template),
+        pace=_structured_pace_for_request(request, prompt_intent, template),
+        audioPreference=_structured_audio_preference_for_request(prompt_intent, template),
+        chronology=_structured_chronology_for_request(request, prompt_intent, template),
+        captionDensity=_structured_caption_density_for_request(prompt_intent, template),
+        hardConstraints=EditIntentHardConstraints(
+            requireVisibleOutcome=True,
+            requireFullPlayContext=True,
+            rejectDuplicates=True,
+            rejectDeadBall=True,
+            defenseOnly=defense_only,
+            selectedTeamOnly=selected_team_only,
+            maxCaptionCharacters=MAX_CAPTION_LENGTH,
+        ),
+        promptSummary="; ".join(prompt_intent.structuredSummary[:8]) if prompt_intent else None,
+    )
+
+
+def _structured_style_for_request(
+    request: CreateEditJobRequest,
+    prompt_intent: Optional[EditUserPromptIntent],
+    template: TemplatePack,
+) -> EditIntentStyle:
+    if prompt_intent and any(intent in prompt_intent.styleIntents for intent in ("defense_only", "defense_focus")):
+        return "defense_focus"
+    template_styles: Dict[str, EditIntentStyle] = {
+        "personal_highlight_v1": "personal_highlight",
+        "full_game_highlight_v1": "full_game_highlight",
+        "coach_review_v1": "coach_review",
+        "recruiting_reel_pro_v1": "recruiting_reel",
+        "cinematic_mixtape_pro_v1": "cinematic_mixtape",
+        "nba_recap_pro_v1": "nba_recap",
+        "team_highlight_pro_v1": "team_highlight",
+    }
+    if template.templateId in template_styles:
+        return template_styles[template.templateId]
+    preset_styles: Dict[str, EditIntentStyle] = {
+        "personal_highlight": "personal_highlight",
+        "full_game_highlight": "full_game_highlight",
+        "coach_review": "coach_review",
+    }
+    return preset_styles.get(request.preset, "custom")
+
+
+def _structured_pace_for_request(
+    request: CreateEditJobRequest,
+    prompt_intent: Optional[EditUserPromptIntent],
+    template: TemplatePack,
+) -> EditIntentPace:
+    if prompt_intent and prompt_intent.pacing in {"fast", "cinematic", "coach_review"}:
+        return prompt_intent.pacing
+    if request.preset == "coach_review" or template.pacing == "slow":
+        return "coach_review"
+    if template.pacing in {"fast", "medium_fast"}:
+        return "fast"
+    if template.pacing in {"cinematic"}:
+        return "cinematic"
+    if prompt_intent and prompt_intent.pacing == "chronological":
+        return "deliberate"
+    return "balanced"
+
+
+def _structured_audio_preference_for_request(
+    prompt_intent: Optional[EditUserPromptIntent],
+    template: TemplatePack,
+) -> EditIntentAudioPreference:
+    if prompt_intent and prompt_intent.audioPreference:
+        return prompt_intent.audioPreference
+    if template.audioProfile.musicTrackId == "none" or template.audioProfile.gameAudioVolume >= 0.85:
+        return "game_audio"
+    if template.audioProfile.musicVolume >= 0.65:
+        return "music_forward"
+    return "balanced"
+
+
+def _structured_chronology_for_request(
+    request: CreateEditJobRequest,
+    prompt_intent: Optional[EditUserPromptIntent],
+    template: TemplatePack,
+) -> EditIntentChronology:
+    if request.preset == "coach_review" or (prompt_intent and prompt_intent.pacing == "coach_review"):
+        return "coach_review"
+    if prompt_intent and prompt_intent.pacing == "chronological":
+        return "chronological"
+    if "chronological" in template.ordering:
+        return "chronological"
+    if template.templateId in {"recruiting_reel_pro_v1", "team_highlight_pro_v1", "nba_recap_pro_v1"}:
+        return "story_arc"
+    return "best_first"
+
+
+def _structured_caption_density_for_request(
+    prompt_intent: Optional[EditUserPromptIntent],
+    template: TemplatePack,
+) -> EditIntentCaptionDensity:
+    if prompt_intent and "coach_review" in prompt_intent.styleIntents:
+        return "minimal"
+    density = template.captionStyle.density
+    if density == "minimal":
+        return "minimal"
+    if density == "clean":
+        return "clean"
+    if density == "hype":
+        return "high"
+    return "medium"
+
+
 class EditUserIntent(APIModel):
     preset: PresetId
     templateId: Optional[TemplateId] = None
     targetDurationSeconds: int
     aspectRatio: Optional[AspectRatio]
     planTier: PlanTier
+    editIntent: StructuredEditIntent
     userPromptIntent: Optional[EditUserPromptIntent] = None
 
 
@@ -1464,6 +1659,26 @@ class EditContext(APIModel):
     availableTemplates: List[str]
     availableThemes: List[str]
     availableMusicTracks: List[str]
+
+
+def source_clips_for_edit_request(
+    request: CreateEditJobRequest,
+    *,
+    include_review_only_uncertain: bool = False,
+) -> List[EditCandidateClip]:
+    candidates = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=include_review_only_uncertain,
+    )
+    if not request.sourceClipIds:
+        return candidates
+    candidate_by_id = {clip.id: clip for clip in candidates}
+    return [
+        candidate_by_id[clip_id]
+        for clip_id in request.sourceClipIds
+        if clip_id in candidate_by_id
+    ]
 
 
 class ReviseEditJobRequest(APIModel):
@@ -1762,14 +1977,20 @@ class EditJobResponse(APIModel):
     editJobId: str
     videoId: str
     analysisJobId: str
+    assetId: Optional[str] = None
+    sourceObjectKey: Optional[str] = None
+    sourceClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     status: str
     preset: PresetId
     templateId: Optional[TemplateId] = None
+    editIntent: StructuredEditIntent
     planTier: PlanTier
     policy: Dict[str, object]
     targetDurationSeconds: int
     aspectRatio: AspectRatio
     clipCount: int
+    candidateClipCount: int
+    candidateClips: List[EditCandidateClip] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     validationErrors: List[EditPlanValidationIssue]
     gptUncertainReviewClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptUncertainReviewClipCount: int = 0
@@ -1777,8 +1998,12 @@ class EditJobResponse(APIModel):
 
 class EditPlanResponse(APIModel):
     editJobId: str
+    assetId: Optional[str] = None
+    sourceObjectKey: Optional[str] = None
+    sourceClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     status: str
     plan: EditPlan
+    editIntent: StructuredEditIntent
     planTier: PlanTier
     policy: Dict[str, object]
     validationErrors: List[EditPlanValidationIssue]
@@ -1818,18 +2043,27 @@ class StoredEditJob:
     validation_errors: List[EditPlanValidationIssue]
 
     def to_response(self) -> EditJobResponse:
+        resolved_source_clip_ids = self.request.sourceClipIds or [
+            clip.id for clip in source_clips_for_edit_request(self.request)
+        ]
         return EditJobResponse(
             editJobId=self.edit_job_id,
             videoId=self.request.videoId,
             analysisJobId=self.request.analysisJobId,
+            assetId=self.request.assetId,
+            sourceObjectKey=self.request.sourceObjectKey,
+            sourceClipIds=resolved_source_clip_ids,
             status=self.status,
             preset=self.plan.preset,
             templateId=self.plan.templateId,
+            editIntent=structured_edit_intent_for_request(self.request),
             planTier=self.request.planTier,
             policy=policy_summary_for_client(self.request.planTier),
             targetDurationSeconds=self.plan.targetDurationSeconds,
             aspectRatio=self.plan.aspectRatio,
             clipCount=len(self.plan.clips),
+            candidateClipCount=len(self.request.clips),
+            candidateClips=self.request.clips,
             validationErrors=self.validation_errors,
             gptUncertainReviewClipIds=(
                 self.request.gptRerankSummary.uncertainReviewClipIds
@@ -1844,10 +2078,17 @@ class StoredEditJob:
         )
 
     def to_plan_response(self) -> EditPlanResponse:
+        resolved_source_clip_ids = self.request.sourceClipIds or [
+            clip.id for clip in source_clips_for_edit_request(self.request)
+        ]
         return EditPlanResponse(
             editJobId=self.edit_job_id,
+            assetId=self.request.assetId,
+            sourceObjectKey=self.request.sourceObjectKey,
+            sourceClipIds=resolved_source_clip_ids,
             status=self.status,
             plan=self.plan,
+            editIntent=structured_edit_intent_for_request(self.request),
             planTier=self.request.planTier,
             policy=policy_summary_for_client(self.request.planTier),
             validationErrors=self.validation_errors,
@@ -2221,11 +2462,7 @@ def build_agent_editing_context(
 
 
 def build_edit_context(request: CreateEditJobRequest) -> EditContext:
-    team_filtered_clips = filter_clips_for_team_selection(
-        request.clips,
-        request.teamSelection,
-        include_review_only_uncertain=False,
-    )
+    team_filtered_clips = source_clips_for_edit_request(request)
     return EditContext(
         videoId=request.videoId,
         analysisJobId=request.analysisJobId,
@@ -2235,6 +2472,7 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
             targetDurationSeconds=request.targetDurationSeconds,
             aspectRatio=request.aspectRatio,
             planTier=request.planTier,
+            editIntent=structured_edit_intent_for_request(request),
             userPromptIntent=derive_user_prompt_intent(request.userPrompt, request.planTier),
         ),
         clipPoolSummary=EditClipPoolSummary(**summarize_clip_pool(team_filtered_clips)),
@@ -4522,11 +4760,7 @@ def build_revision_response(
 def build_edit_job(request: CreateEditJobRequest, edit_job_id: str) -> StoredEditJob:
     plan = build_edit_plan(request, edit_job_id)
     plan = repair_edit_plan(plan, request.planTier)
-    source_clips = filter_clips_for_team_selection(
-        request.clips,
-        request.teamSelection,
-        include_review_only_uncertain=False,
-    )
+    source_clips = source_clips_for_edit_request(request)
     errors = validate_edit_plan(plan, source_clips, request.planTier)
     return StoredEditJob(
         edit_job_id=edit_job_id,

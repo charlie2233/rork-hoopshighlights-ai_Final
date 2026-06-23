@@ -1,6 +1,6 @@
 # HoopClips Workflow And Upload Contract
 
-This integration branch combines the asset-first upload pipeline, Agent A's accuracy foundations, and the workflow-first iOS shell. It keeps the backend/client contracts canonical and treats new UI state as projections over those contracts, not as forked payloads.
+This integration branch combines the asset-first upload pipeline, Agent A's accuracy foundations, Agent B's AI Edit engine contracts, and the workflow-first iOS shell. It keeps the backend/client contracts canonical and treats new UI state as projections over those contracts, not as forked payloads.
 
 ## Primary Workflow Sections
 
@@ -217,6 +217,29 @@ Benchmark metrics use stable camel-case names:
 AI Edit is a primary workflow section, but cloud ownership is unchanged. `CreateCloudEditJobRequest` sends additive `assetId` and `sourceClipIds` fields when available while preserving the backend-compatible `sourceObjectKey` plus full `clips` payload. `CreateCloudEditJobRequest.assetJobContract(assetId:)` exposes that asset-first shape for integration checks.
 
 Review boundary nudges and feedback tags only mutate clip metadata that is already sent through existing clip/review payloads. They do not create local edit plans, local renders, or a new backend payload family.
+
+`CreateCloudEditJobRequest` also sends additive `editIntent` and `idempotencyKey` fields. `sourceClipIds`, when present, must reference IDs included in the full `clips` compatibility payload.
+
+## Structured Edit Intent
+
+`editIntent.schemaVersion` is `edit-intent-v1`.
+
+Required intent fields:
+
+- `style`: `personal_highlight`, `full_game_highlight`, `coach_review`, `recruiting_reel`, `cinematic_mixtape`, `nba_recap`, `team_highlight`, `defense_focus`, or `custom`
+- `pace`: `fast`, `balanced`, `cinematic`, `coach_review`, or `deliberate`
+- `audioPreference`: `music_forward`, `game_audio`, `balanced`, or `muted`
+- `chronology`: `best_first`, `chronological`, `story_arc`, or `coach_review`
+- `captionDensity`: `minimal`, `clean`, `medium`, or `high`
+- `hardConstraints`: `requireVisibleOutcome`, `requireFullPlayContext`, `rejectDuplicates`, `rejectDeadBall`, `defenseOnly`, `selectedTeamOnly`, and `maxCaptionCharacters`
+
+Existing prompt UI maps into this schema on iOS. Backend clients that omit `editIntent` still get a server-derived schema from legacy prompt/template defaults, preserving the validated `EditPlan` flow.
+
+## Edit Job Durability
+
+Edit job payloads and plans persist to render storage under the existing durable editing namespace. Edit creation idempotency keys are indexed in the durable store, so retrying a create request after service reload returns the original edit job when the install owner matches.
+
+Render jobs continue to use the existing durable render state store, leases, indexes, and render idempotency flow.
 
 ## Worker Compatibility
 
