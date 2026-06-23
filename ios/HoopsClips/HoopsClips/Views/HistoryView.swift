@@ -549,9 +549,9 @@ struct HistoryView: View {
             return "\(project.displayTitle) is already open"
         }
         if !viewModel.canOpenProject(project) {
-            return "\(project.displayTitle) cannot be resumed because its source video is missing"
+            return "\(project.displayTitle) is saved, but its source video is missing"
         }
-        return "Resume \(project.displayTitle)"
+        return "Open \(project.displayTitle)"
     }
 
     private func historyStatusLine(for project: PersistedProjectRecord) -> String {
@@ -587,24 +587,15 @@ struct HistoryView: View {
             return "Current"
         }
         if !viewModel.canOpenProject(project) {
-            return "Missing source"
+            return "Saved - source missing"
         }
-        return "Resume"
+        return "Open"
     }
 
     private func historyProjectStateLabel(for project: PersistedProjectRecord) -> String {
         let summary = project.analysisStatusSummary?.lowercased() ?? ""
         if !viewModel.canOpenProject(project) {
-            return "Source missing"
-        }
-        if summary.contains("cancel") || summary.contains("paused") {
-            return "Upload paused"
-        }
-        if summary.contains("upload") {
-            return "Upload saved"
-        }
-        if summary.contains("analy") || summary.contains("preparing") || summary.contains("team scan") {
-            return "Analysis saved"
+            return "Saved project"
         }
         if project.hasLatestExport {
             return "Reel saved"
@@ -615,10 +606,16 @@ struct HistoryView: View {
         if project.totalClipCount > 0 {
             return "Clips found"
         }
+        if summary.contains("cancel") || summary.contains("paused") || summary.contains("upload") {
+            return "Saved progress"
+        }
+        if summary.contains("analy") || summary.contains("preparing") || summary.contains("team scan") {
+            return "Saved progress"
+        }
         if project.lastAnalyzedAt != nil {
             return "Analyzed"
         }
-        return "Imported"
+        return "Imported video"
     }
 
     private var historyActionGridColumns: [GridItem] {
