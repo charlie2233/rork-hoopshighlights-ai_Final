@@ -1355,6 +1355,13 @@ function clamp01(value: number): number {
 }
 
 function normalizePublicPath(pathname: string): string {
+  if (pathname === "/api/ai/analyze") {
+    return "/uploads/presign";
+  }
+  const legacyResultMatch = pathname.match(/^\/api\/ai\/result\/([^/]+)$/);
+  if (legacyResultMatch) {
+    return `/jobs/${legacyResultMatch[1]}`;
+  }
   if (pathname.startsWith("/v1/analysis/")) {
     return pathname.replace(/^\/v1\/analysis/, "");
   }
