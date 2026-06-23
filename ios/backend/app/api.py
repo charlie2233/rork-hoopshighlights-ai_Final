@@ -287,6 +287,24 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason="post_upload_processing_failed")
             raise APIError(500, "post_upload_processing_failed", "Post-upload processing failed.") from error
 
+    async def _enqueue_post_upload_processing(asset_id: str) -> StoredAsset:
+        assert runtime is not None
+        asset = await _require_asset(asset_id)
+        if asset.status.can_start_analysis or asset.status == AssetStatus.PROCESSING:
+            return asset
+        if asset.status != AssetStatus.UPLOADED:
+            raise APIError(400, "upload_not_complete", "Complete the signed upload before processing.")
+
+        asset = await runtime.asset_store.update_asset(asset_id, status=AssetStatus.PROCESSING, failure_reason=None)
+        try:
+            await runtime.dispatcher.enqueue_post_upload(asset)
+        except APIError:
+            raise
+        except Exception as error:
+            await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason="post_upload_queue_failed")
+            raise APIError(500, "post_upload_queue_failed", "Post-upload processing could not be queued.") from error
+        return await _require_asset(asset_id)
+
     async def _materialize_asset_or_remote_source(
         *,
         asset_id: Optional[str],
@@ -611,7 +629,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             job_store = InMemoryJobStore(resolved_settings)
             storage = LocalStorageProvider(resolved_settings)
             asset_store = InMemoryAssetStore()
-            dispatcher = InlineTaskDispatcher(_process_job)
+            dispatcher = InlineTaskDispatcher(_process_job, _process_uploaded_asset)
         else:
             job_store = FirestoreJobStore(resolved_settings)
             storage = GCSStorageProvider(resolved_settings)
@@ -731,6 +749,14 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                     artifacts=asset.artifacts_response(),
                     pollAfterSeconds=resolved_settings.default_poll_after_seconds,
                 )
+            if asset.status == AssetStatus.PROCESSING:
+                return UploadCompleteResponse(
+                    assetId=asset.asset_id,
+                    storageKey=asset.storage_key,
+                    status=asset.status.value,
+                    artifacts=asset.artifacts_response(),
+                    pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+                )
             if asset.upload_mode == UploadMode.MULTIPART:
                 if request.uploadId and request.uploadId != asset.upload_id:
                     raise APIError(400, "upload_id_mismatch", "Multipart upload ID does not match this asset.")
@@ -756,7 +782,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                     uploaded_bytes=asset.file_size_bytes,
                 )
 
-            asset = await _process_uploaded_asset(asset.asset_id)
+            asset = await _enqueue_post_upload_processing(asset.asset_id)
             return UploadCompleteResponse(
                 assetId=asset.asset_id,
                 storageKey=asset.storage_key,
@@ -904,6 +930,22 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 return Response(status_code=204, headers={"ETag": etag})
             except APIError as error:
                 return _error_response(error)
+
+    @router.post(
+        "/v1/internal/assets/{asset_id}/process",
+        response_model=AssetResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def process_uploaded_asset(
+        asset_id: str,
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            _require_internal_process_secret(x_hoops_internal_secret)
+            asset = await _process_uploaded_asset(asset_id)
+            return _asset_response(asset)
+        except APIError as error:
+            return _error_response(error)
 
     @router.post(
         "/v1/analysis/jobs",

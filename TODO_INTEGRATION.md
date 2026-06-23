@@ -10,8 +10,8 @@
 - [x] Add asset-based team scan gate for detected-team preselection.
 - [x] Keep legacy manual URL fallback for internal inference.
 - [x] Add canonical `AssetRecord`/asset DTO compatibility names across backend, iOS, and Worker surfaces.
-- [ ] Replace inline local post-upload processing with the durable managed queue.
-- [ ] Add durable post-upload queue for managed mode instead of inline local processing.
+- [x] Replace inline local post-upload processing with the durable managed queue.
+- [x] Add durable post-upload queue for managed mode instead of inline local processing.
 
 ## UI Agent
 
@@ -26,14 +26,14 @@
 - [x] Keep Review shortcut routing: `K` keep, `D` discard, `N` Nah compatibility, `1`-`5` feedback tags, `[`/`]` boundary nudges.
 - [x] Persist the five canonical review feedback tags: `duplicate`, `wrong_team`, `bad_window`, `wrong_label`, `low_quality`.
 - [x] Keep Exports focused on rendered/downloaded MP4 states and read latest status from `HighlightsViewModel.latestCloudEditRenderStatus`.
-- [ ] Keep the existing manual URL input behind compatibility/debug UI only.
+- [x] Keep the existing manual URL input behind compatibility/debug UI only.
 
 ## Detection/Edit Agents
 
-- [ ] Prefer `assetId` and `storageKey` in inference/team-scan/edit request payloads.
-- [ ] Treat `sourceUrl` as legacy fallback only.
-- [ ] Consume `proxyStorageKey` for first-preview/edit planning when available.
-- [ ] Do not start expensive analysis/edit planning before `proxy_ready`.
+- [x] Prefer `assetId` and `storageKey` in inference/team-scan/edit request payloads.
+- [x] Treat `sourceUrl` as legacy fallback only.
+- [x] Consume `proxyStorageKey` for first-preview/edit planning when available.
+- [x] Do not start expensive analysis/edit planning before `proxy_ready`.
 - [x] Confirm AI Edit tab still calls cloud edit plan and render endpoints through `CloudEditService`; `assetId` and `sourceClipIds` are additive live fields and `sourceObjectKey` plus full `clips` remain the compatibility route.
 - [x] Send structured `editIntent` with style, pace, audio preference, chronology, caption density, and hard constraints.
 - [x] Send an edit-job `idempotencyKey` and preserve replay-safe edit creation in backend/service storage.

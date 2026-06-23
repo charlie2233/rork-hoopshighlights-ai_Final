@@ -149,6 +149,19 @@ class UploadPipelineTests(unittest.TestCase):
         self.assertEqual(complete_response.status_code, 200)
         self.assertEqual(complete_response.json()["status"], "proxy_ready")
 
+    def test_internal_post_upload_process_marks_uploaded_asset_proxy_ready(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
+        init_response = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8))
+        asset = init_response.json()
+        self.assertEqual(client.put(asset["uploadUrl"], content=b"video-bytes").status_code, 204)
+
+        process_response = client.post(f"/v1/internal/assets/{asset['assetId']}/process")
+
+        self.assertEqual(process_response.status_code, 200)
+        processed = process_response.json()
+        self.assertEqual(processed["status"], "proxy_ready")
+        self.assertTrue(processed["artifacts"]["proxyStorageKey"].endswith("/proxy/proxy.mp4"))
+
     def test_asset_analysis_job_waits_for_proxy_ready(self) -> None:
         client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
         init_response = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8))

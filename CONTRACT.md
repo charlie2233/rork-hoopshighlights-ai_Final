@@ -128,15 +128,17 @@ Response:
 {
   "assetId": "asset_...",
   "storageKey": "assets/asset_.../source/game.mp4",
-  "status": "proxy_ready",
+  "status": "processing",
   "artifacts": {
-    "proxyStorageKey": "assets/asset_.../proxy/proxy.mp4",
-    "thumbnailStorageKeys": ["assets/asset_.../thumbnails/preview_0001.jpg"],
-    "waveformStorageKey": "assets/asset_.../metadata/waveform.json"
+    "proxyStorageKey": null,
+    "thumbnailStorageKeys": [],
+    "waveformStorageKey": null
   },
   "pollAfterSeconds": 1
 }
 ```
+
+Managed runtimes enqueue post-upload proxy/thumbnail/waveform generation through Cloud Tasks at `POST /v1/internal/assets/{assetId}/process`, so `/complete` can return `processing` while the client polls `GET /v1/assets/{assetId}`. Local runtimes use the same dispatcher interface with an inline emulator, so local tests may still observe `proxy_ready` directly from `/complete`.
 
 ## Asset Poll
 
@@ -174,6 +176,12 @@ Request:
 ```
 
 If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response includes `jobId`, `assetId`, proxy `storageKey`, `status`, `pollAfterSeconds`, quota fields, and `analysisMode`.
+
+## Provider Dispatch Inputs
+
+Inference, team-scan, and edit-planning payloads prefer `assetId` plus `storageKey`/`sourceObjectKey` when available. `sourceUrl` remains accepted only as a migration fallback and signed-read compatibility path for providers that do not yet share object storage credentials. The local backend and editing service materialize object keys first, then fall back to signed URLs.
+
+For asset uploads, `storageKey` should be the proxy key after post-upload processing when `artifacts.proxyStorageKey` is available. The iOS client maps this as `analysisStorageKey` and does not start team scan, analysis, or edit handoff before the asset reports `proxy_ready` or `ready`.
 
 ## Upload Queue Projection
 

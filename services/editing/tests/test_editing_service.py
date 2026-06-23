@@ -315,6 +315,52 @@ class EditingServiceTests(unittest.TestCase):
         self.assertIs(apply_scan.call_args.args[3], prescan_settings)
         self.assertEqual(cleanup_calls, [True])
 
+    def test_team_scan_endpoint_prefers_source_object_key_without_signed_url(self) -> None:
+        settings = self._settings(shared_secret="editing-secret")
+        source_key = "uploads/install/object-key-video.mp4"
+        source_path = self._temp_dir / source_key
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b"fake object video bytes")
+        client = TestClient(create_app(settings))
+
+        team = TeamOption(
+            teamId="team_dark",
+            label="Dark jerseys",
+            colorLabel="black",
+            primaryColorHex="#111111",
+            confidence=0.9,
+            source="quick_scan",
+        )
+
+        with (
+            patch.object(editing_main, "materialize_team_scan_source", create=True) as materialize_url,
+            patch.object(editing_main, "apply_team_quick_scan", return_value=([], [team], True), create=True) as apply_scan,
+        ):
+            response = client.post(
+                "/v1/team-scan",
+                headers={"x-hoops-inference-secret": "editing-secret"},
+                json={
+                    "jobId": "job_team_scan_object",
+                    "requestId": "request-team-scan-object",
+                    "uploadTraceId": "upload-trace-team-scan-object",
+                    "traceId": "trace-team-scan-object",
+                    "installId": "install-team-scan-object",
+                    "sourceObjectKey": source_key,
+                    "filename": "video.mp4",
+                    "contentType": "video/mp4",
+                    "durationSeconds": 24,
+                    "appVersion": "1.0.0",
+                    "analysisVersion": "phase-team",
+                    "schemaVersion": "2026-05-30",
+                    "modelVersion": "worker-model-v1",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "scanned")
+        materialize_url.assert_not_called()
+        self.assertEqual(apply_scan.call_args.args[0], source_path)
+
     def test_analyze_endpoint_accepts_worker_dispatch_and_posts_callback(self) -> None:
         client = TestClient(create_app(self._settings(shared_secret="editing-secret")))
         local_source = self._temp_dir / "analysis-source.mp4"

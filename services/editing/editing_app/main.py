@@ -239,6 +239,33 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         if expected and value != expected:
             raise EditingServiceError(401, "invalid_editing_secret", "Invalid editing service secret.")
 
+    def materialize_dispatch_source(
+        storage_key: Optional[str],
+        source_url: Optional[str],
+        filename: str,
+        max_file_size_bytes: int,
+    ) -> MaterializedSource:
+        object_error: Optional[EditingServiceError] = None
+        if storage_key:
+            try:
+                return storage.materialize_source(storage_key)
+            except EditingServiceError as error:
+                object_error = error
+                if not source_url:
+                    raise
+
+        if source_url:
+            return materialize_team_scan_source(
+                source_url,
+                filename,
+                max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+
+        if object_error is not None:
+            raise object_error
+        raise EditingServiceError(400, "source_missing", "Source video object or signed URL is required.")
+
     def analysis_result_confidence(result: CloudAnalysisResult) -> float:
         if not result.clips:
             return 0.0
@@ -353,11 +380,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             except ValueError as error:
                 raise EditingServiceError(503, "analysis_unconfigured", "Cloud analysis is not configured.") from error
             source = await run_in_threadpool(
-                materialize_team_scan_source,
+                materialize_dispatch_source,
+                request.storageKey or request.sourceObjectKey,
                 request.sourceUrl,
                 request.filename,
                 analysis_settings.max_file_size_bytes,
-                resolved_settings.upload_root,
             )
             stage_ref["stage"] = "Analyzing in cloud"
             emit_event("analysis.source.materialized", jobId=request.jobId, teamMode=request.teamSelection.mode if request.teamSelection else "all")
@@ -1251,11 +1278,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 raise EditingServiceError(503, "team_scan_unconfigured", "Team scan is not configured.") from error
             prescan_settings = team_quick_prescan_settings(analysis_settings)
             source = await run_in_threadpool(
-                materialize_team_scan_source,
+                materialize_dispatch_source,
+                request.storageKey or request.sourceObjectKey,
                 request.sourceUrl,
                 request.filename,
                 prescan_settings.max_file_size_bytes,
-                resolved_settings.upload_root,
             )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,

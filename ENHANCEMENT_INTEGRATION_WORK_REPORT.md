@@ -22,10 +22,15 @@ This integration branch finishes the report-driven merge pass across the upload/
 - Integrated AI Edit additive fields: `assetId`, `sourceClipIds`, `editIntent`, and `idempotencyKey`.
 - Preserved full candidate `clips` and `sourceObjectKey` compatibility payloads.
 - Integrated durable edit-job idempotency/replay support from the editing service branch.
+- Added managed post-upload Cloud Tasks dispatch for proxy/thumbnail/waveform generation through `/v1/internal/assets/{assetId}/process`; local mode uses the same dispatcher with an inline emulator.
+- Updated editing-service team-scan and analysis materialization to prefer `storageKey`/`sourceObjectKey` before falling back to signed `sourceUrl`.
+- Confirmed iOS consumes `proxyStorageKey` through `analysisStorageKey` and gates team scan/analysis/edit handoff until `proxy_ready` or `ready`.
+- Confirmed no production manual source-URL text input remains; URL overrides are limited to debug/smoke configuration paths.
 
 ## Conflict Fixes
 
 - Removed duplicate Python and TypeScript `assetId`/`storageKey` fields introduced by branch overlap.
+- Removed a remaining duplicated Python asset upload DTO block in `ios/backend/app/models.py`.
 - Reconciled Swift `CloudAnalysisResult` asset fields into one canonical stored shape with compatibility aliases for `assetUploadedBytes` and `assetFileSizeBytes`.
 - Kept the fuller upload-pipeline backend implementation while adding Agent A callback identity fields.
 - Fixed editing-service analysis callback redaction so absent internal source keys are not serialized as `null` placeholders.
@@ -40,6 +45,7 @@ Passed:
 - `npm test`
 - `uv run ... pytest scripts/test_team_highlight_accuracy_eval.py`
 - `PYTHONPATH=ios/backend uv run ... pytest ios/backend/tests/test_asset_upload_foundations.py`
+- `PYTHONPATH=ios/backend uv run ... pytest ios/backend/tests/test_upload_pipeline.py ios/backend/tests/test_task_dispatcher.py`
 - `PYTHONPATH=services/editing uv run ... pytest services/editing/tests/test_editing_service.py`
 - `xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/WorkflowStateTests -quiet`
@@ -55,7 +61,5 @@ Notes:
 
 ## Remaining Launch Gates
 
-- Replace inline local post-upload processing with a durable managed post-upload queue.
-- Keep manual URL input behind compatibility/debug UI only.
-- Finish the provider-side migration so inference/team-scan/edit requests prefer `assetId` and `storageKey`, with `sourceUrl` as legacy fallback.
+- Re-run the full `HoopsClipsTests` suite if the PR requires full-suite Xcode coverage beyond the focused lanes listed above.
 - Add managed object-storage smoke after Worker/provider deployment is available.
