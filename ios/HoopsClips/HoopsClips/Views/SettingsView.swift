@@ -437,14 +437,7 @@ struct SettingsView: View {
             subtitle: languageStore.text(.supportCenterSubtitle),
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
             accent: AppTheme.rimOrange,
-            stats: [
-                SettingsPreviewStat(
-                    icon: "envelope.fill",
-                    value: languageStore.text(.email),
-                    label: languageStore.text(.settingsContactSubtitle),
-                    tint: AppTheme.rimOrange
-                )
-            ]
+            stats: []
         ) {
             supportSettingsPage
         }
@@ -2743,10 +2736,10 @@ struct SettingsView: View {
                         .frame(width: 24)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("App health note")
+                        Text("Something went wrong?")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
-                        Text(stabilitySummary)
+                        Text("HoopClips saved safe details that can help us fix it.")
                             .font(.caption2)
                             .foregroundStyle(AppTheme.subtleText)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 8 : 5)
@@ -2759,7 +2752,7 @@ struct SettingsView: View {
                 Button {
                     prefillStabilityFeedback(stabilitySummary)
                 } label: {
-                    Label("Report app quit", systemImage: "paperplane.fill")
+                    Label("Send details", systemImage: "paperplane.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
