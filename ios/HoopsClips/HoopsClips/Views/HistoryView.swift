@@ -1300,7 +1300,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let exportAvailableSubtitle = ""
     static let exportMissingSubtitle = "No saved reel yet; project is still saved"
     static let shareAvailableSubtitle = ""
-    static let shareMissingMessage = "Make the reel again before sharing."
+    static let shareMissingMessage = "Project saved, but no shareable reel is on this iPhone yet. Make a reel first."
     static let deleteSubtitle = ""
 }
 
