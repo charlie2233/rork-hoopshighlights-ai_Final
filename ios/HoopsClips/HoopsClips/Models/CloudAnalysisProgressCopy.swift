@@ -332,7 +332,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         if combined.contains("retry") || combined.contains("retrying") {
             return CloudAnalysisSlowUploadHelp(
                 title: "Retrying upload",
-                message: "No need to restart yet. HoopClips is retrying saved chunks with fast lanes when available; send proof if it stays stuck.",
+                message: "No need to restart yet. HoopClips is retrying saved chunks with fast lanes when available; send diagnostics if progress does not change for several minutes.",
                 icon: "arrow.clockwise.icloud.fill"
             )
         }
@@ -342,7 +342,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             || combined.contains("source_still_uploading")
             || combined.contains("active_sessions_pending") {
             return CloudAnalysisSlowUploadHelp(
-                title: "Upload is still moving",
+                title: "Upload is still active",
                 message: "Large videos can pause between iOS updates. Keep Wi-Fi on; switch apps if needed and reopen for fresh progress.",
                 icon: "speedometer"
             )

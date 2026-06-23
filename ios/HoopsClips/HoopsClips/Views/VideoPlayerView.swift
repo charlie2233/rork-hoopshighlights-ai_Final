@@ -2739,7 +2739,7 @@ struct VideoPlayerView: View {
     private var backgroundUploadDiagnosticsTray: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Safe to switch apps. Reopen HoopClips for live progress; send proof only if upload feels stuck.")
+                Text("Safe to switch apps. Reopen HoopClips anytime for live progress. If progress stops updating, send diagnostics so we can help.")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
@@ -3220,7 +3220,7 @@ struct VideoPlayerView: View {
         }
 
         if combined.contains("source_still_uploading") || combined.contains("pending") {
-            return "Upload is still running in the background. Send proof so we can confirm the handoff."
+            return "Upload is still running in the background. Send diagnostics if progress does not change so we can help."
         }
         return "Upload recovered after app switch. Send proof so we can confirm resume worked."
     }
