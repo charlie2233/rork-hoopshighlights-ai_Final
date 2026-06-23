@@ -1645,7 +1645,6 @@ private struct ReviewAnalysisWaitingView: View {
                         }
 
                         analysisProgressBar
-                        reviewPipelineGlass
 
                         Text(visibleStatusMessage)
                             .font(.subheadline.weight(.semibold))
@@ -1718,32 +1717,6 @@ private struct ReviewAnalysisWaitingView: View {
             .scaleEffect(y: 2)
             .accessibilityLabel("Analysis progress")
             .accessibilityValue(progressPercentText)
-    }
-
-    private var reviewPipelineGlass: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TinyAnalysisPipelineTracker(currentStage: pipelineStage)
-
-            HStack(spacing: 8) {
-                Label("Upload first", systemImage: "icloud.and.arrow.up.fill")
-                    .foregroundStyle(pipelineStage == .uploading ? AnalysisPipelineStage.uploading.tint : AppTheme.subtleText)
-                Label("Cloud scan", systemImage: "brain.head.profile.fill")
-                    .foregroundStyle(pipelineStage == .analyzing ? AnalysisPipelineStage.analyzing.tint : AppTheme.subtleText)
-                Label("Review opens", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(pipelineStage == .reviewReady ? AnalysisPipelineStage.reviewReady.tint : AppTheme.subtleText)
-            }
-            .font(.caption2.weight(.bold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(12)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(pipelineStage.tint.opacity(0.20), lineWidth: 1)
-        }
-        .accessibilityIdentifier("review.analysisWaiting.pipeline")
     }
 
     private var cancelButton: some View {
