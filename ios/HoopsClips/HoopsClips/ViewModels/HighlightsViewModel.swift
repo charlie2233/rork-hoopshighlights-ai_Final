@@ -1427,18 +1427,41 @@ final class HighlightsViewModel {
             )
         }
 
+        let sourceClipIds = candidates.map(\.id)
+        let resolvedTemplateID = templateID ?? preset.templateID
+        let resolvedAspectRatio = aspectRatio ?? preset.aspectRatio
+        let editIntent = CloudEditStructuredIntent.build(
+            preset: preset,
+            templateID: resolvedTemplateID,
+            userPrompt: userPrompt,
+            teamSelection: settings.highlightTeamSelection
+        )
+
         return CreateCloudEditJobRequest(
             videoId: currentProjectID?.uuidString ?? "current_project",
             analysisJobId: cloudAnalysisJobID ?? currentProjectID?.uuidString ?? "current_analysis",
             installId: installID,
+            assetId: nil,
             sourceObjectKey: sourceObjectKey,
+            sourceClipIds: sourceClipIds,
             preset: preset.rawValue,
-            templateId: templateID ?? preset.templateID,
+            templateId: resolvedTemplateID,
             targetDurationSeconds: targetDurationSeconds,
-            aspectRatio: aspectRatio ?? preset.aspectRatio,
+            aspectRatio: resolvedAspectRatio,
             planTier: isProUser ? .pro : .free,
             revenueCatAppUserID: revenueCatAppUserID,
             userPrompt: userPrompt,
+            editIntent: editIntent,
+            idempotencyKey: Self.cloudEditIdempotencyKey(
+                analysisJobId: cloudAnalysisJobID ?? currentProjectID?.uuidString ?? "current_analysis",
+                sourceObjectKey: sourceObjectKey,
+                sourceClipIds: sourceClipIds,
+                preset: preset.rawValue,
+                templateID: resolvedTemplateID,
+                targetDurationSeconds: targetDurationSeconds,
+                aspectRatio: resolvedAspectRatio,
+                userPrompt: userPrompt
+            ),
             teamSelection: settings.highlightTeamSelection,
             clips: Array(candidates)
         )
@@ -1484,6 +1507,38 @@ final class HighlightsViewModel {
     ]
     nonisolated private static let cloudEditMinTeamEvidenceFrameRefs = 2
     nonisolated private static let cloudEditMinTeamEvidenceRoleGroups = 2
+
+    nonisolated private static func cloudEditIdempotencyKey(
+        analysisJobId: String,
+        sourceObjectKey: String,
+        sourceClipIds: [String],
+        preset: String,
+        templateID: String,
+        targetDurationSeconds: Int,
+        aspectRatio: CloudEditAspectRatio,
+        userPrompt: String?
+    ) -> String {
+        let seed = [
+            analysisJobId,
+            sourceObjectKey,
+            sourceClipIds.joined(separator: ","),
+            preset,
+            templateID,
+            String(targetDurationSeconds),
+            aspectRatio.rawValue,
+            userPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        ].joined(separator: "|")
+        return "ios-edit-\(stableHexHash(seed))"
+    }
+
+    nonisolated private static func stableHexHash(_ value: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return String(hash, radix: 16)
+    }
 
     nonisolated static func cloudEditRequestCandidateClips(
         from clips: [Clip],

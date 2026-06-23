@@ -958,11 +958,19 @@ struct HoopsClipsTests {
             evidenceFrameRefs: ["clip_1_release", "clip_1_result"],
             evidenceRoleGroups: ["action", "outcome"]
         )
+        let editIntent = CloudEditStructuredIntent.build(
+            preset: .personalHighlight,
+            templateID: CloudEditPreset.personalHighlight.templateID,
+            userPrompt: "Make it more hype and focus on defense.",
+            teamSelection: teamSelection
+        )
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
             analysisJobId: "analysis_123",
             installId: "install-123",
+            assetId: "asset_123",
             sourceObjectKey: "uploads/source.mp4",
+            sourceClipIds: ["clip_1"],
             preset: CloudEditPreset.personalHighlight.rawValue,
             templateId: CloudEditPreset.personalHighlight.templateID,
             targetDurationSeconds: 30,
@@ -970,6 +978,8 @@ struct HoopsClipsTests {
             planTier: .free,
             revenueCatAppUserID: nil,
             userPrompt: "Make it more hype and focus on defense.",
+            editIntent: editIntent,
+            idempotencyKey: "ios-edit-test-123",
             teamSelection: teamSelection,
             clips: [
                 CloudEditCandidateClip(
@@ -1001,7 +1011,19 @@ struct HoopsClipsTests {
         let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         #expect(payload["userPrompt"] as? String == "Make it more hype and focus on defense.")
+        #expect(payload["assetId"] as? String == "asset_123")
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
+        #expect(payload["sourceClipIds"] as? [String] == ["clip_1"])
+        #expect(payload["idempotencyKey"] as? String == "ios-edit-test-123")
+        let encodedEditIntent = try #require(payload["editIntent"] as? [String: Any])
+        #expect(encodedEditIntent["schemaVersion"] as? String == "edit-intent-v1")
+        #expect(encodedEditIntent["source"] as? String == "client")
+        #expect(encodedEditIntent["style"] as? String == "defense_focus")
+        let encodedConstraints = try #require(encodedEditIntent["hardConstraints"] as? [String: Any])
+        #expect(encodedConstraints["requireVisibleOutcome"] as? Bool == true)
+        #expect(encodedConstraints["requireFullPlayContext"] as? Bool == true)
+        #expect(encodedConstraints["rejectDuplicates"] as? Bool == true)
+        #expect(encodedConstraints["selectedTeamOnly"] as? Bool == false)
         let clips = try #require(payload["clips"] as? [[String: Any]])
 	        let firstClip = try #require(clips.first)
 	        let encodedSignals = try #require(firstClip["nativeShotSignals"] as? [String: Any])
@@ -1300,7 +1322,9 @@ struct HoopsClipsTests {
             keptClips: 8,
             needsReviewClips: 2,
             lastAnalysisBlockReason: "none",
+            fastUploadMode: false,
             latestUploadProgress: "bytes=196/525_MB speed=2.4_MB/s",
+            latestUploadSourceOptimization: "compact source optimized",
             latestUnexpectedExit: "none",
             latestCrashReportDelivery: "sent"
         )

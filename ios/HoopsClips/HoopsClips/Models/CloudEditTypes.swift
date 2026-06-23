@@ -501,6 +501,130 @@ enum CloudEditUserPromptBuilder {
     }
 }
 
+struct CloudEditIntentHardConstraints: Codable, Equatable, Sendable {
+    let requireVisibleOutcome: Bool
+    let requireFullPlayContext: Bool
+    let rejectDuplicates: Bool
+    let rejectDeadBall: Bool
+    let defenseOnly: Bool
+    let selectedTeamOnly: Bool
+    let maxCaptionCharacters: Int
+}
+
+struct CloudEditStructuredIntent: Codable, Equatable, Sendable {
+    let schemaVersion: String
+    let source: String
+    let style: String
+    let pace: String
+    let audioPreference: String
+    let chronology: String
+    let captionDensity: String
+    let hardConstraints: CloudEditIntentHardConstraints
+    let promptSummary: String?
+
+    static func build(
+        preset: CloudEditPreset,
+        templateID: String?,
+        userPrompt: String?,
+        teamSelection: HighlightTeamSelection?
+    ) -> CloudEditStructuredIntent {
+        let normalizedPrompt = userPrompt?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let intent = CloudEditUserIntent.parse(normalizedPrompt)
+        let resolvedTemplateID = templateID ?? intent.proTemplate?.templateID ?? intent.preset?.templateID ?? preset.templateID
+        let defenseOnly = containsAny(
+            normalizedPrompt,
+            ["defense only", "defence only", "only defense", "only defence", "just defense", "just defence", "blocks and steals only", "defensive plays only"]
+        )
+        let selectedTeamOnly = teamSelection?.mode == .team && teamSelection?.includeUncertain == false
+        let summary = userPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return CloudEditStructuredIntent(
+            schemaVersion: "edit-intent-v1",
+            source: summary?.isEmpty == false ? "client" : "server_derived",
+            style: style(forTemplateID: resolvedTemplateID, preset: preset, prompt: normalizedPrompt, defenseOnly: defenseOnly),
+            pace: pace(forTemplateID: resolvedTemplateID, preset: preset, prompt: normalizedPrompt),
+            audioPreference: audioPreference(forTemplateID: resolvedTemplateID, prompt: normalizedPrompt),
+            chronology: chronology(forTemplateID: resolvedTemplateID, preset: preset, prompt: normalizedPrompt),
+            captionDensity: captionDensity(forTemplateID: resolvedTemplateID, prompt: normalizedPrompt),
+            hardConstraints: CloudEditIntentHardConstraints(
+                requireVisibleOutcome: true,
+                requireFullPlayContext: true,
+                rejectDuplicates: true,
+                rejectDeadBall: true,
+                defenseOnly: defenseOnly,
+                selectedTeamOnly: selectedTeamOnly,
+                maxCaptionCharacters: 24
+            ),
+            promptSummary: summary.map { String($0.prefix(220)) }
+        )
+    }
+
+    private static func style(forTemplateID templateID: String, preset: CloudEditPreset, prompt: String, defenseOnly: Bool) -> String {
+        if defenseOnly || containsAny(prompt, ["defense", "defence", "block", "steal", "stop", "turnover"]) {
+            return "defense_focus"
+        }
+        switch templateID {
+        case "recruiting_reel_pro_v1":
+            return "recruiting_reel"
+        case "cinematic_mixtape_pro_v1":
+            return "cinematic_mixtape"
+        case "nba_recap_pro_v1":
+            return "nba_recap"
+        case "team_highlight_pro_v1":
+            return "team_highlight"
+        default:
+            switch preset {
+            case .personalHighlight: return "personal_highlight"
+            case .fullGameHighlight: return "full_game_highlight"
+            case .coachReview: return "coach_review"
+            }
+        }
+    }
+
+    private static func pace(forTemplateID templateID: String, preset: CloudEditPreset, prompt: String) -> String {
+        if containsAny(prompt, ["cinematic", "mixtape", "vibe"]) { return "cinematic" }
+        if containsAny(prompt, ["fast", "hype", "short", "tight"]) { return "fast" }
+        if preset == .coachReview || templateID == "coach_review_v1" { return "coach_review" }
+        return templateID == "personal_highlight_v1" ? "fast" : "balanced"
+    }
+
+    private static func audioPreference(forTemplateID templateID: String, prompt: String) -> String {
+        if containsAny(prompt, ["original audio", "game audio", "court audio"]) || templateID == "coach_review_v1" {
+            return "game_audio"
+        }
+        if containsAny(prompt, ["music", "beat", "song", "hype"]) || templateID == "personal_highlight_v1" {
+            return "music_forward"
+        }
+        return "balanced"
+    }
+
+    private static func chronology(forTemplateID templateID: String, preset: CloudEditPreset, prompt: String) -> String {
+        if preset == .coachReview || templateID == "coach_review_v1" { return "coach_review" }
+        if containsAny(prompt, ["chronological", "game flow", "recap"]) || preset == .fullGameHighlight {
+            return "chronological"
+        }
+        if ["recruiting_reel_pro_v1", "nba_recap_pro_v1", "team_highlight_pro_v1"].contains(templateID) {
+            return "story_arc"
+        }
+        return "best_first"
+    }
+
+    private static func captionDensity(forTemplateID templateID: String, prompt: String) -> String {
+        if templateID == "coach_review_v1" || containsAny(prompt, ["minimal captions", "less captions"]) {
+            return "minimal"
+        }
+        if ["full_game_highlight_v1", "nba_recap_pro_v1", "team_highlight_pro_v1", "recruiting_reel_pro_v1"].contains(templateID) {
+            return "clean"
+        }
+        if containsAny(prompt, ["hype", "viral", "caption"]) { return "high" }
+        return "medium"
+    }
+
+    private static func containsAny(_ text: String, _ needles: [String]) -> Bool {
+        needles.contains(where: { text.contains($0) })
+    }
+}
+
 enum CloudEditPlanTier: String, Codable, Sendable {
     case free
     case pro
@@ -893,7 +1017,9 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let videoId: String
     let analysisJobId: String
     let installId: String
+    let assetId: String?
     let sourceObjectKey: String
+    let sourceClipIds: [String]
     let preset: String
     let templateId: String
     let targetDurationSeconds: Int
@@ -901,22 +1027,92 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let planTier: CloudEditPlanTier
     let revenueCatAppUserID: String?
     let userPrompt: String?
+    let editIntent: CloudEditStructuredIntent?
+    let idempotencyKey: String?
     var teamSelection: HighlightTeamSelection? = nil
     let clips: [CloudEditCandidateClip]
+
+    init(
+        videoId: String,
+        analysisJobId: String,
+        installId: String,
+        assetId: String? = nil,
+        sourceObjectKey: String,
+        sourceClipIds: [String]? = nil,
+        preset: String,
+        templateId: String,
+        targetDurationSeconds: Int,
+        aspectRatio: CloudEditAspectRatio,
+        planTier: CloudEditPlanTier,
+        revenueCatAppUserID: String?,
+        userPrompt: String?,
+        editIntent: CloudEditStructuredIntent? = nil,
+        idempotencyKey: String? = nil,
+        teamSelection: HighlightTeamSelection? = nil,
+        clips: [CloudEditCandidateClip]
+    ) {
+        self.videoId = videoId
+        self.analysisJobId = analysisJobId
+        self.installId = installId
+        self.assetId = assetId
+        self.sourceObjectKey = sourceObjectKey
+        self.sourceClipIds = sourceClipIds ?? clips.map(\.id)
+        self.preset = preset
+        self.templateId = templateId
+        self.targetDurationSeconds = targetDurationSeconds
+        self.aspectRatio = aspectRatio
+        self.planTier = planTier
+        self.revenueCatAppUserID = revenueCatAppUserID
+        self.userPrompt = userPrompt
+        self.editIntent = editIntent
+        self.idempotencyKey = idempotencyKey
+        self.teamSelection = teamSelection
+        self.clips = clips
+    }
+}
+
+struct CloudEditAssetJobContract: Codable, Equatable, Sendable {
+    let assetId: String?
+    let sourceObjectKey: String
+    let analysisJobId: String
+    let sourceClipIds: [String]
+    let style: String
+    let targetDurationSeconds: Int
+    let aspectRatio: CloudEditAspectRatio
+}
+
+extension CreateCloudEditJobRequest {
+    func assetJobContract(assetId: String? = nil) -> CloudEditAssetJobContract {
+        CloudEditAssetJobContract(
+            assetId: assetId ?? self.assetId,
+            sourceObjectKey: sourceObjectKey,
+            analysisJobId: analysisJobId,
+            sourceClipIds: sourceClipIds,
+            style: preset,
+            targetDurationSeconds: targetDurationSeconds,
+            aspectRatio: aspectRatio
+        )
+    }
 }
 
 struct CloudEditJobResponse: Codable, Sendable {
     let editJobId: String
     let videoId: String
     let analysisJobId: String
+    let assetId: String?
+    let sourceObjectKey: String?
+    let sourceClipIds: [String]?
     let status: String
     let preset: String
     let templateId: String?
+    let editIntent: CloudEditStructuredIntent?
     let planTier: CloudEditPlanTier?
     let policy: CloudEditPolicySummary?
     let targetDurationSeconds: Int
     let aspectRatio: CloudEditAspectRatio
     let clipCount: Int
+    let candidateClipCount: Int?
+    let candidateClips: [CloudEditCandidateClip]?
     let validationErrors: [CloudEditValidationIssue]?
     let gptUncertainReviewClipIds: [String]?
     let gptUncertainReviewClipCount: Int?
@@ -924,8 +1120,12 @@ struct CloudEditJobResponse: Codable, Sendable {
 
 struct CloudEditPlanResponse: Codable, Sendable {
     let editJobId: String
+    let assetId: String?
+    let sourceObjectKey: String?
+    let sourceClipIds: [String]?
     let status: String
     let plan: CloudEditPlanSummary
+    let editIntent: CloudEditStructuredIntent?
     let planTier: CloudEditPlanTier?
     let policy: CloudEditPolicySummary?
     let validationErrors: [CloudEditValidationIssue]?

@@ -155,6 +155,39 @@ class DurableRenderStateStore:
         payload = self._storage.get_json(self._edit_job_key(edit_job_id))
         return payload if isinstance(payload, dict) else None
 
+    def reserve_edit_job_idempotency_key(
+        self,
+        edit_job_id: str,
+        install_id: str,
+        idempotency_key: Optional[str],
+        updated_at: datetime,
+    ) -> bool:
+        if not idempotency_key:
+            return True
+        key = self._edit_job_idempotency_key(idempotency_key)
+        existing = self._storage.get_json(key)
+        if isinstance(existing, dict):
+            return existing.get("editJobId") == edit_job_id
+        return self._storage.put_json_if_absent(
+            key,
+            json.dumps(
+                {
+                    "version": "edit-job-idempotency-v1",
+                    "idempotencyKeyHash": self._hash(idempotency_key),
+                    "editJobId": edit_job_id,
+                    "installIdHash": self._hash(install_id),
+                    "updatedAt": updated_at.isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+        )
+
+    def load_edit_job_id_by_idempotency_key(self, idempotency_key: str) -> Optional[str]:
+        index = self._storage.get_json(self._edit_job_idempotency_key(idempotency_key))
+        edit_job_id = index.get("editJobId") if isinstance(index, dict) else None
+        return edit_job_id if isinstance(edit_job_id, str) else None
+
     def save_render_request_payload(self, render_job_id: str, payload: Dict[str, object]) -> None:
         self._storage.put_json(self._render_request_key(render_job_id), json.dumps(payload, indent=2, sort_keys=True))
 
@@ -282,6 +315,10 @@ class DurableRenderStateStore:
     @classmethod
     def idempotency_index_key(cls, idempotency_key: str) -> str:
         return cls._idempotency_key(idempotency_key)
+
+    @classmethod
+    def _edit_job_idempotency_key(cls, idempotency_key: str) -> str:
+        return f"render_state/edit_job_idempotency/{cls._hash(idempotency_key)}.json"
 
     @classmethod
     def _install_key(cls, install_id: str) -> str:
