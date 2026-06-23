@@ -45,6 +45,8 @@ export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
 
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   uploadUrl: string;
   uploadMethod: "PUT";
   uploadHeaders: Record<string, string>;
@@ -83,6 +85,8 @@ export interface InferenceTeamScanRequest {
   requestId: string;
   uploadTraceId: string;
   traceId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   sourceObjectKey: string;
   sourceUrl: string;
   filename: string;
@@ -99,6 +103,8 @@ export interface UploadPresignRequest extends CreateCloudAnalysisJobRequest {}
 
 export interface UploadPresignResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   sourceObjectKey: string;
   resultObjectKey: string;
   uploadUrl: string;
@@ -288,6 +294,8 @@ export interface CloudAnalysisResult extends ResponseEnvelope {
 
 export interface CloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   status: JobStatus;
   progress: number;
   stage: string;
@@ -393,6 +401,8 @@ export interface JobRecord extends ResponseEnvelope {
   errorMessage?: string | null;
   sourceObjectKey: string;
   resultObjectKey: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   uploadUrl: string;
   uploadMethod: "PUT";
   uploadHeaders: Record<string, string>;
@@ -429,6 +439,8 @@ export interface InferenceDispatchRequest {
   contentType?: string;
   fileSizeBytes?: number;
   durationSeconds?: number;
+  assetId?: string | null;
+  storageKey?: string | null;
   sourceObjectKey: string;
   sourceUrl: string;
   resultObjectKey: string;
