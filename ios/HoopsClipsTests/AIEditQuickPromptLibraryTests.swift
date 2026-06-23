@@ -10,7 +10,8 @@ struct AIEditQuickPromptLibraryTests {
             "defense",
             "recruiting",
             "recap",
-            "long-reel"
+            "long-reel",
+            "clear-outcomes"
         ])
         #expect(AIEditQuickPromptLibrary.options.map(\.title) == [
             "Hype",
@@ -19,7 +20,8 @@ struct AIEditQuickPromptLibraryTests {
             "Defense",
             "Recruit",
             "Recap",
-            "Long"
+            "Long reel",
+            "Full plays"
         ])
     }
 }

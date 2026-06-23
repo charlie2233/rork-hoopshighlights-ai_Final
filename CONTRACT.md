@@ -1,8 +1,34 @@
-# HoopClips Upload Pipeline Contract
+# HoopClips Workflow And Upload Contract
 
-This branch introduces an asset-first upload contract while preserving the legacy `POST /v1/analysis/jobs` compatibility path.
+This integration branch combines Agent A's asset-first upload contract with Agent B's workflow-first iOS shell. It keeps the backend/client contracts canonical and treats new UI state as projections over those contracts, not as forked payloads.
+
+## Primary Workflow Sections
+
+The iOS app exposes four primary workflow sections:
+
+1. Uploads
+2. Review
+3. AI Edit
+4. Exports
+
+History and Settings remain reachable as secondary utility surfaces from the app shell.
+
+## Canonical Inputs
+
+The UI consumes existing contracts instead of inventing local payloads:
+
+- Upload and analysis job state: `ios/HoopsClips/HoopsClips/Models/CloudAnalysisTypes.swift`
+- Asset upload client flow: `ios/HoopsClips/HoopsClips/Services/CloudAnalysisService.swift`
+- Clip review state: `ios/HoopsClips/HoopsClips/Models/Clip.swift`
+- AI Edit request, plan, render, history, and download state: `ios/HoopsClips/HoopsClips/Models/CloudEditTypes.swift`
+- Local backend asset routes: `ios/backend/app/api.py`
+- Editing backend plan and render ownership: `ios/backend/app/editing.py`
+- Worker additive asset fields: `services/control-plane/src/types.ts`
+- Durable render job status: `services/editing/editing_app/models.py`
 
 ## Asset Upload Lifecycle
+
+The upload-agent contract is asset-first. Upload, team scan, cloud analysis, and edit planning should not start expensive backend work until an asset reaches `proxy_ready` or `ready`.
 
 Status order:
 
@@ -12,8 +38,6 @@ Status order:
 4. `processing`
 5. `proxy_ready`
 6. `ready` or `failed`
-
-AI analysis, team scan, and edit planning should not start until the asset is `proxy_ready` or `ready`.
 
 ## Upload Init
 
@@ -53,32 +77,7 @@ Response:
 }
 ```
 
-Multipart response shape:
-
-```json
-{
-  "assetId": "asset_...",
-  "storageKey": "assets/asset_.../source/game.mp4",
-  "status": "initialized",
-  "uploadMode": "multipart",
-  "multipart": {
-    "uploadId": "local-asset_...",
-    "partSizeBytes": 8388608,
-    "partCount": 3,
-    "parts": [
-      {
-        "partNumber": 1,
-        "uploadUrl": "http://127.0.0.1:8080/v1/internal/assets/asset_.../parts/1",
-        "uploadMethod": "PUT",
-        "uploadHeaders": {"Content-Type": "video/mp4"}
-      }
-    ]
-  },
-  "expiresAt": "2026-06-23T08:00:00Z",
-  "pollAfterSeconds": 1,
-  "uploadState": "waiting_for_client_upload"
-}
-```
+Multipart responses keep the same top-level fields and include `multipart.uploadId`, `partSizeBytes`, `partCount`, and signed part targets.
 
 ## Upload Complete
 
@@ -122,7 +121,7 @@ Response:
 
 `GET /v1/assets/{assetId}?installId=install-123456`
 
-UI should use this endpoint for upload state, proxy readiness, and post-upload artifact availability.
+The Uploads workflow and upload resume path use this endpoint for upload state, proxy readiness, and post-upload artifact availability.
 
 ## Team Scan From Asset
 
@@ -136,24 +135,7 @@ Request:
 }
 ```
 
-If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response keeps the existing team-scan shape so the current team-selection UI can continue to route through detected jersey options:
-
-```json
-{
-  "jobId": "asset_...",
-  "status": "scanned",
-  "detectedTeams": [
-    {
-      "teamId": "team_dark",
-      "label": "Dark jerseys",
-      "colorLabel": "black",
-      "primaryColorHex": "#111111",
-      "confidence": 0.91,
-      "source": "quick_scan"
-    }
-  ]
-}
-```
+If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response keeps the existing team-scan shape so current team-selection UI can continue to route through detected jersey options.
 
 ## Start AI From Asset
 
@@ -170,26 +152,51 @@ Request:
 }
 ```
 
-If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response includes:
+If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response includes `jobId`, `assetId`, proxy `storageKey`, `status`, `pollAfterSeconds`, quota fields, and `analysisMode`.
 
-```json
-{
-  "jobId": "job...",
-  "assetId": "asset_...",
-  "storageKey": "assets/asset_.../proxy/proxy.mp4",
-  "status": "queued",
-  "pollAfterSeconds": 1,
-  "quotaRemainingToday": 2,
-  "analysisMode": "cloud"
-}
-```
+## Upload Queue Projection
+
+`UploadQueueProjection` in `WorkflowState.swift` is UI display state only. It maps current asset/job state into Uploads rows while preserving:
+
+- `assetId`
+- `storageKey`
+- `proxyKey`
+- upload asset status
+- byte progress
+- optional analysis job ID
+- clip count
+- failure reason
+- current import/upload/analysis status text
+- resumable upload manifest summary
+- cloud edit source object key
+
+Do not persist `UploadQueueProjection` or treat it as a backend contract. If a future multi-item upload queue lands, feed its canonical DTOs through `UploadAssetQueueContract` and keep the same `UploadQueueItem` UI surface until the SwiftUI views intentionally change.
+
+## AI Edit Handoff
+
+AI Edit is a primary workflow section, but cloud ownership is unchanged. `CreateCloudEditJobRequest` sends additive `assetId` and `sourceClipIds` fields when available while preserving the backend-compatible `sourceObjectKey` plus full `clips` payload. `CreateCloudEditJobRequest.assetJobContract(assetId:)` exposes that asset-first shape for integration checks.
+
+Review boundary nudges and feedback tags only mutate clip metadata that is already sent through existing clip/review payloads. They do not create local edit plans, local renders, or a new backend payload family.
 
 ## Worker Compatibility
 
-The Cloudflare Worker now includes additive `assetId` fields in create/poll responses and additive `assetId/storageKey` fields in internal team-scan and inference dispatch payloads. For the existing R2 flow, `assetId` maps to `jobId` and internal `storageKey` maps to `sourceObjectKey`.
+The Cloudflare Worker includes additive `assetId` fields in create/poll responses and additive `assetId/storageKey` fields in internal team-scan and inference dispatch payloads. For the existing R2 flow, `assetId` maps to `jobId` and internal `storageKey` maps to `sourceObjectKey`.
 
-Public Worker responses keep `storageKey` null/redacted to preserve existing object-key redaction guarantees. Providers may continue reading `sourceUrl` during migration, but new editing/inference code should prefer `assetId` plus internal `storageKey` when the field is present.
+Public Worker responses keep `storageKey` null/redacted to preserve object-key redaction guarantees. Providers may continue reading `sourceUrl` during migration, but new inference/editing code should prefer `assetId` plus internal `storageKey` when present.
 
 ## Legacy Manual URL Compatibility
 
 Internal inference endpoints still accept `sourceUrl` when `assetId`, `storageKey`, and `sourceObjectKey` are absent. This is compatibility-only and should not be the normal app path.
+
+## Cloud-First Boundary
+
+iOS remains the control surface:
+
+- import/upload
+- queue and job status
+- review decisions and clip boundary metadata
+- style, duration, aspect ratio, and prompt selection
+- cloud edit-plan/render job requests
+- downloaded MP4 preview/save/share/open-in
+
+iOS must not add local production analysis, AI edit planning, final rendering, renderer command generation, or fake cloud job state.

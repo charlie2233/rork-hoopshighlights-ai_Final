@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var uploadResumeNotice: UploadResumeNotice?
     @State private var showingPipelineCancelConfirmation = false
     @State private var didCopyPipelineUploadProof = false
+    @State private var showingHistorySheet = false
+    @State private var showingSettingsSheet = false
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
@@ -39,49 +41,44 @@ struct ContentView: View {
     private enum AppTab: Int, CaseIterable, Identifiable {
         case player
         case review
+        case aiEdit
         case export
-        case history
-        case settings
 
         var id: Int { rawValue }
 
         var iconName: String {
             switch self {
-            case .player: return "play.circle.fill"
+            case .player: return "icloud.and.arrow.up.fill"
             case .review: return "film.stack.fill"
+            case .aiEdit: return "wand.and.stars.inverse"
             case .export: return "square.and.arrow.up.fill"
-            case .history: return "clock.arrow.circlepath"
-            case .settings: return "gearshape.fill"
             }
         }
 
         var accessibilityIdentifier: String {
             switch self {
-            case .player: return "app.tab.player"
+            case .player: return "app.tab.uploads"
             case .review: return "app.tab.review"
+            case .aiEdit: return "app.tab.aiEdit"
             case .export: return "app.tab.export"
-            case .history: return "app.tab.history"
-            case .settings: return "app.tab.settings"
             }
         }
 
         var telemetryName: String {
             switch self {
-            case .player: return "player"
+            case .player: return "uploads"
             case .review: return "review"
-            case .export: return "export"
-            case .history: return "history"
-            case .settings: return "settings"
+            case .aiEdit: return "ai_edit"
+            case .export: return "exports"
             }
         }
 
         func title(using languageStore: AppLanguageStore) -> String {
             switch self {
-            case .player: return languageStore.text(.tabPlayer)
-            case .review: return languageStore.text(.tabReview)
-            case .export: return languageStore.text(.tabExport)
-            case .history: return languageStore.text(.tabHistory)
-            case .settings: return languageStore.text(.tabSettings)
+            case .player: return WorkflowSection.uploads.title
+            case .review: return WorkflowSection.review.title
+            case .aiEdit: return WorkflowSection.aiEdit.title
+            case .export: return WorkflowSection.exports.title
             }
         }
     }
@@ -306,18 +303,6 @@ struct ContentView: View {
                 .zIndex(6)
             }
 
-            if selectedTab == AppTab.settings.rawValue, !isRookieGuideVisible {
-                VStack {
-                    Spacer(minLength: 0)
-                    HStack {
-                        Spacer(minLength: 0)
-                        rookieGuideReplayButton
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, tabButtonHeight + 20)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
         }
         .preferredColorScheme(.dark)
         .overlay {
@@ -334,6 +319,15 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(subscriptionManager: subscriptionManager, authService: authService)
+        }
+        .sheet(isPresented: $showingHistorySheet) {
+            HistoryView(viewModel: viewModel, onReturnToPlayer: {
+                showingHistorySheet = false
+                selectTab(.player)
+            })
+        }
+        .sheet(isPresented: $showingSettingsSheet) {
+            SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
         }
         .confirmationDialog(
             pipelineStage.cancelTitle + "?",
@@ -354,7 +348,7 @@ struct ContentView: View {
             RookieGuideStep(
                 id: 1,
                 tab: .player,
-                icon: "play.circle.fill",
+                icon: "icloud.and.arrow.up.fill",
                 titleKey: .rookieGuideImportTitle,
                 bodyKey: .rookieGuideImportBody,
                 tipKey: .rookieGuideImportTip
@@ -369,7 +363,7 @@ struct ContentView: View {
             ),
             RookieGuideStep(
                 id: 3,
-                tab: .export,
+                tab: .aiEdit,
                 icon: "wand.and.stars.inverse",
                 titleKey: .rookieGuideExportTitle,
                 bodyKey: .rookieGuideExportBody,
@@ -377,19 +371,11 @@ struct ContentView: View {
             ),
             RookieGuideStep(
                 id: 4,
-                tab: .history,
-                icon: "clock.badge.checkmark.fill",
-                titleKey: .rookieGuideHistoryTitle,
-                bodyKey: .rookieGuideHistoryBody,
-                tipKey: .rookieGuideHistoryTip
-            ),
-            RookieGuideStep(
-                id: 5,
-                tab: .settings,
-                icon: "slider.horizontal.3",
-                titleKey: .rookieGuideSettingsTitle,
-                bodyKey: .rookieGuideSettingsBody,
-                tipKey: .rookieGuideSettingsTip
+                tab: .export,
+                icon: "square.and.arrow.up.fill",
+                titleKey: .rookieGuideExportTitle,
+                bodyKey: .rookieGuideExportBody,
+                tipKey: .rookieGuideExportTip
             )
         ]
     }
@@ -786,10 +772,14 @@ struct ContentView: View {
     private var activeTabContent: some View {
         ZStack {
             persistentTabLayer(.player) {
-                VideoPlayerView(
+                UploadsWorkflowView(
                     viewModel: viewModel,
+                    selectedTab: $selectedTab,
                     onOpenHistory: {
-                        selectTab(.history)
+                        showingHistorySheet = true
+                    },
+                    onOpenSettings: {
+                        showingSettingsSheet = true
                     },
                     onOpenReview: {
                         selectTab(.review)
@@ -839,15 +829,17 @@ struct ContentView: View {
             }
 
         case .export:
-            ExportView(viewModel: viewModel)
+            ExportView(viewModel: viewModel, showsAIEditAgentSection: false)
                 .environment(subscriptionManager)
                 .environment(authService)
 
-        case .history:
-            HistoryView(viewModel: viewModel, onReturnToPlayer: { selectTab(.player) })
-
-        case .settings:
-            SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
+        case .aiEdit:
+            AIEditWorkflowView(
+                viewModel: viewModel,
+                onRequestProUpgrade: { showingPaywall = true }
+            )
+            .environment(subscriptionManager)
+            .environment(authService)
         }
     }
 
@@ -1083,15 +1075,13 @@ struct ContentView: View {
           guard !dynamicTypeSize.isAccessibilitySize else { return fullTitle }
           switch tab {
           case .player:
-              return fullTitle.count > 5 ? "Play" : fullTitle
+              return fullTitle.count > 7 ? "Upload" : fullTitle
           case .review:
               return fullTitle.count > 6 ? "Clips" : fullTitle
+          case .aiEdit:
+              return fullTitle.count > 7 ? "Edit" : fullTitle
           case .export:
-              return fullTitle.count > 6 ? "Share" : fullTitle
-          case .history:
-              return fullTitle.count > 6 ? "Past" : fullTitle
-          case .settings:
-              return fullTitle.count > 6 ? "Set" : fullTitle
+              return fullTitle.count > 7 ? "Export" : fullTitle
           }
       }
 
@@ -1227,7 +1217,7 @@ struct ContentView: View {
                 selectedTab = AppTab.player.rawValue
             }
         }
-        HoopsAccessibility.announce("Review needs clips first. Back to Player.")
+        HoopsAccessibility.announce("Review needs clips first. Back to Uploads.")
     }
 
     private func showReviewRecoveryNotice() {
@@ -1297,9 +1287,9 @@ struct ContentView: View {
         dismissReviewRecoveryNotice()
         if event == "background_upload_completed" || context == AnalysisNotificationService.CompletionContext.backgroundUploadResume.rawValue {
             selectTab(.player)
-            showUploadResumeNotice("Upload finished. Continuing from Player.")
+            showUploadResumeNotice("Upload finished. Continuing from Uploads.")
             resumeCloudAnalysisAfterForegroundIfNeeded()
-            HoopsAccessibility.announce("Upload finished. Continuing from Player.")
+            HoopsAccessibility.announce("Upload finished. Continuing from Uploads.")
             return
         }
 
@@ -1318,7 +1308,7 @@ struct ContentView: View {
         if pendingManifest.contains("pending=true") {
             let message = pendingManifest.contains("source=available")
                 ? "Resuming saved upload..."
-                : "Saved upload source missing. Check Player."
+                : "Saved upload source missing. Check Uploads."
             showUploadResumeNotice(message)
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "upload.resume.notice",
@@ -1689,16 +1679,16 @@ private struct ReviewUnavailableRecoveryCard: View {
     private var messageCopy: String {
         switch notice.reason {
         case "video_not_loaded", "missing_source_url":
-            return "Go back to Player and import a video first."
+            return "Go back to Uploads and import a video first."
         case "no_clips":
-            return "Start AI Analysis on Player. Review opens when clips are ready."
+            return "Start AI Analysis in Uploads. Review opens when clips are ready."
         default:
-            return "Some clips are not safe to preview yet. Back to Player and run AI Analysis again."
+            return "Some clips are not safe to preview yet. Back to Uploads and run AI Analysis again."
         }
     }
 
     private var actionTitle: String {
-        "Back to Player"
+        "Back to Uploads"
     }
 
     var body: some View {
@@ -1759,7 +1749,7 @@ private struct ReviewUnavailableRecoveryCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("review.unavailable.rerunAnalysis")
-            .accessibilityHint("Opens Player so you can import, wait for, or rerun analysis.")
+            .accessibilityHint("Opens Uploads so you can import, wait for, or rerun analysis.")
         }
         .padding(18)
         .background(

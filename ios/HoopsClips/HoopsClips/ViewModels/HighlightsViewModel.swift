@@ -114,7 +114,21 @@ final class HighlightsViewModel {
     var cloudQuotaRemaining: Int?
     var isCloudFallbackOffered = false
     var cloudAnalysisJobID: String?
-    var cloudEditSourceObjectKey: String?
+    var cloudEditSourceObjectKey: String? {
+        didSet {
+            if cloudEditSourceObjectKey != oldValue {
+                latestCloudEditRenderStatus = nil
+            }
+        }
+    }
+    var latestCloudEditRenderStatus: CloudEditRenderStatusResponse?
+    var cloudUploadAssetID: String?
+    var cloudUploadAssetStorageKey: String?
+    var cloudUploadAssetProxyKey: String?
+    var cloudUploadAssetStatus: String?
+    var cloudUploadAssetUploadedBytes: Int64?
+    var cloudUploadAssetFileSizeBytes: Int64?
+    var cloudUploadAssetFailureReason: String?
     var cloudDetectedTeams: [CloudTeamOption] = []
     var hasConfirmedHighlightTeamSelection = false
     var isCloudTeamScanInProgress = false
@@ -688,6 +702,7 @@ final class HighlightsViewModel {
         analysisService.applyCloudAnalysis(result, duration: videoDuration)
         cloudAnalysisJobID = result.analysisJobId ?? cloudAnalysisJobID
         cloudEditSourceObjectKey = result.sourceObjectKey ?? cloudEditSourceObjectKey
+        applyCloudUploadAssetState(from: result)
         cloudDetectedTeams = result.detectedTeams
         if let effectiveTeamSelection = result.teamSelection {
             settings.highlightTeamSelection = effectiveTeamSelection
@@ -758,8 +773,9 @@ final class HighlightsViewModel {
             }
 
             let preparedJob = try await withThrowingTaskGroup(of: CloudTeamScanRaceResult.self) { group in
+                let cloudAnalysisService = self.cloudAnalysisService
                 group.addTask {
-                    let preparedJob = try await CloudAnalysisService().prepareTeamScan(
+                    let preparedJob = try await cloudAnalysisService.prepareTeamScan(
                         url: scanSourceURL,
                         duration: scanDuration,
                         installID: scanInstallID,
@@ -944,6 +960,7 @@ final class HighlightsViewModel {
         cloudQuotaRemaining = nil
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        clearCloudUploadAssetState()
         cloudDetectedTeams = []
         clearPendingCloudAnalysisJob()
         analysisService.beginExternalAnalysis(status: status)
@@ -980,11 +997,46 @@ final class HighlightsViewModel {
         persistCurrentProject()
     }
 
+    @discardableResult
+    func nudgeClipStart(_ clip: Clip, by seconds: Double) -> Clip? {
+        guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return nil }
+        let current = analysisService.clips[index]
+        let minimumStart = 0.0
+        let maximumStart = max(minimumStart, current.endTime - 0.25)
+        let nextStart = min(max(current.startTime + seconds, minimumStart), maximumStart)
+        analysisService.clips[index].startTime = nextStart
+        clampClipEventCenter(at: index)
+        persistCurrentProject()
+        return analysisService.clips[index]
+    }
+
+    @discardableResult
+    func nudgeClipEnd(_ clip: Clip, by seconds: Double) -> Clip? {
+        guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return nil }
+        let current = analysisService.clips[index]
+        let minimumEnd = current.startTime + 0.25
+        let maximumEnd = videoDuration > 0 ? videoDuration : max(minimumEnd, current.endTime + max(seconds, 0))
+        let nextEnd = min(max(current.endTime + seconds, minimumEnd), maximumEnd)
+        analysisService.clips[index].endTime = nextEnd
+        clampClipEventCenter(at: index)
+        persistCurrentProject()
+        return analysisService.clips[index]
+    }
+
     func keepAllClips() {
         for index in analysisService.clips.indices {
             analysisService.clips[index].isKept = true
         }
         persistCurrentProject()
+    }
+
+    private func clampClipEventCenter(at index: Int) {
+        guard analysisService.clips.indices.contains(index),
+              let eventCenter = analysisService.clips[index].eventCenter else { return }
+        analysisService.clips[index].eventCenter = min(
+            max(eventCenter, analysisService.clips[index].startTime),
+            analysisService.clips[index].endTime
+        )
     }
 
     func discardAllClips() {
@@ -1384,7 +1436,9 @@ final class HighlightsViewModel {
             videoId: currentProjectID?.uuidString ?? "current_project",
             analysisJobId: cloudAnalysisJobID ?? currentProjectID?.uuidString ?? "current_analysis",
             installId: installID,
+            assetId: cloudUploadAssetID,
             sourceObjectKey: sourceObjectKey,
+            sourceClipIds: candidates.map(\.id),
             preset: preset.rawValue,
             templateId: templateID ?? preset.templateID,
             targetDurationSeconds: targetDurationSeconds,
@@ -2098,6 +2152,8 @@ final class HighlightsViewModel {
         analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
+        latestCloudEditRenderStatus = nil
+        clearCloudUploadAssetState()
         settings.highlightTeamSelection = project.highlightTeamSelection ?? .allTeams
         settings.opponentTeamName = project.opponentTeamName
         cloudDetectedTeams = project.cloudDetectedTeams ?? []
@@ -2147,6 +2203,8 @@ final class HighlightsViewModel {
         lastAnalysisStatusSummary = nil
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        latestCloudEditRenderStatus = nil
+        clearCloudUploadAssetState()
         cloudDetectedTeams = []
         hasConfirmedHighlightTeamSelection = false
         settings.highlightTeamSelection = .allTeams
@@ -2162,6 +2220,27 @@ final class HighlightsViewModel {
         isCloudTeamScanInProgress = false
         cloudTeamScanStatusMessage = nil
         cloudTeamScanErrorMessage = nil
+    }
+
+    private func applyCloudUploadAssetState(from result: CloudAnalysisResult) {
+        guard result.assetId != nil || result.assetStorageKey != nil || result.assetStatus != nil else { return }
+        cloudUploadAssetID = result.assetId ?? cloudUploadAssetID
+        cloudUploadAssetStorageKey = result.assetStorageKey ?? result.sourceObjectKey ?? cloudUploadAssetStorageKey
+        cloudUploadAssetProxyKey = result.proxyStorageKey ?? cloudUploadAssetProxyKey
+        cloudUploadAssetStatus = result.assetStatus ?? (result.assetId == nil ? cloudUploadAssetStatus : "ready")
+        cloudUploadAssetUploadedBytes = result.assetUploadedBytes ?? cloudUploadAssetUploadedBytes
+        cloudUploadAssetFileSizeBytes = result.assetFileSizeBytes ?? cloudUploadAssetFileSizeBytes
+        cloudUploadAssetFailureReason = result.assetFailureReason
+    }
+
+    private func clearCloudUploadAssetState() {
+        cloudUploadAssetID = nil
+        cloudUploadAssetStorageKey = nil
+        cloudUploadAssetProxyKey = nil
+        cloudUploadAssetStatus = nil
+        cloudUploadAssetUploadedBytes = nil
+        cloudUploadAssetFileSizeBytes = nil
+        cloudUploadAssetFailureReason = nil
     }
 
     private func resetStaleHighlightTeamSelection(against detectedTeams: [CloudTeamOption]) {
@@ -2335,13 +2414,15 @@ final class HighlightsViewModel {
         guard let resolvedSourceObjectKey = AIEditUISmokeConfig.sourceObjectKey else { return }
 
         currentProjectID = nil
-        videoURL = nil
+        videoURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("hoopclips-ai-edit-ui-smoke.mov")
         videoDuration = 18
         videoThumbnail = nil
-        isVideoLoaded = false
+        isVideoLoaded = true
         analysisMode = .cloud
         cloudAnalysisJobID = "phase-edit3c-\(fixture.rawValue)-analysis"
         cloudEditSourceObjectKey = resolvedSourceObjectKey
+        clearCloudUploadAssetState()
         lastAnalysisStatusSummary = "Found 2 highlights"
         lastAnalyzedAt = Date()
         cloudQuotaRemaining = nil
@@ -2395,6 +2476,7 @@ final class HighlightsViewModel {
         analysisMode = .cloud
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        clearCloudUploadAssetState()
         lastAnalysisStatusSummary = nil
         lastAnalyzedAt = nil
         cloudQuotaRemaining = nil
@@ -2442,6 +2524,7 @@ final class HighlightsViewModel {
         analysisMode = .cloud
         cloudAnalysisJobID = "review-crash-smoke-analysis"
         cloudEditSourceObjectKey = nil
+        clearCloudUploadAssetState()
         lastAnalysisStatusSummary = "Found 2 highlights"
         lastAnalyzedAt = Date()
         cloudQuotaRemaining = nil
@@ -2493,6 +2576,7 @@ final class HighlightsViewModel {
         let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        clearCloudUploadAssetState()
         if AppConstants.requiresCloudVideoPipeline {
             let message = CloudAnalysisFallbackCopy.cloudRequiredMessage
             analysisMode = .cloud

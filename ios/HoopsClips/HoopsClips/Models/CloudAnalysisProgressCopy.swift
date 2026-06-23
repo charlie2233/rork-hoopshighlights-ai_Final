@@ -97,7 +97,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             if let chunkProgress = uploadChunkProgressSummary(from: statusMessage) {
                 return "Uploading \(chunkProgress). Safe to switch apps; completed chunks stay saved for fast resume."
             }
-            return "Background upload active. Huge videos use resumable chunks and fast resume when supported."
+            return "Background upload active. Huge videos use resumable chunks and fast resume. Reopen for live progress."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -424,50 +424,18 @@ nonisolated enum CloudAnalysisProgressCopy {
     ) -> String? {
         guard shouldOptimize else { return nil }
 
-        let sizeText = sourceSizeMB.map { "\($0) MB" }
         if fastUploadModeEnabled {
             if durationMinutes > 0 {
                 return "Fast Upload Mode: compact upload for \(durationMinutes) min video"
             }
+            let sizeText = sourceSizeMB.map { "\($0) MB" }
             if let sizeText {
                 return "Fast Upload Mode: compact upload from \(sizeText)"
             }
             return "Fast Upload Mode: compact upload"
         }
 
-        if status.contains("preparing smaller") {
-            if let sizeText {
-                return "Preparing smaller upload from \(sizeText); \(compactUploadFallbackWindow)"
-            }
-            if durationMinutes > 0 {
-                return "Preparing smaller upload for \(durationMinutes) min video; \(compactUploadFallbackWindow)"
-            }
-            return "Preparing smaller upload; \(compactUploadFallbackWindow)"
-        }
-
-        if prefersCompactSource {
-            if durationMinutes > 0 {
-                return "Preparing compact upload for \(durationMinutes) min video; \(compactUploadFallbackWindow)"
-            }
-            if let sizeText {
-                return "Preparing compact upload from \(sizeText); \(compactUploadFallbackWindow)"
-            }
-            return "Preparing compact upload; \(compactUploadFallbackWindow)"
-        }
-
-        if isHugeSource, let sizeText {
-            return "Reducing \(sizeText) upload before cloud"
-        }
-
-        if isLongSource, durationMinutes > 0 {
-            return "Optimizing \(durationMinutes) min video before upload"
-        }
-
-        if isUploadStruggling {
-            return "Trying smaller upload path"
-        }
-
-        return "Preparing smaller upload"
+        return "Smaller source suggested"
     }
 
     static func uploadSourceSavingsFact(from summary: String) -> String? {

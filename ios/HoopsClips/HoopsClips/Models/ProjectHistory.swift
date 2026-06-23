@@ -223,6 +223,11 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
 
     private static func cleanedSourceTitle(_ basename: String) -> String {
         var value = basename
+        if let mediaRange = value.range(of: "_Media", options: [.caseInsensitive]) {
+            value = String(value[..<mediaRange.lowerBound])
+        }
+
+        value = value
             .replacingOccurrences(of: "YTDown_YouTube_", with: "")
             .replacingOccurrences(of: "YTDown_", with: "")
             .replacingOccurrences(of: "_YouTube_", with: " ")
@@ -233,10 +238,6 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .replacingOccurrences(of: "downloaded video", with: "", options: [.caseInsensitive])
             .replacingOccurrences(of: "screenrecording", with: "screen recording", options: [.caseInsensitive])
             .replacingOccurrences(of: "videoplayback", with: "", options: [.caseInsensitive])
-
-        if let mediaRange = value.range(of: "_Media", options: [.caseInsensitive]) {
-            value = String(value[..<mediaRange.lowerBound])
-        }
 
         value = value
             .replacingOccurrences(of: "-vs-", with: " vs ", options: [.caseInsensitive])

@@ -16,7 +16,7 @@ struct ReviewView: View {
     @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
     @State private var hasAutoFocusedPriorityFilter = false
-    @State private var sortByScore = true
+    @State private var reviewSortMode: ReviewSortMode = .score
     @State private var expandedClipID: UUID?
     @State private var focusedClipID: UUID?
     @State private var showAllFilterChips = false
@@ -47,6 +47,26 @@ struct ReviewView: View {
         case needsReview = "Check"
         case kept = "Kept"
         case discarded = "Skipped"
+    }
+
+    private enum ReviewSortMode: String, CaseIterable {
+        case score = "Score"
+        case confidence = "Confidence"
+        case label = "Label"
+        case time = "Time"
+
+        var iconName: String {
+            switch self {
+            case .score: return "chart.bar.fill"
+            case .confidence: return "gauge.with.dots.needle.67percent"
+            case .label: return "tag.fill"
+            case .time: return "clock.fill"
+            }
+        }
+
+        var accessibilityLabel: String {
+            "Sort by \(rawValue.lowercased())"
+        }
     }
 
     private typealias ReviewFeedbackTag = ClipReviewFeedbackTag
@@ -102,10 +122,22 @@ struct ReviewView: View {
         case .kept: base = viewModel.keptClips
         case .discarded: base = viewModel.discardedClips
         }
-        if sortByScore {
+        switch reviewSortMode {
+        case .score:
             return base.sorted { $0.combinedScore > $1.combinedScore }
+        case .confidence:
+            return base.sorted { $0.confidence > $1.confidence }
+        case .label:
+            return base.sorted {
+                let labelCompare = $0.label.localizedStandardCompare($1.label)
+                if labelCompare == .orderedSame {
+                    return $0.startTime < $1.startTime
+                }
+                return labelCompare == .orderedAscending
+            }
+        case .time:
+            return base.sorted { $0.startTime < $1.startTime }
         }
-        return base.sorted { $0.startTime < $1.startTime }
     }
 
     var body: some View {
@@ -145,16 +177,16 @@ struct ReviewView: View {
                 if filteredClips.count > 1 {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            sortByScore.toggle()
+                            cycleReviewSortMode()
                         } label: {
-                            Image(systemName: sortByScore ? "clock.fill" : "chart.bar.fill")
+                            Image(systemName: reviewSortMode.iconName)
                                 .foregroundStyle(AppTheme.neonPurple)
                                 .padding(8)
                                 .background(AppTheme.neonPurple.opacity(0.12), in: Circle())
                         }
-                        .accessibilityLabel(sortByScore ? "Sort by time" : "Sort by score")
-                        .accessibilityValue(sortByScore ? "Currently sorted by score" : "Currently sorted by time")
-                        .accessibilityHint("Changes how review clips are ordered.")
+                        .accessibilityLabel(reviewSortMode.accessibilityLabel)
+                        .accessibilityValue("Currently sorted by \(reviewSortMode.rawValue.lowercased())")
+                        .accessibilityHint("Cycles review ordering through score, confidence, label, and time.")
                     }
                 }
             }
@@ -516,7 +548,7 @@ struct ReviewView: View {
                     selectedTab = 0
                 }
             } label: {
-                Label("Back to Player", systemImage: "play.rectangle.fill")
+                Label("Back to Uploads", systemImage: "icloud.and.arrow.up.fill")
                     .font(.subheadline.weight(.heavy))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -524,7 +556,7 @@ struct ReviewView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("review.unavailable.backToPlayer")
-            .accessibilityHint("Returns to Player so you can import or analyze a video.")
+            .accessibilityHint("Returns to Uploads so you can import or analyze a video.")
         }
         .padding(18)
         .rorkCard(
@@ -910,8 +942,8 @@ struct ReviewView: View {
 
             HStack(spacing: 8) {
                 RorkMetricChip(
-                    icon: sortByScore ? "chart.bar.fill" : "clock.fill",
-                    value: sortByScore ? "Score" : "Time",
+                    icon: reviewSortMode.iconName,
+                    value: reviewSortMode.rawValue,
                     label: "Sort",
                     tint: AppTheme.neonPurple
                 )
@@ -941,6 +973,15 @@ struct ReviewView: View {
         return filteredClips[currentReviewIndex]
     }
 
+    private func cycleReviewSortMode() {
+        let allModes = ReviewSortMode.allCases
+        guard let currentIndex = allModes.firstIndex(of: reviewSortMode) else {
+            reviewSortMode = .score
+            return
+        }
+        reviewSortMode = allModes[(currentIndex + 1) % allModes.count]
+    }
+
     private var canReviewPreviousClip: Bool {
         currentReviewClip != nil && currentReviewIndex > 0
     }
@@ -965,6 +1006,7 @@ struct ReviewView: View {
                 reviewClipScrubber(clip)
                 reviewCarouselClipSummary(clip)
                 reviewDecisionButtons(clip: clip)
+                reviewBoundaryNudgeControls(clip)
                 reviewFeedbackTags(clip)
 
                 if expandedClipID == clip.id {
@@ -1009,6 +1051,12 @@ struct ReviewView: View {
                         ),
                         lineWidth: 1
                     )
+            }
+            .background {
+                reviewKeyboardShortcutControls(for: clip)
+                    .frame(width: 0, height: 0)
+                    .opacity(0.001)
+                    .accessibilityHidden(true)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("review.carousel")
@@ -1366,11 +1414,136 @@ struct ReviewView: View {
             .shadow(color: tint.opacity(isSelected ? 0.28 : 0.08), radius: isSelected ? 18 : 8, y: 8)
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(reviewKeyboardShortcut(forKeepDecision: keep), modifiers: [])
         .sensoryFeedback(.impact(weight: .medium), trigger: keep ? keepTrigger : discardTrigger)
         .accessibilityIdentifier(keep ? "review.carousel.keepButton" : "review.carousel.nahButton")
         .accessibilityLabel(keep ? "Keep clip" : "Nah, skip clip")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .hoopsSelectedState(isSelected)
+    }
+
+    private func reviewBoundaryNudgeControls(_ clip: Clip) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Image(systemName: "timeline.selection")
+                    .font(.caption2.weight(.heavy))
+                    .accessibilityHidden(true)
+                Text("Boundary")
+                    .font(.caption.weight(.heavy))
+                Spacer(minLength: 0)
+                Text("0.5s nudges")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+            .foregroundStyle(.white.opacity(0.86))
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    boundaryNudgeButton(title: "Start -", icon: "backward.end.fill") {
+                        nudgeClipStart(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "Start +", icon: "forward.end.fill") {
+                        nudgeClipStart(clip, by: 0.5)
+                    }
+                    boundaryNudgeButton(title: "End -", icon: "backward.frame.fill") {
+                        nudgeClipEnd(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "End +", icon: "forward.frame.fill") {
+                        nudgeClipEnd(clip, by: 0.5)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
+                    boundaryNudgeButton(title: "Start -", icon: "backward.end.fill") {
+                        nudgeClipStart(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "Start +", icon: "forward.end.fill") {
+                        nudgeClipStart(clip, by: 0.5)
+                    }
+                    boundaryNudgeButton(title: "End -", icon: "backward.frame.fill") {
+                        nudgeClipEnd(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "End +", icon: "forward.frame.fill") {
+                        nudgeClipEnd(clip, by: 0.5)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(AppTheme.neonPurple.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityIdentifier("review.carousel.boundaryNudgeControls")
+    }
+
+    private func boundaryNudgeButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .padding(.horizontal, 8)
+        }
+        .buttonStyle(.bordered)
+        .tint(AppTheme.neonPurple)
+        .accessibilityIdentifier("review.carousel.boundary.\(title.lowercased().replacingOccurrences(of: " ", with: ""))")
+    }
+
+    private func nudgeClipStart(_ clip: Clip, by seconds: Double) {
+        guard let updatedClip = viewModel.nudgeClipStart(clip, by: seconds) else { return }
+        focusedClipID = updatedClip.id
+        prepareClipPlayer(for: updatedClip)
+        HoopsAccessibility.announce("Clip start nudged \(seconds < 0 ? "earlier" : "later").")
+    }
+
+    private func nudgeClipEnd(_ clip: Clip, by seconds: Double) {
+        guard let updatedClip = viewModel.nudgeClipEnd(clip, by: seconds) else { return }
+        focusedClipID = updatedClip.id
+        prepareClipPlayer(for: updatedClip)
+        HoopsAccessibility.announce("Clip end nudged \(seconds < 0 ? "earlier" : "later").")
+    }
+
+    private func reviewKeyboardShortcut(forKeepDecision keep: Bool) -> KeyEquivalent {
+        keep ? "k" : "d"
+    }
+
+    private func reviewKeyboardShortcutControls(for clip: Clip) -> some View {
+        VStack {
+            Button("Nah shortcut") {
+                setClip(clip, keep: false)
+            }
+            .keyboardShortcut("n", modifiers: [])
+
+            Button("Nudge start earlier") {
+                nudgeClipStart(clip, by: -0.5)
+            }
+            .keyboardShortcut("[", modifiers: [])
+
+            Button("Nudge end later") {
+                nudgeClipEnd(clip, by: 0.5)
+            }
+            .keyboardShortcut("]", modifiers: [])
+
+            ForEach(Array(ReviewFeedbackTag.allCases.prefix(5).enumerated()), id: \.element.id) { index, tag in
+                Button("Review label \(index + 1)") {
+                    toggleFeedbackTag(tag, for: clip)
+                }
+                .keyboardShortcut(reviewFeedbackShortcut(for: index), modifiers: [])
+            }
+        }
+    }
+
+    private func reviewFeedbackShortcut(for index: Int) -> KeyEquivalent {
+        switch index {
+        case 0: return "1"
+        case 1: return "2"
+        case 2: return "3"
+        case 3: return "4"
+        default: return "5"
+        }
     }
 
     private func reviewCarouselEvidenceChips(_ clip: Clip) -> some View {
@@ -3053,6 +3226,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return "Duplicate"
         case .wrongTeam: return "Wrong team"
         case .badWindow: return "Bad window"
+        case .wrongLabel: return "Wrong label"
+        case .lowQuality: return "Low quality"
         }
     }
 
@@ -3061,6 +3236,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return "rectangle.on.rectangle.angled"
         case .wrongTeam: return "person.2.slash.fill"
         case .badWindow: return "crop"
+        case .wrongLabel: return "tag.slash.fill"
+        case .lowQuality: return "hand.thumbsdown.fill"
         }
     }
 
@@ -3069,6 +3246,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return AppTheme.warningYellow
         case .wrongTeam: return AppTheme.dangerRed
         case .badWindow: return .orange
+        case .wrongLabel: return AppTheme.courtBlue
+        case .lowQuality: return AppTheme.subtleText
         }
     }
 }

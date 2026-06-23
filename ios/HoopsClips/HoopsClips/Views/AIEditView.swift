@@ -135,6 +135,15 @@ struct AIEditView: View {
             guard phase == .active else { return }
             refreshCloudEditAfterForegroundIfNeeded()
         }
+        .onChange(of: renderStatus?.renderJobId) { _, _ in
+            viewModel.latestCloudEditRenderStatus = renderStatus
+        }
+        .onChange(of: renderStatus?.status) { _, _ in
+            viewModel.latestCloudEditRenderStatus = renderStatus
+        }
+        .onAppear {
+            viewModel.latestCloudEditRenderStatus = renderStatus
+        }
     }
 
     private func resetCloudEditSessionIfIdentityChanged(to installID: String) {
