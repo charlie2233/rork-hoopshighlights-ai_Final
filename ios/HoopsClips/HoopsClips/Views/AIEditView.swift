@@ -2993,20 +2993,7 @@ struct AIEditView: View {
             return activeAIWorkPhrase(for: runningStep.stepId)
         }
 
-        switch phase {
-        case .planning:
-            return "Cloud edit is reviewing candidate clips to build a plan."
-        case .planReady:
-            return "Plan is ready. Next step: make the finished reel."
-        case .renderRequested, .created:
-            return "Sending your reel plan to cloud render."
-        case .queued:
-            return "Your reel is queued. HoopClips refreshes from live cloud status."
-        case .rendering:
-            return "HoopClips is making the finished reel."
-        case .rendered, .failed, .failedTimeout, .cancelled:
-            return nil
-        }
+        return nil
     }
 
     private func activeAIWorkPhrase(for stepID: String) -> String {
