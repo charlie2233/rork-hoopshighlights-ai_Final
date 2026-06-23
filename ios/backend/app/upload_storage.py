@@ -81,6 +81,9 @@ class UploadStorageAdapter(Protocol):
     def put_bytes(self, storage_key: str, payload: bytes, content_type: str) -> str:
         ...
 
+    def put_file(self, storage_key: str, source_path: Path, content_type: str) -> str:
+        ...
+
 
 class LocalDiskUploadStorageAdapter:
     def __init__(self, settings: Settings) -> None:
@@ -194,6 +197,15 @@ class LocalDiskUploadStorageAdapter:
         path = self._local_path(storage_key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
+        return storage_key
+
+    def put_file(self, storage_key: str, source_path: Path, content_type: str) -> str:
+        _ = content_type
+        if not source_path.exists() or source_path.stat().st_size <= 0:
+            raise APIError(500, "artifact_missing", "Post-upload artifact was not generated.")
+        target = self._local_path(storage_key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, target)
         return storage_key
 
     def _part_path(self, asset_id: str, part_number: int) -> Path:
@@ -333,6 +345,17 @@ class ObjectStorageCompatibleUploadStorageAdapter:
 
     def put_bytes(self, storage_key: str, payload: bytes, content_type: str) -> str:
         self._client().put_object(Bucket=self._bucket(), Key=storage_key, Body=payload, ContentType=content_type)
+        return storage_key
+
+    def put_file(self, storage_key: str, source_path: Path, content_type: str) -> str:
+        if not source_path.exists() or source_path.stat().st_size <= 0:
+            raise APIError(500, "artifact_missing", "Post-upload artifact was not generated.")
+        self._client().upload_file(
+            str(source_path),
+            self._bucket(),
+            storage_key,
+            ExtraArgs={"ContentType": content_type},
+        )
         return storage_key
 
     def _client(self):

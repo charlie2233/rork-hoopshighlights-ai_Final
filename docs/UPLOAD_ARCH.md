@@ -24,7 +24,7 @@ The local FastAPI backend stores assets under `HOOPS_UPLOAD_ROOT`:
 - thumbnail: `assets/{assetId}/thumbnails/preview_0001.jpg`
 - waveform: `assets/{assetId}/metadata/waveform.json`
 
-The current local post-upload job creates deterministic placeholder thumbnail/waveform metadata and copies the source to the proxy key. That keeps the lifecycle testable while preserving the backend-owned processing boundary. Real FFmpeg/ffprobe generation should replace the placeholder step before public cutover.
+The current local post-upload job attempts FFmpeg/ffprobe proxy and thumbnail generation, writes waveform metadata, and falls back to a source copy plus placeholder thumbnail when local test bytes are not valid video. That keeps the lifecycle testable while preserving the backend-owned processing boundary. Managed mode should run the same work on a durable queue before public cutover.
 
 ## AI Boundary
 

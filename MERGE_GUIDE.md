@@ -40,7 +40,7 @@ This branch adds an asset-first upload pipeline in the local FastAPI backend and
 
 ## Risk Areas
 
-- Local post-upload processing currently creates placeholder artifacts and copies source to proxy. Replace with real FFmpeg/ffprobe jobs before public cutover.
+- Local post-upload processing attempts FFmpeg/ffprobe proxy and thumbnail generation, then falls back safely for invalid local test bytes.
 - Managed mode needs a durable post-upload queue; local processing is inline for deterministic tests.
 - Worker schema is additive and maps current R2 uploads as `assetId = jobId`; public Worker responses keep `storageKey` redacted while internal provider dispatch maps `storageKey = sourceObjectKey` until a durable Worker asset table exists.
 

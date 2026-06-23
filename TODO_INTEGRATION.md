@@ -5,10 +5,10 @@
 - [x] Add local asset upload init/complete APIs.
 - [x] Add local disk and object-storage-compatible upload adapter interfaces.
 - [x] Add local multipart assemble path.
-- [x] Add `proxy_ready` asset status and placeholder proxy/thumbnail/waveform post-upload artifacts.
+- [x] Add `proxy_ready` asset status and FFmpeg-backed proxy/thumbnail/waveform post-upload artifacts with safe local fallback.
 - [x] Add asset-based analysis start gate.
 - [x] Keep legacy manual URL fallback for internal inference.
-- [ ] Replace placeholder proxy/thumbnail/waveform generation with real FFmpeg/ffprobe jobs.
+- [ ] Replace inline local post-upload processing with the durable managed queue.
 - [ ] Add durable post-upload queue for managed mode instead of inline local processing.
 
 ## UI Agent

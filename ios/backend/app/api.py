@@ -59,6 +59,7 @@ from .models import (
     now_utc,
 )
 from .pipeline import run_analysis
+from .post_upload import generate_post_upload_artifacts
 from .render_storage import RenderStorage
 from .renderers.ffmpeg_renderer import FfmpegRenderer
 from .rendering import (
@@ -270,28 +271,13 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         try:
             if not await runtime.upload_storage.object_exists(asset.storage_key):
                 raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before processing.")
-            proxy_key = f"assets/{asset.asset_id}/proxy/proxy.mp4"
-            thumbnail_key = f"assets/{asset.asset_id}/thumbnails/preview_0001.jpg"
-            waveform_key = f"assets/{asset.asset_id}/metadata/waveform.json"
-            runtime.upload_storage.copy_object(asset.storage_key, proxy_key, "video/mp4")
-            runtime.upload_storage.put_bytes(thumbnail_key, b"local thumbnail placeholder\n", "image/jpeg")
-            runtime.upload_storage.put_json(
-                waveform_key,
-                {
-                    "assetId": asset.asset_id,
-                    "storageKey": asset.storage_key,
-                    "durationSeconds": asset.duration_seconds,
-                    "sampleRate": 0,
-                    "peaks": [],
-                    "localPlaceholder": True,
-                },
-            )
+            artifacts = await generate_post_upload_artifacts(asset, resolved_settings, runtime.upload_storage)
             return await runtime.asset_store.update_asset(
                 asset_id,
                 status=AssetStatus.PROXY_READY,
-                proxy_storage_key=proxy_key,
-                thumbnail_storage_keys=[thumbnail_key],
-                waveform_storage_key=waveform_key,
+                proxy_storage_key=artifacts.proxy_storage_key,
+                thumbnail_storage_keys=[artifacts.thumbnail_storage_key],
+                waveform_storage_key=artifacts.waveform_storage_key,
                 failure_reason=None,
             )
         except APIError as error:
