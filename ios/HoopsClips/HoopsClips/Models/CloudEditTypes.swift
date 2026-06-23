@@ -1272,7 +1272,7 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case "download_url_refresh_failed":
             return "HoopClips could not refresh the download link. Try again in a moment."
         case "ai_edit_disabled":
-            return "Cloud AI editing is temporarily paused. Try again after HoopClips re-enables editing."
+            return "Cloud AI editing is temporarily paused. Your video and clips are safe; try again after HoopClips re-enables editing."
         case "ai_edit_live_render_disabled":
             return "Cloud rendering is temporarily paused. HoopClips will keep AI edits in the cloud and retry when rendering is re-enabled."
         case "ai_edit_revision_disabled":

@@ -285,6 +285,8 @@ nonisolated struct CloudAssetStatusResponse: Codable, Sendable {
     let failureReason: String?
 }
 
+typealias AssetRecord = CloudAssetStatusResponse
+
 nonisolated struct CloudAssetAnalysisJobRequest: Codable, Sendable {
     let installId: String
     let appVersion: String?
@@ -408,6 +410,14 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
 
 nonisolated struct CloudAnalysisResult: Codable, Sendable {
     let analysisJobId: String?
+    let assetId: String?
+    let assetStorageKey: String?
+    let storageKey: String?
+    let proxyStorageKey: String?
+    let assetStatus: String?
+    let uploadedBytes: Int64?
+    let fileSizeBytes: Int64?
+    let assetFailureReason: String?
     let sourceObjectKey: String?
     let assetId: String?
     let assetStorageKey: String?
@@ -424,6 +434,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
 
     init(
         analysisJobId: String? = nil,
+        assetId: String? = nil,
+        assetStorageKey: String? = nil,
+        storageKey: String? = nil,
+        proxyStorageKey: String? = nil,
+        assetStatus: String? = nil,
+        uploadedBytes: Int64? = nil,
+        fileSizeBytes: Int64? = nil,
+        assetFailureReason: String? = nil,
         sourceObjectKey: String? = nil,
         assetId: String? = nil,
         assetStorageKey: String? = nil,
@@ -439,6 +457,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         teamSelection: HighlightTeamSelection? = nil
     ) {
         self.analysisJobId = analysisJobId
+        self.assetId = assetId
+        self.assetStorageKey = assetStorageKey
+        self.storageKey = storageKey
+        self.proxyStorageKey = proxyStorageKey
+        self.assetStatus = assetStatus
+        self.uploadedBytes = uploadedBytes
+        self.fileSizeBytes = fileSizeBytes
+        self.assetFailureReason = assetFailureReason
         self.sourceObjectKey = sourceObjectKey
         self.assetId = assetId
         self.assetStorageKey = assetStorageKey
@@ -456,6 +482,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case analysisJobId
+        case assetId
+        case assetStorageKey
+        case storageKey
+        case proxyStorageKey
+        case assetStatus
+        case uploadedBytes
+        case fileSizeBytes
+        case assetFailureReason
         case sourceObjectKey
         case assetId
         case assetStorageKey
@@ -479,6 +513,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         analysisJobId = try container.decodeIfPresent(String.self, forKey: .analysisJobId)
+        assetId = try container.decodeIfPresent(String.self, forKey: .assetId)
+        assetStorageKey = try container.decodeIfPresent(String.self, forKey: .assetStorageKey)
+        storageKey = try container.decodeIfPresent(String.self, forKey: .storageKey)
+        proxyStorageKey = try container.decodeIfPresent(String.self, forKey: .proxyStorageKey)
+        assetStatus = try container.decodeIfPresent(String.self, forKey: .assetStatus)
+        uploadedBytes = try container.decodeIfPresent(Int64.self, forKey: .uploadedBytes)
+        fileSizeBytes = try container.decodeIfPresent(Int64.self, forKey: .fileSizeBytes)
+        assetFailureReason = try container.decodeIfPresent(String.self, forKey: .assetFailureReason)
         sourceObjectKey = try container.decodeIfPresent(String.self, forKey: .sourceObjectKey)
         assetId = try container.decodeIfPresent(String.self, forKey: .assetId)
         assetStorageKey = try container.decodeIfPresent(String.self, forKey: .assetStorageKey)
@@ -520,6 +562,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     func withJobMetadata(analysisJobId: String, sourceObjectKey: String?) -> CloudAnalysisResult {
         CloudAnalysisResult(
             analysisJobId: analysisJobId,
+            assetId: assetId,
+            assetStorageKey: assetStorageKey,
+            storageKey: storageKey,
+            proxyStorageKey: proxyStorageKey,
+            assetStatus: assetStatus,
+            uploadedBytes: uploadedBytes,
+            fileSizeBytes: fileSizeBytes,
+            assetFailureReason: assetFailureReason,
             sourceObjectKey: sourceObjectKey ?? self.sourceObjectKey,
             assetId: assetId,
             assetStorageKey: assetStorageKey,
@@ -673,6 +723,8 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
                 return "This video is longer than the cloud analysis limit for this environment. Trim it or raise the backend duration limit before retrying."
             case "empty_upload":
                 return "The server received an empty upload. Re-import the video from Photos or Files, stay on Wi-Fi, and retry."
+            case "upload_expired":
+                return "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
             default:
                 return message
             }
@@ -711,6 +763,8 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
             return "duration_policy"
         case "empty_upload":
             return "empty_upload"
+        case "upload_expired":
+            return "upload_expired"
         case let value where value.contains("http_"):
             return "http_status"
         default:

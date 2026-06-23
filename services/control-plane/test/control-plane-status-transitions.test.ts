@@ -82,7 +82,13 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal("callbackUrl" in harness.state.queueMessages[0], false);
   assert.equal("installId" in harness.state.queueMessages[0], false);
   assert.equal("analysisVersion" in harness.state.queueMessages[0], false);
+  assert.equal(harness.state.queueMessages[0]?.assetId, createJson.jobId);
+  assert.equal(
+    harness.state.queueMessages[0]?.storageKey,
+    createJson.sourceObjectKey,
+  );
   assert.deepEqual(Object.keys(harness.state.queueMessages[0] ?? {}).sort(), [
+    "assetId",
     "jobId",
     "kind",
     "modelVersion",
@@ -90,6 +96,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     "resultObjectKey",
     "schemaVersion",
     "sourceObjectKey",
+    "storageKey",
     "teamSelection",
     "traceId",
     "uploadTraceId",

@@ -248,6 +248,8 @@ async function handlePresign(
       processingStartedAt: null,
       attemptCount: 0,
       jobId,
+      assetId: jobId,
+      storageKey: upload.objectKey,
       traceId,
       installId: body.installId,
       filename: body.filename,
@@ -649,6 +651,21 @@ async function handleFinalizeJob(
 
     const uploadExists = await env.R2_UPLOADS.head(job.sourceObjectKey);
     if (!uploadExists) {
+      if (isOpenUploadStatus(job.status) && isUploadWindowExpired(job)) {
+        return jsonResponse(
+          {
+            requestId,
+            schemaVersion,
+            confidence: null,
+            modelVersion: job.modelVersion ?? null,
+            errorCode: "upload_expired",
+            errorMessage: "This upload expired. Start a fresh cloud analysis upload.",
+            failureReason: "This upload expired. Start a fresh cloud analysis upload."
+          },
+          { status: 410 },
+          requestId
+        );
+      }
       return jsonResponse(
         {
           requestId,
@@ -727,6 +744,8 @@ async function handleFinalizeJob(
       const queueMessage: QueueJobMessage = {
         kind: "process-job",
         jobId: uploadedSnapshot.jobId,
+        assetId: uploadedSnapshot.assetId ?? uploadedSnapshot.jobId,
+        storageKey: uploadedSnapshot.storageKey ?? uploadedSnapshot.sourceObjectKey,
         requestId,
         uploadTraceId: uploadedSnapshot.uploadTraceId ?? requestId,
         traceId: uploadedSnapshot.traceId,
@@ -979,6 +998,8 @@ async function requestInferenceTeamScan(
     });
     const payload: InferenceTeamScanRequest = {
       jobId: job.jobId,
+      assetId: job.assetId ?? job.jobId,
+      storageKey: job.storageKey ?? job.sourceObjectKey,
       requestId,
       uploadTraceId: job.uploadTraceId ?? requestId,
       traceId: job.traceId,
@@ -1208,6 +1229,21 @@ async function getUploadOwnedJob(
       requestId
     );
   }
+  if (isOpenUploadStatus(job.status) && isUploadWindowExpired(job)) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "upload_expired",
+        errorMessage: "This upload expired. Start a fresh cloud analysis upload.",
+        failureReason: "This upload expired. Start a fresh cloud analysis upload."
+      },
+      { status: 410 },
+      requestId
+    );
+  }
   if (isTerminal(job.status) || job.status === "queued" || job.status === "processing") {
     return jsonResponse(
       {
@@ -1225,6 +1261,19 @@ async function getUploadOwnedJob(
   }
 
   return job;
+}
+
+function isOpenUploadStatus(status: JobStatus): boolean {
+  return status === "created" || status === "upload_pending";
+}
+
+function isUploadWindowExpired(job: JobRecord): boolean {
+  if (!job.expiresAt) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(job.expiresAt);
+  return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
 }
 
 function normalizeTeamSelection(value: unknown): TeamSelection | null {
@@ -1510,6 +1559,8 @@ function toCloudAnalysisJobResponse(
     processingStartedAt: job.processingStartedAt ?? null,
     attemptCount: job.attemptCount ?? 0,
     jobId: job.jobId,
+    assetId: job.assetId ?? job.jobId,
+    storageKey: null,
     status: job.status,
     progress: job.progress,
     stage: job.stage,

@@ -1,6 +1,6 @@
 # HoopClips Workflow And Upload Contract
 
-This integration branch combines Agent A's asset-first upload contract with Agent B's workflow-first iOS shell. It keeps the backend/client contracts canonical and treats new UI state as projections over those contracts, not as forked payloads.
+This integration branch combines the asset-first upload pipeline, Agent A's accuracy foundations, and the workflow-first iOS shell. It keeps the backend/client contracts canonical and treats new UI state as projections over those contracts, not as forked payloads.
 
 ## Primary Workflow Sections
 
@@ -38,6 +38,27 @@ Status order:
 4. `processing`
 5. `proxy_ready`
 6. `ready` or `failed`
+
+Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse` and additive DTO fields named `assetId`, `storageKey`, and `proxyStorageKey`. During migration, legacy job fields stay valid: `jobId`, `uploadUrl`, `sourceObjectKey`, `resultObjectKey`, `sourceUrl`, and `/v1/analysis/jobs/{jobId}/start` remain supported.
+
+`AssetRecord` fields:
+
+- `assetId`
+- `installId`
+- `filename`
+- `contentType`
+- `fileSizeBytes`
+- `durationSeconds`
+- `storageKey`
+- `status`
+- `uploadMode`
+- `uploadedBytes`
+- `artifacts.proxyStorageKey`
+- `artifacts.thumbnailStorageKeys`
+- `artifacts.waveformStorageKey`
+- `createdAt`
+- `updatedAt`
+- `failureReason`
 
 ## Upload Init
 
@@ -171,6 +192,25 @@ If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When a
 - cloud edit source object key
 
 Do not persist `UploadQueueProjection` or treat it as a backend contract. If a future multi-item upload queue lands, feed its canonical DTOs through `UploadAssetQueueContract` and keep the same `UploadQueueItem` UI surface until the SwiftUI views intentionally change.
+
+## Clip Accuracy Review
+
+Canonical review feedback tags are:
+
+- `duplicate`
+- `wrong_team`
+- `bad_window`
+- `wrong_label`
+- `low_quality`
+
+These tags must persist from iOS review edits through backend edit DTOs, Worker admin clip review updates, and evaluation fixtures.
+
+Benchmark metrics use stable camel-case names:
+
+- `recallAtK`
+- `precisionAtK`
+- `boundaryErrorSeconds`
+- `duplicateRate`
 
 ## AI Edit Handoff
 

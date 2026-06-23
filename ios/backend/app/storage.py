@@ -44,7 +44,7 @@ class LocalStorageProvider:
         )
 
     def accept_local_upload(self, job: StoredJob, payload: bytes) -> str:
-        target_path = self._settings.upload_root / job.object_key
+        target_path = self._settings.upload_root / (job.storage_key or job.object_key)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(payload)
         return str(target_path)
@@ -77,7 +77,7 @@ class LocalStorageProvider:
         if job.storage_path:
             return Path(job.storage_path)
 
-        fallback = self._settings.upload_root / job.object_key
+        fallback = self._settings.upload_root / (job.storage_key or job.object_key)
         if fallback.exists():
             return fallback
         return None
@@ -126,13 +126,13 @@ class GCSStorageProvider:
 
     def cleanup(self, job: StoredJob) -> None:
         try:
-            blob = self._bucket.blob(job.object_key)
+            blob = self._bucket.blob(job.storage_key or job.object_key)
             blob.delete()
         except Exception:
             pass
 
     def _object_exists_sync(self, job: StoredJob) -> bool:
-        blob = self._bucket.get_blob(job.object_key)
+        blob = self._bucket.get_blob(job.storage_key or job.object_key)
         if blob is None:
             return False
         if blob.size is None or int(blob.size) <= 0:
@@ -142,7 +142,7 @@ class GCSStorageProvider:
         return True
 
     def _materialize_source_sync(self, job: StoredJob) -> MaterializedSource:
-        blob = self._bucket.get_blob(job.object_key)
+        blob = self._bucket.get_blob(job.storage_key or job.object_key)
         if blob is None or blob.size is None or int(blob.size) <= 0:
             raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before starting analysis.")
         if blob.content_type and job.content_type and blob.content_type != job.content_type:

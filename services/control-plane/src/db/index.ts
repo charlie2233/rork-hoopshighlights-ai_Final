@@ -230,6 +230,7 @@ function isSensitiveEventPayloadKey(key: string): boolean {
   const normalized = key.toLowerCase();
   return (
     normalized.includes("objectkey") ||
+    normalized === "storagekey" ||
     normalized === "uploadurl" ||
     normalized === "downloadurl" ||
     normalized === "sourceurl" ||
@@ -303,13 +304,14 @@ export async function upsertClipReview(
     .prepare(
       `INSERT INTO clip_reviews (
         clip_id, job_id, clip_index, label, action, review_state, reviewer_notes,
-        promoted_to_training_set, model_version, failure_reason, created_at, updated_at
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        review_feedback_tags_json, promoted_to_training_set, model_version, failure_reason, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
       ON CONFLICT(clip_id) DO UPDATE SET
         label=excluded.label,
         action=excluded.action,
         review_state=excluded.review_state,
         reviewer_notes=excluded.reviewer_notes,
+        review_feedback_tags_json=excluded.review_feedback_tags_json,
         promoted_to_training_set=excluded.promoted_to_training_set,
         model_version=excluded.model_version,
         failure_reason=excluded.failure_reason,
@@ -323,6 +325,7 @@ export async function upsertClipReview(
       update.action ?? null,
       update.reviewState ?? "unreviewed",
       update.reviewerNotes ?? null,
+      JSON.stringify(update.reviewFeedbackTags ?? []),
       update.promotedToTrainingSet ? 1 : 0,
       modelVersion ?? null,
       failureReason ?? null,

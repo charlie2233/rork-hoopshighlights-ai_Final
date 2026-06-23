@@ -1264,7 +1264,7 @@ struct VideoPlayerView: View {
             return "HoopClips closed during upload/background work. Your upload proof is saved, and reopening refreshes progress."
         }
         if lowercased.contains("review") || lowercased.contains("no_reviewable_clips") {
-            return "Review was blocked because clips were not ready yet. Re-run analysis or wait for Review ready before switching."
+            return "Review was safely blocked because clips were not ready yet. Stay on Player while analysis finishes, then open Review."
         }
         return "The last session ended before a normal close. HoopClips saved a clean note so we can see the last screen and step."
     }
@@ -1491,14 +1491,20 @@ struct VideoPlayerView: View {
                 analysisProgressView
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
-                analysisSmokeProofPrompt
             } else {
-                if let pendingUploadResumePromptText {
+                if let uploadExpiredFreshUploadPromptText {
+                    uploadExpiredFreshUploadPrompt(uploadExpiredFreshUploadPromptText)
+                } else if let pendingUploadResumePromptText {
                     pendingUploadResumePrompt(pendingUploadResumePromptText)
+                } else if let staleUploadResumePromptText {
+                    staleUploadResumePrompt(staleUploadResumePromptText)
+                } else if let missingUploadSourcePromptText {
+                    missingUploadSourcePrompt(missingUploadSourcePromptText)
                 } else if let failedUploadProofPromptText {
                     failedUploadProofPrompt(failedUploadProofPromptText)
                 }
-                if let analysisStartRecoveryContent {
+                if uploadExpiredFreshUploadPromptText == nil,
+                   let analysisStartRecoveryContent {
                     analysisStartRecoveryCard(analysisStartRecoveryContent)
                 }
 
@@ -2161,10 +2167,6 @@ struct VideoPlayerView: View {
                 backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
             }
 
-            if shouldShowSlowUploadProofTools {
-                backgroundUploadDiagnosticsTray
-            }
-
             if analysisBackgroundUploadBadgeText != nil,
                analysisBackgroundUploadStillRunningText == nil,
                let analysisRecoveredUploadProofPromptText {
@@ -2222,28 +2224,6 @@ struct VideoPlayerView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("analysis.liveUploadProgressStrip")
-    }
-
-    private var analysisSmokeProofPrompt: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Proof", systemImage: "checkmark.seal.fill")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(AppTheme.successGreen)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-
-            backgroundUploadProofActionButtons
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.successGreen.opacity(0.10), in: .rect(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(AppTheme.successGreen.opacity(0.24), lineWidth: 1)
-        }
-        .accessibilityIdentifier("analysis.smokeProofPrompt")
     }
 
     private var analysisProgressHeader: some View {
@@ -2759,7 +2739,7 @@ struct VideoPlayerView: View {
     private var backgroundUploadDiagnosticsTray: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Safe to switch apps. Reopen HoopClips for live progress; send proof only if upload feels stuck.")
+                Text("Safe to switch apps. Reopen HoopClips anytime for live progress. If progress stops updating, send diagnostics so we can help.")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
@@ -2841,8 +2821,6 @@ struct VideoPlayerView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            backgroundUploadDiagnosticsTray
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
@@ -2929,6 +2907,69 @@ struct VideoPlayerView: View {
                 .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
         }
         .accessibilityIdentifier("analysis.pendingUploadResumePrompt")
+    }
+
+    private func missingUploadSourcePrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "externaldrive.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.missingUploadSourcePrompt")
+    }
+
+    private func staleUploadResumePrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.staleUploadResumePrompt")
+    }
+
+    private func uploadExpiredFreshUploadPrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.uploadExpiredFreshUploadPrompt")
     }
 
     private func analysisStartRecoveryCard(_ content: AnalysisStartRecoveryContent) -> some View {
@@ -3067,6 +3108,24 @@ struct VideoPlayerView: View {
         return "Upload did not finish. Send proof so we can see the safe failure reason before retrying."
     }
 
+    private var uploadExpiredFreshUploadPromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary().lowercased()
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [summary, status, latestProof, recentProof].joined(separator: " ")
+        guard combined.contains("upload_expired") || combined.contains("uploadexpired=true") else {
+            return nil
+        }
+
+        return "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
+    }
+
     private var pendingUploadResumePromptText: String? {
         guard !viewModel.analysisService.isAnalyzing,
               viewModel.clips.isEmpty else {
@@ -3075,7 +3134,7 @@ struct VideoPlayerView: View {
 
         let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         guard summary.contains("pending=true"),
-              summary.contains("source=available") else {
+              summary.contains("resumeSafe=true") else {
             return nil
         }
 
@@ -3094,6 +3153,41 @@ struct VideoPlayerView: View {
             return "Saved upload ready: \(progressSummary). The main button resumes instead of restarting."
         }
         return "Saved upload ready. The main button resumes instead of restarting."
+    }
+
+    private var staleUploadResumePromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        let isStale = summary.contains("staleWithoutActiveSession=true") || summary.contains("uploadExpired=true")
+        guard summary.contains("pending=true"),
+              summary.contains("source=available") || summary.contains("uploadExpired=true"),
+              isStale else {
+            return nil
+        }
+
+        if summary.contains("uploadExpired=true") {
+            return "Previous upload expired. Tap AI Analysis to start a fresh cloud upload."
+        }
+        return "Previous upload stopped updating. Tap AI Analysis to start a fresh cloud upload."
+    }
+
+    private var missingUploadSourcePromptText: String? {
+        guard !viewModel.analysisService.isAnalyzing,
+              viewModel.clips.isEmpty else {
+            return nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        guard summary.contains("pending=true"),
+              summary.contains("source=missing") else {
+            return nil
+        }
+
+        return "Saved upload cannot resume because the original video is missing. Re-import the video to upload again."
     }
 
     private var hasPendingUploadResume: Bool {
@@ -3126,7 +3220,7 @@ struct VideoPlayerView: View {
         }
 
         if combined.contains("source_still_uploading") || combined.contains("pending") {
-            return "Upload is still running in the background. Send proof so we can confirm the handoff."
+            return "Upload is still running in the background. Send diagnostics if progress does not change so we can help."
         }
         return "Upload recovered after app switch. Send proof so we can confirm resume worked."
     }
@@ -3228,6 +3322,9 @@ struct VideoPlayerView: View {
             "cloudAnalysisEndpoint=\(cloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
             "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "uploadSummary=\(safeUploadProofValue(backgroundUploadProofSummaryText))",
+            "terminalUploadError=\(safeUploadProofValue(terminalUploadErrorProofValue))",
+            "terminalUploadHTTPStatus=\(safeUploadProofValue(terminalUploadHTTPStatusProofValue))",
+            "terminalUploadNextAction=\(safeUploadProofValue(terminalUploadNextActionProofValue))",
             "videoFileSize=\(safeUploadProofValue(currentVideoFileSizeProofText))",
             "safeToSwitchApps=true",
             "switchAppGuidance=safe_to_switch_apps_reopen_for_live_progress",
@@ -3257,6 +3354,27 @@ struct VideoPlayerView: View {
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
+    }
+
+    private var terminalUploadErrorProofValue: String {
+        uploadExpiredSignalPresent ? "upload_expired" : "none"
+    }
+
+    private var terminalUploadHTTPStatusProofValue: String {
+        uploadExpiredSignalPresent ? "410" : "none"
+    }
+
+    private var terminalUploadNextActionProofValue: String {
+        uploadExpiredSignalPresent ? "start_fresh_upload" : "none"
+    }
+
+    private var uploadExpiredSignalPresent: Bool {
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary().lowercased()
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [summary, status, latestProof, recentProof].joined(separator: " ")
+        return combined.contains("upload_expired") || combined.contains("uploadexpired=true")
     }
 
     private var backgroundUploadProofSummaryText: String {

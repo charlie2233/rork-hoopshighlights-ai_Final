@@ -68,7 +68,7 @@ struct ExportView: View {
                     }
                 }
             }
-            .navigationTitle("Export")
+            .navigationTitle("Make Reel")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -166,25 +166,12 @@ struct ExportView: View {
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             RorkSectionHeader(
-                title: "Make your reel",
+                title: "Make Reel",
                 icon: "sparkles.tv.fill",
                 subtitle: viewModel.keptClips.isEmpty
-                    ? "Pick a style below. HoopClips will choose the best moments."
-                    : "Your kept clips stay in. Pick a style and let HoopClips cut it."
+                    ? "Pick a vibe. HoopClips finds the moments."
+                    : "Your kept clips stay in. HoopClips handles the cut."
             )
-
-            HStack(spacing: 10) {
-                exportContextPill(
-                    icon: viewModel.keptClips.isEmpty ? "wand.and.stars" : "checkmark.seal.fill",
-                    title: summaryPrimaryValue,
-                    subtitle: summaryPrimaryLabel
-                )
-                exportContextPill(
-                    icon: viewModel.keptClips.isEmpty ? "sparkles" : "timer",
-                    title: summarySecondaryValue,
-                    subtitle: summarySecondaryLabel
-                )
-            }
 
             if !AppConstants.requiresCloudVideoPipeline && hasLockedSelections {
                 HStack(spacing: 8) {
@@ -207,12 +194,6 @@ struct ExportView: View {
                         .stroke(AppTheme.warningYellow.opacity(0.18), lineWidth: 1)
                 )
             }
-
-            Text(viewModel.keptClips.isEmpty ? "No extra setup needed: describe the vibe once and AI Edit builds from the candidate pool." : "Need a different feel? The style cards below can still reshape the final reel.")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.subtleText)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
@@ -1417,6 +1398,6 @@ struct ExportView: View {
 }
 
 nonisolated enum ExportReelCopy {
-    static let previewMissingMessage = "Make the reel with AI Edit to preview."
-    static let previewShareMissingMessage = "Make the reel with AI Edit before sharing."
+    static let previewMissingMessage = "Saved reel missing. Run AI Edit to preview."
+    static let previewShareMissingMessage = "Saved reel missing. Run AI Edit before sharing."
 }

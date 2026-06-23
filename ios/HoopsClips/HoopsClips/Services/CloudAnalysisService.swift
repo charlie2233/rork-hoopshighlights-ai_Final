@@ -174,8 +174,13 @@ struct CloudAnalysisService {
         let activeSessions = manifest.activeSessionIdentifiers.count
         let ageSeconds = max(0, Int(Date().timeIntervalSince(manifest.updatedAt).rounded(.down)))
         let staleWithoutActiveSession = !uploadComplete && activeSessions == 0 && ageSeconds >= 300
+        let uploadExpired = manifest.uploadExpiresAt.map { $0 <= Date().addingTimeInterval(60) } ?? false
+        let resumeSafe = (sourceAvailability == "available" || uploadComplete) && !uploadExpired && !staleWithoutActiveSession
+        let expiresAt = manifest.uploadExpiresAt.map { ISO8601DateFormatter().string(from: $0) } ?? "none"
         let nextAction: String
-        if activeSessions > 0 {
+        if uploadExpired {
+            nextAction = "fresh_upload_required"
+        } else if activeSessions > 0 {
             nextAction = "wait_for_background_session"
         } else if uploadComplete, manifest.assetID != nil {
             nextAction = "complete_asset_upload"
@@ -198,6 +203,9 @@ struct CloudAnalysisService {
             "nextAction=\(nextAction)",
             "ageSeconds=\(ageSeconds)",
             "staleWithoutActiveSession=\(staleWithoutActiveSession)",
+            "uploadExpired=\(uploadExpired)",
+            "resumeSafe=\(resumeSafe)",
+            "expiresAt=\(expiresAt)",
             "source=\(sourceAvailability)",
             "updatedAt=\(ISO8601DateFormatter().string(from: manifest.updatedAt))"
         ].joined(separator: " ")
@@ -1076,6 +1084,15 @@ struct CloudAnalysisService {
               manifest.totalFileSizeBytes > 0 else {
             await CloudUploadResumeStore.shared.clearAnyManifest(reason: "invalid_manifest")
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_invalid")
+            return nil
+        }
+        if let uploadExpiresAt = manifest.uploadExpiresAt,
+           uploadExpiresAt <= Date().addingTimeInterval(60) {
+            await CloudUploadResumeStore.shared.clearAnyManifest(reason: "upload_expired")
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_upload_expired",
+                metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count)/\(manifest.partCount)"
+            )
             return nil
         }
         guard let baseURL = configuredBaseURL() else {
@@ -2356,7 +2373,8 @@ struct CloudAnalysisService {
             purpose: purpose,
             chunkSizeBytes: Int(max(fileSizeBytes, 1)),
             partCount: 1,
-            totalFileSizeBytes: max(fileSizeBytes, 1)
+            totalFileSizeBytes: max(fileSizeBytes, 1),
+            uploadExpiresAt: job.expiresAt
         )
         await CloudUploadResumeStore.shared.recordSession(
             jobID: job.jobId,
@@ -2525,7 +2543,8 @@ struct CloudAnalysisService {
             purpose: purpose,
             chunkSizeBytes: safeChunkSize,
             partCount: resumableUpload.partCount,
-            totalFileSizeBytes: totalBytes
+            totalFileSizeBytes: totalBytes,
+            uploadExpiresAt: resumableUpload.expiresAt
         )
         var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
         let initialCompletedBytes = Self.completedUploadBytes(
@@ -3408,6 +3427,13 @@ struct CloudAnalysisService {
             if http.statusCode == 429 {
                 throw CloudAnalysisError.quotaExceeded(apiError?.quotaRemainingToday)
             }
+            if http.statusCode == 410,
+               apiError?.errorCode == "upload_expired" {
+                throw CloudAnalysisError.backend(
+                    code: "upload_expired",
+                    message: "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
+                )
+            }
             throw CloudAnalysisError.backend(
                 code: apiError?.errorCode ?? "http_\(http.statusCode)",
                 message: Self.safeBackendMessage(apiError?.errorMessage ?? "", fallback: "Analysis request failed.")
@@ -3891,6 +3917,7 @@ nonisolated private struct CloudUploadResumeManifest: Codable, Sendable {
     var totalFileSizeBytes: Int64
     var completedParts: [CloudMultipartCompletedPart]
     var activeSessionIdentifiers: [String]
+    var uploadExpiresAt: Date?
     var createdAt: Date
     var updatedAt: Date
 }
@@ -3920,7 +3947,8 @@ private actor CloudUploadResumeStore {
         totalFileSizeBytes: Int64,
         assetID: String? = nil,
         storageKey: String? = nil,
-        assetMultipartParts: [CloudAssetUploadTarget]? = nil
+        assetMultipartParts: [CloudAssetUploadTarget]? = nil,
+        uploadExpiresAt: Date? = nil
     ) -> [CloudMultipartCompletedPart] {
         var manifest = loadManifest()
         if manifest?.jobID != jobID || manifest?.uploadID != uploadID {
@@ -3941,6 +3969,7 @@ private actor CloudUploadResumeStore {
                 totalFileSizeBytes: totalFileSizeBytes,
                 completedParts: [],
                 activeSessionIdentifiers: [],
+                uploadExpiresAt: uploadExpiresAt,
                 createdAt: Date(),
                 updatedAt: Date()
             )
@@ -3954,6 +3983,9 @@ private actor CloudUploadResumeStore {
         }
         if let assetMultipartParts {
             manifest?.assetMultipartParts = assetMultipartParts
+        }
+        if let uploadExpiresAt {
+            manifest?.uploadExpiresAt = uploadExpiresAt
         }
         manifest?.updatedAt = Date()
         saveManifest(manifest)

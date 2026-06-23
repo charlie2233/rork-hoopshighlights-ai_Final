@@ -414,6 +414,8 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         result_confidence = _result_confidence(result) if result is not None else 0.0
         return {
             "jobId": request.jobId,
+            "assetId": request.assetId,
+            "storageKey": request.storageKey or request.sourceObjectKey,
             "requestId": request.requestId,
             "status": status,
             "stage": stage,

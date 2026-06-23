@@ -151,14 +151,10 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
-                            if shouldShowReviewSmokeProofShortcut {
-                                reviewSmokeProofShortcut
-                            }
                             reviewCarousel
                             aiEditEntryCard
                             filterBar
                             priorityReviewCard
-                            reviewContextStrip
                             quickActionsBar
                         }
                         .padding(.horizontal, 16)
@@ -191,11 +187,9 @@ struct ReviewView: View {
                 }
             }
             .onAppear {
-                focusPriorityReviewIfNeeded()
                 settleFocusedClipIfNeeded()
             }
             .onChange(of: priorityReviewClips.map(\.id)) { _, _ in
-                focusPriorityReviewIfNeeded()
                 settleFocusedClipIfNeeded()
             }
             .onChange(of: filteredClips.map(\.id)) { _, _ in
@@ -433,14 +427,10 @@ struct ReviewView: View {
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.white.opacity(0.88))
                     Spacer(minLength: 8)
-                    if let eta = reviewWaitingCompactETA {
-                        Text(eta)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(1)
-                    }
                 }
             }
+
+            reviewWaitingFactsView
 
             if let waitingHint = reviewWaitingHint {
                 Label(waitingHint, systemImage: "iphone.and.arrow.forward")
@@ -654,7 +644,9 @@ struct ReviewView: View {
             )
         }
 
-        if let reminder = CloudAnalysisProgressCopy.backgroundReminder(
+        let hasUploadFact = facts.contains { $0.id == "upload" }
+        if !hasUploadFact,
+           let reminder = CloudAnalysisProgressCopy.backgroundReminder(
             statusMessage: reviewEmptyStateRawStatus,
             analysisMode: viewModel.analysisMode
         ) {
@@ -1012,7 +1004,7 @@ struct ReviewView: View {
                 if expandedClipID == clip.id {
                     VStack(alignment: .leading, spacing: 12) {
                         clipScoreBreakdown(clip: clip, includeDivider: false)
-                        clipEvidenceRows(clip: clip, maxRows: 3)
+                        clipEvidenceRows(clip: clip, maxRows: 1)
                     }
                     .padding(12)
                     .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 14))
@@ -1801,7 +1793,7 @@ struct ReviewView: View {
     }
 
     private var primaryFilterOptions: Set<FilterOption> {
-        [.all, .priority, .selectedTeam]
+        [.all, .needsReview, .kept]
     }
 
     private func shouldShowFilter(_ option: FilterOption) -> Bool {
@@ -1834,7 +1826,9 @@ struct ReviewView: View {
 
     @ViewBuilder
     private var priorityReviewCard: some View {
-        if !priorityReviewClips.isEmpty {
+        if !priorityReviewClips.isEmpty,
+           filterOption != priorityReviewFilter,
+           !visibleFilterOptions.contains(.priority) {
             Button {
                 HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                     filterOption = priorityReviewFilter
@@ -1853,12 +1847,6 @@ struct ReviewView: View {
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.86)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(viewModel.priorityReviewSummary ?? "Team calls, blocks, steals, sound cues, and unclear outcomes.")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                            .minimumScaleFactor(0.84)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .layoutPriority(1)
@@ -1931,39 +1919,42 @@ struct ReviewView: View {
         ]
     }
 
+    @ViewBuilder
     private var quickActionsBar: some View {
-        LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
-            reviewQuickActionButton(
-                title: "Keep Strong",
-                subtitle: highConfidencePendingSubtitle,
-                icon: "checkmark.seal.fill",
-                tint: AppTheme.successGreen,
-                isDisabled: highConfidencePendingCount == 0
-            ) {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                    viewModel.keepHighConfidenceClips()
+        if highConfidencePendingCount > 0 || lowConfidenceKeptCount > 0 {
+            LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
+                reviewQuickActionButton(
+                    title: "Keep Strong",
+                    subtitle: highConfidencePendingSubtitle,
+                    icon: "checkmark.seal.fill",
+                    tint: AppTheme.successGreen,
+                    isDisabled: highConfidencePendingCount == 0
+                ) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        viewModel.keepHighConfidenceClips()
+                    }
                 }
-            }
 
-            reviewQuickActionButton(
-                title: "Skip Weak",
-                subtitle: lowConfidenceKeptSubtitle,
-                icon: "xmark.seal.fill",
-                tint: AppTheme.dangerRed,
-                isDisabled: lowConfidenceKeptCount == 0
-            ) {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                    viewModel.discardLowConfidenceClips()
+                reviewQuickActionButton(
+                    title: "Skip Weak",
+                    subtitle: lowConfidenceKeptSubtitle,
+                    icon: "xmark.seal.fill",
+                    tint: AppTheme.dangerRed,
+                    isDisabled: lowConfidenceKeptCount == 0
+                ) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        viewModel.discardLowConfidenceClips()
+                    }
                 }
             }
+            .padding(10)
+            .rorkCard(
+                cornerRadius: 14,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+                stroke: AppTheme.softBorder,
+                glowOpacity: 0.04
+            )
         }
-        .padding(10)
-        .rorkCard(
-            cornerRadius: 14,
-            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
-            stroke: AppTheme.softBorder,
-            glowOpacity: 0.04
-        )
     }
 
     private var reviewActionGridColumns: [GridItem] {
@@ -2032,15 +2023,6 @@ struct ReviewView: View {
 
         withAnimation(tabTransitionAnimation) {
             selectedTab = 2
-        }
-    }
-
-    private func focusPriorityReviewIfNeeded() {
-        guard !hasAutoFocusedPriorityFilter else { return }
-        guard filterOption == .all, !priorityReviewClips.isEmpty else { return }
-        hasAutoFocusedPriorityFilter = true
-        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-            filterOption = .priority
         }
     }
 
@@ -2149,15 +2131,15 @@ struct ReviewView: View {
         }
         .accessibilityLabel(showAllFilterChips ? "Show fewer review filters" : "Show more review filters")
         .accessibilityValue(showAllFilterChips ? "All filters visible" : "\(hiddenFilterOptions.count) filters hidden")
-        .accessibilityHint("Shows or hides extra filters like defense, blocks, steals, sound, kept, and skipped.")
+        .accessibilityHint("Shows or hides extra filters like team, defense, sound, and skipped.")
     }
 
     private func filterChipLabel(title: String, isSelected: Bool, icon: String?) -> some View {
         Label {
             Text(title)
                 .font(.subheadline.weight(.medium))
-                .lineLimit(2)
-                .minimumScaleFactor(0.84)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
@@ -2269,7 +2251,7 @@ struct ReviewView: View {
         case .sound:
             return "Sound \(clipCount(for: option))"
         case .needsReview:
-            return "Check \(viewModel.needsReviewClips.count)"
+            return "Review \(viewModel.needsReviewClips.count)"
         case .kept:
             return "Kept \(viewModel.keptClips.count)"
         case .discarded:
@@ -2325,7 +2307,7 @@ struct ReviewView: View {
             if expandedClipID == clip.id {
                 VStack(spacing: 12) {
                     Divider().overlay(AppTheme.accentPurple.opacity(0.2))
-                    clipEvidenceRows(clip: clip, maxRows: 4)
+                    clipEvidenceRows(clip: clip, maxRows: 1)
                     clipScoreBreakdown(clip: clip, includeDivider: false)
                 }
                     .padding(.horizontal, 12)
