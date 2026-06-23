@@ -107,6 +107,12 @@ class AccuracyMetrics:
     caseCount: int
     clipCount: int
     allTeamsCaseCount: int
+    topK: int
+    recallAtK: float
+    precisionAtK: float
+    boundaryErrorSeconds: float
+    boundaryErrorClipCount: int
+    duplicateRate: float
     selectedTeamPrecision: float
     selectedTeamEvidenceQuality: float
     selectedTeamRecallWithUncertain: float
@@ -134,6 +140,8 @@ class AccuracyMetrics:
     duplicateFeedbackCount: int
     wrongTeamFeedbackCount: int
     badWindowFeedbackCount: int
+    wrongLabelFeedbackCount: int
+    lowQualityFeedbackCount: int
     selectedTeamEvidenceClipCount: int
     badSelectedTeamEvidenceCount: int
 
@@ -256,6 +264,12 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             caseCount=0,
             clipCount=0,
             allTeamsCaseCount=0,
+            topK=resolve_top_k(payload),
+            recallAtK=0.0,
+            precisionAtK=0.0,
+            boundaryErrorSeconds=0.0,
+            boundaryErrorClipCount=0,
+            duplicateRate=0.0,
             selectedTeamPrecision=0.0,
             selectedTeamEvidenceQuality=0.0,
             selectedTeamRecallWithUncertain=0.0,
@@ -283,6 +297,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             duplicateFeedbackCount=0,
             wrongTeamFeedbackCount=0,
             badWindowFeedbackCount=0,
+            wrongLabelFeedbackCount=0,
+            lowQualityFeedbackCount=0,
             selectedTeamEvidenceClipCount=0,
             badSelectedTeamEvidenceCount=0,
         )
@@ -320,7 +336,16 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         "duplicate_feedback": 0,
         "wrong_team_feedback": 0,
         "bad_window_feedback": 0,
+        "wrong_label_feedback": 0,
+        "low_quality_feedback": 0,
+        "topk_predictions": 0,
+        "topk_correct_predictions": 0,
+        "topk_highlights": 0,
+        "boundary_error_total": 0.0,
+        "boundary_error_clips": 0,
+        "duplicate_group_repeats": 0,
     }
+    top_k = resolve_top_k(payload)
 
     for case in cases:
         team_mode = team_mode_for_case(case)
@@ -328,12 +353,17 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             counts["all_teams_cases"] += 1
         selected_team_id = None if team_mode == "all" else string_or_none(case.get("selectedTeamId") or case.get("teamId"))
         confidence_threshold = number_or_default(case.get("confidenceThreshold"), 0.85)
+        case_clips: list[dict[str, dict[str, Any]]] = []
         for raw_clip in ensure_list(case.get("clips")):
             if not isinstance(raw_clip, dict):
                 continue
             clip = normalize_clip(raw_clip)
             if clip is None:
                 continue
+            case_clips.append(clip)
+
+        seen_duplicate_groups: set[str] = set()
+        for clip in case_clips:
             counts["clips"] += 1
 
             expected_team_id = string_or_none(clip["expected"].get("teamId"))
@@ -348,8 +378,18 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                 counts["wrong_team_feedback"] += 1
             if "bad_window" in review_feedback_tags:
                 counts["bad_window_feedback"] += 1
+            if "wrong_label" in review_feedback_tags:
+                counts["wrong_label_feedback"] += 1
+            if "low_quality" in review_feedback_tags:
+                counts["low_quality_feedback"] += 1
             keep = bool(prediction.get("keep"))
             include_for_review = bool(prediction.get("includeForReview") or keep)
+            duplicate_group = string_or_none(prediction.get("duplicateGroup"))
+            if include_for_review and duplicate_group:
+                if duplicate_group in seen_duplicate_groups:
+                    counts["duplicate_group_repeats"] += 1
+                else:
+                    seen_duplicate_groups.add(duplicate_group)
             predicted_team_id = string_or_none(prediction.get("teamId"))
             predicted_confidence = number_or_default(prediction.get("teamConfidence"), 0.0)
             status = str(prediction.get("teamAttributionStatus") or "").strip().lower()
@@ -397,6 +437,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                 counts["timing_quality_clips"] += 1
                 if clip_timing_is_valid(prediction, event_type):
                     counts["good_timing_quality_clips"] += 1
+                boundary_error = boundary_error_seconds(clip)
+                if boundary_error is not None and in_scope_highlight:
+                    counts["boundary_error_total"] += boundary_error
+                    counts["boundary_error_clips"] += 1
                 if in_scope_highlight and expected_shot_outcome is not None:
                     counts["shot_outcome_evidence_clips"] += 1
                     valid_shot_outcome_evidence = shot_outcome_evidence_is_valid(prediction, expected_shot_outcome)
@@ -436,10 +480,30 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                 if include_for_review and (team_mode == "all" or confident_selected or uncertain_review):
                     counts["kept_defensive_events"] += 1
 
+        ranked_predictions = sorted(
+            [clip for clip in case_clips if bool(clip["prediction"].get("includeForReview") or clip["prediction"].get("keep"))],
+            key=prediction_rank_key,
+        )
+        top_predictions = ranked_predictions[:top_k]
+        counts["topk_predictions"] += len(top_predictions)
+        counts["topk_correct_predictions"] += sum(
+            1 for clip in top_predictions if is_in_scope_highlight(clip, selected_team_id)
+        )
+        counts["topk_highlights"] += sum(1 for clip in case_clips if is_in_scope_highlight(clip, selected_team_id))
+
     metrics = AccuracyMetrics(
         caseCount=len(cases),
         clipCount=counts["clips"],
         allTeamsCaseCount=counts["all_teams_cases"],
+        topK=top_k,
+        recallAtK=ratio(counts["topk_correct_predictions"], counts["topk_highlights"]),
+        precisionAtK=ratio(counts["topk_correct_predictions"], counts["topk_predictions"]),
+        boundaryErrorSeconds=ratio(counts["boundary_error_total"], counts["boundary_error_clips"]),
+        boundaryErrorClipCount=counts["boundary_error_clips"],
+        duplicateRate=ratio(
+            counts["duplicate_feedback"] + counts["duplicate_group_repeats"],
+            counts["kept_predictions"],
+        ),
         selectedTeamPrecision=ratio(
             counts["correct_confident_selected_predictions"],
             counts["confident_selected_predictions"],
@@ -481,6 +545,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         duplicateFeedbackCount=counts["duplicate_feedback"],
         wrongTeamFeedbackCount=counts["wrong_team_feedback"],
         badWindowFeedbackCount=counts["bad_window_feedback"],
+        wrongLabelFeedbackCount=counts["wrong_label_feedback"],
+        lowQualityFeedbackCount=counts["low_quality_feedback"],
         selectedTeamEvidenceClipCount=counts["selected_team_evidence_predictions"],
         badSelectedTeamEvidenceCount=(
             counts["selected_team_evidence_predictions"] - counts["good_selected_team_evidence_predictions"]
@@ -511,6 +577,50 @@ def normalize_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
             }
         ]
     return []
+
+
+def resolve_top_k(payload: dict[str, Any]) -> int:
+    raw_value = payload.get("evaluationK", payload.get("topK", 5))
+    value = number_or_none(raw_value)
+    if value is None:
+        return 5
+    return max(1, min(int(value), 50))
+
+
+def prediction_rank_key(clip: dict[str, dict[str, Any]]) -> tuple[int, float]:
+    prediction = clip["prediction"]
+    rank = number_or_none(prediction.get("rank"))
+    if rank is not None:
+        return (0, rank)
+    for field in ("rankScore", "combinedScore", "confidence"):
+        score = number_or_none(prediction.get(field))
+        if score is not None:
+            return (1, -score)
+    return (2, 0.0)
+
+
+def is_in_scope_highlight(clip: dict[str, dict[str, Any]], selected_team_id: str | None) -> bool:
+    expected = clip["expected"]
+    if not bool(expected.get("isHighlight")):
+        return False
+    expected_team_id = string_or_none(expected.get("teamId"))
+    return selected_team_id is None or expected_team_id == selected_team_id
+
+
+def boundary_error_seconds(clip: dict[str, dict[str, Any]]) -> float | None:
+    expected = clip["expected"]
+    prediction = clip["prediction"]
+    expected_start = number_or_none(expected.get("start"))
+    expected_end = number_or_none(expected.get("end"))
+    predicted_start = number_or_none(prediction.get("start"))
+    predicted_end = number_or_none(prediction.get("end"))
+    if None in {expected_start, expected_end, predicted_start, predicted_end}:
+        return None
+    assert expected_start is not None
+    assert expected_end is not None
+    assert predicted_start is not None
+    assert predicted_end is not None
+    return round((abs(predicted_start - expected_start) + abs(predicted_end - expected_end)) / 2.0, 4)
 
 
 def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> AccuracyEvidenceSummary:
@@ -663,6 +773,8 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "isHighlight": bool(expected.get("isHighlight") if "isHighlight" in expected else expected.get("groundTruthHighlight")),
         "eventType": expected.get("eventType") or expected.get("basketballEvent") or expected.get("label"),
         "outcome": expected.get("outcome") or expected.get("shotOutcome") or expected.get("result"),
+        "start": number_or_none(expected.get("start", raw_clip.get("expectedStart", raw_clip.get("groundTruthStart")))),
+        "end": number_or_none(expected.get("end", raw_clip.get("expectedEnd", raw_clip.get("groundTruthEnd")))),
     }
     native_shot_signals = prediction.get("nativeShotSignals")
     if not isinstance(native_shot_signals, dict):
@@ -696,6 +808,11 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "end": number_or_none(prediction.get("end", raw_clip.get("end"))),
         "duration": number_or_none(prediction.get("duration", prediction.get("durationSeconds", raw_clip.get("duration", raw_clip.get("durationSeconds"))))),
         "eventCenter": number_or_none(prediction.get("eventCenter", raw_clip.get("eventCenter"))),
+        "rank": number_or_none(prediction.get("rank", raw_clip.get("rank"))),
+        "rankScore": number_or_none(prediction.get("rankScore", prediction.get("combinedScore", raw_clip.get("rankScore")))),
+        "combinedScore": number_or_none(prediction.get("combinedScore", raw_clip.get("combinedScore"))),
+        "confidence": number_or_none(prediction.get("confidence", raw_clip.get("confidence"))),
+        "duplicateGroup": string_or_none(prediction.get("duplicateGroup", raw_clip.get("duplicateGroup"))),
         "nativeShotTimingWindowOk": native_timing_window_ok(prediction),
         "outcome": prediction.get("outcome") or prediction.get("basketballOutcome") or native_shot_signals.get("outcome"),
         "outcomeEvidenceSource": prediction.get("outcomeEvidenceSource") or native_shot_signals.get("outcomeEvidenceSource"),
@@ -956,7 +1073,7 @@ def print_text_report(report: AccuracyReport) -> None:
             print(f"- {failure}")
 
 
-def ratio(numerator: int, denominator: int) -> float:
+def ratio(numerator: float, denominator: int) -> float:
     if denominator <= 0:
         return 1.0
     return round(numerator / denominator, 4)
