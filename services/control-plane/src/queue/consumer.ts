@@ -323,6 +323,8 @@ async function buildInferenceDispatchRequest(
     job.modelVersion ?? message.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
   const body: InferenceDispatchRequest = {
     jobId: job.jobId,
+    assetId: job.assetId ?? message.assetId ?? job.jobId,
+    storageKey: job.storageKey ?? message.storageKey ?? job.sourceObjectKey,
     requestId: message.requestId,
     uploadTraceId: job.uploadTraceId ?? message.uploadTraceId,
     inferenceAttemptId,
@@ -411,6 +413,8 @@ function analysisDispatchBodyForProvider(
 
   const legacyBody: InferenceDispatchRequest = {
     jobId: body.jobId,
+    assetId: body.assetId,
+    storageKey: body.storageKey,
     requestId: body.requestId,
     uploadTraceId: body.uploadTraceId,
     inferenceAttemptId: body.inferenceAttemptId,

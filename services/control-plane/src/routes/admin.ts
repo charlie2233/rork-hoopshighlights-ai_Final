@@ -138,6 +138,11 @@ export async function routeAdminRequest(
 
 async function handleClipReview(request: Request, env: Env, clipId: string, requestId: string): Promise<Response> {
   const update = await readJson<ClipReviewUpdate>(request);
+  const reviewFeedbackTags = normalizeReviewFeedbackTags(update.reviewFeedbackTags);
+  const persistedUpdate: ClipReviewUpdate = {
+    ...update,
+    reviewFeedbackTags
+  };
   const url = new URL(request.url);
   const clipIndex =
     typeof update.clipIndex === "number" && Number.isFinite(update.clipIndex)
@@ -165,7 +170,7 @@ async function handleClipReview(request: Request, env: Env, clipId: string, requ
     clipId,
     jobId,
     Number.isFinite(clipIndex) ? clipIndex : 0,
-    update,
+    persistedUpdate,
     job?.modelVersion ?? null,
     job?.failureReason ?? null
   );
@@ -177,6 +182,7 @@ async function handleClipReview(request: Request, env: Env, clipId: string, requ
       clipId,
       reviewState: update.reviewState ?? "unreviewed",
       reviewerNotes: update.reviewerNotes ?? null,
+      reviewFeedbackTags,
       promotedToTrainingSet: update.promotedToTrainingSet ?? false
     },
     { status: 200 },
@@ -190,4 +196,14 @@ function clampLimit(input: string | null): number {
     return 50;
   }
   return Math.max(1, Math.min(parsed, 250));
+}
+
+function normalizeReviewFeedbackTags(tags: unknown): ClipReviewUpdate["reviewFeedbackTags"] {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+  const allowed = new Set(["duplicate", "wrong_team", "bad_window", "wrong_label", "low_quality"]);
+  return Array.from(new Set(tags.filter((tag): tag is NonNullable<ClipReviewUpdate["reviewFeedbackTags"]>[number] => {
+    return typeof tag === "string" && allowed.has(tag);
+  })));
 }

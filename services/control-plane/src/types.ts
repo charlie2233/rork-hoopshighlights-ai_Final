@@ -10,6 +10,22 @@ export type JobStatus =
   | "succeeded"
   | "expired";
 
+export type AssetStatus =
+  | "initialized"
+  | "uploading"
+  | "uploaded"
+  | "processing"
+  | "proxy_ready"
+  | "ready"
+  | "failed";
+
+export type ReviewFeedbackTag =
+  | "duplicate"
+  | "wrong_team"
+  | "bad_window"
+  | "wrong_label"
+  | "low_quality";
+
 export interface ResponseEnvelope {
   requestId: string;
   schemaVersion?: string | null;
@@ -30,6 +46,8 @@ export interface CreateCloudAnalysisJobRequest {
   analysisVersion: string;
   teamSelection?: TeamSelection | null;
   uploadPreference?: "single" | "resumable" | null;
+  assetId?: string | null;
+  storageKey?: string | null;
 }
 
 export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
@@ -45,6 +63,8 @@ export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
 
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   uploadUrl: string;
   uploadMethod: "PUT";
   uploadHeaders: Record<string, string>;
@@ -56,6 +76,106 @@ export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   resultObjectKey?: string | null;
   status?: JobStatus;
   resumableUpload?: ResumableUploadDescriptor | null;
+}
+
+export interface AssetArtifacts {
+  proxyStorageKey?: string | null;
+  thumbnailStorageKeys: string[];
+  waveformStorageKey?: string | null;
+}
+
+export interface AssetRecord {
+  assetId: string;
+  installId: string;
+  filename: string;
+  contentType: string;
+  fileSizeBytes: number;
+  durationSeconds: number;
+  storageKey: string;
+  status: AssetStatus;
+  uploadMode: "single" | "multipart";
+  uploadedBytes: number;
+  artifacts: AssetArtifacts;
+  createdAt: string;
+  updatedAt: string;
+  failureReason?: string | null;
+}
+
+export interface UploadInitRequest {
+  filename: string;
+  contentType: string;
+  fileSizeBytes: number;
+  durationSeconds: number;
+  installId: string;
+  appVersion: string;
+  analysisVersion: string;
+  uploadPreference?: "single" | "multipart" | "auto" | null;
+  partSizeBytes?: number | null;
+}
+
+export interface UploadTargetResponse {
+  uploadUrl: string;
+  uploadMethod: "PUT";
+  uploadHeaders: Record<string, string>;
+  partNumber?: number | null;
+}
+
+export interface MultipartUploadResponse {
+  uploadId: string;
+  partSizeBytes: number;
+  partCount: number;
+  parts: UploadTargetResponse[];
+}
+
+export interface UploadInitResponse extends ResponseEnvelope {
+  assetId: string;
+  storageKey: string;
+  status: AssetStatus;
+  uploadMode: "single" | "multipart";
+  uploadUrl?: string | null;
+  uploadMethod: "PUT";
+  uploadHeaders: Record<string, string>;
+  multipart?: MultipartUploadResponse | null;
+  expiresAt: string;
+  pollAfterSeconds: number;
+  uploadState: string;
+}
+
+export interface UploadCompleteRequest {
+  installId: string;
+  uploadId?: string | null;
+  parts?: Array<{
+    partNumber: number;
+    etag?: string | null;
+    sizeBytes?: number | null;
+  }>;
+}
+
+export interface UploadCompleteResponse extends ResponseEnvelope {
+  assetId: string;
+  storageKey: string;
+  status: AssetStatus;
+  artifacts: AssetArtifacts;
+  pollAfterSeconds: number;
+}
+
+export interface AssetStatusResponse extends AssetRecord, ResponseEnvelope {}
+
+export interface CreateAssetAnalysisJobRequest {
+  installId: string;
+  appVersion?: string | null;
+  analysisVersion?: string | null;
+  teamSelection?: TeamSelection | null;
+}
+
+export interface AssetAnalysisJobResponse extends ResponseEnvelope {
+  jobId: string;
+  assetId: string;
+  storageKey: string;
+  status: JobStatus;
+  pollAfterSeconds: number;
+  quotaRemainingToday: number;
+  analysisMode: "cloud";
 }
 
 export interface StartCloudAnalysisJobRequest {
@@ -80,6 +200,8 @@ export interface ScanCloudAnalysisTeamsResponse extends ResponseEnvelope {
 
 export interface InferenceTeamScanRequest {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   requestId: string;
   uploadTraceId: string;
   traceId: string;
@@ -99,6 +221,8 @@ export interface UploadPresignRequest extends CreateCloudAnalysisJobRequest {}
 
 export interface UploadPresignResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   sourceObjectKey: string;
   resultObjectKey: string;
   uploadUrl: string;
@@ -232,6 +356,7 @@ export interface CloudClip {
   rankScore?: number | null;
   reviewState?: string | null;
   reviewerNotes?: string | null;
+  reviewFeedbackTags?: ReviewFeedbackTag[] | null;
   topLabels?: CloudLabelScore[] | null;
   comparisonTopLabels?: CloudLabelScore[] | null;
   rawTopLabels?: CloudRawLabelScore[] | null;
@@ -278,6 +403,16 @@ export interface CloudDiagnostics {
 }
 
 export interface CloudAnalysisResult extends ResponseEnvelope {
+  analysisJobId?: string | null;
+  assetId?: string | null;
+  assetStorageKey?: string | null;
+  storageKey?: string | null;
+  proxyStorageKey?: string | null;
+  assetStatus?: AssetStatus | string | null;
+  uploadedBytes?: number | null;
+  fileSizeBytes?: number | null;
+  assetFailureReason?: string | null;
+  sourceObjectKey?: string | null;
   clipCount: number;
   clips: CloudClip[];
   diagnostics: CloudDiagnostics;
@@ -288,6 +423,8 @@ export interface CloudAnalysisResult extends ResponseEnvelope {
 
 export interface CloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   status: JobStatus;
   progress: number;
   stage: string;
@@ -318,6 +455,8 @@ export interface ErrorResponse extends ResponseEnvelope {
 export interface QueueJobMessage {
   kind: "process-job";
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   requestId: string;
   uploadTraceId: string;
   traceId: string;
@@ -343,6 +482,8 @@ export interface DeadLetterQueueMessage {
 
 export interface InferenceCallbackPayload {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   status: "processing" | "completed" | "failed" | "cancelled" | "succeeded";
   progress?: number;
   stage?: string;
@@ -361,6 +502,8 @@ export interface InferenceCallbackPayload {
 
 export interface JobRecord extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   schemaVersion: string;
   traceId: string;
   uploadTraceId?: string | null;
@@ -421,6 +564,8 @@ export interface JobMutationInput {
 
 export interface InferenceDispatchRequest {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   requestId: string;
   uploadTraceId: string;
   inferenceAttemptId: string;
@@ -470,6 +615,7 @@ export interface ClipReviewUpdate {
   promotedToTrainingSet?: boolean;
   label?: string;
   action?: string;
+  reviewFeedbackTags?: ReviewFeedbackTag[];
   jobId?: string;
   clipIndex?: number;
 }

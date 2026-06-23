@@ -398,7 +398,7 @@ class EditCandidateClip(APIModel):
     teamAttribution: Optional[ClipTeamAttribution] = None
     teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
     userReviewDecision: Optional[Literal["kept", "discarded", "unreviewed"]] = None
-    reviewFeedbackTags: List[Literal["duplicate", "wrong_team", "bad_window"]] = Field(default_factory=list, max_length=8)
+    reviewFeedbackTags: List[Literal["duplicate", "wrong_team", "bad_window", "wrong_label", "low_quality"]] = Field(default_factory=list, max_length=8)
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
