@@ -208,17 +208,17 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
-            promptCard
-            actionCard
             compactExportSetupCard
-            if shouldShowExportProgressCard {
-                exportProgressCard
-            }
             if showSetupControls {
                 smartSetupCard
                 stylePicker
                 formatPicker
                 durationPicker
+                promptCard
+            }
+            actionCard
+            if shouldShowExportProgressCard {
+                exportProgressCard
             }
             if shouldShowStatusNoticeCard {
                 statusCard
