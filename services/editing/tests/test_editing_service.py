@@ -34,7 +34,7 @@ from app.editing import (  # noqa: E402
     validate_edit_plan,
     validate_template_registry,
 )
-from app.models import CloudAnalysisResult, CloudDiagnostics, TeamOption  # noqa: E402
+from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, TeamOption  # noqa: E402
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.gpt_reranker import GPTEditPlanPatchAttempt  # noqa: E402
@@ -392,6 +392,121 @@ class EditingServiceTests(unittest.TestCase):
         self.assertNotIn("sourceUrl", serialized_heartbeats)
         self.assertNotIn("sourceObjectKey", serialized_heartbeats)
         self.assertNotIn("https://uploads.example.test", serialized_heartbeats)
+
+    def test_detection_v2_analyze_returns_multiple_candidate_clips(self) -> None:
+        client = TestClient(create_app(self._settings(shared_secret="editing-secret")))
+        local_source = self._temp_dir / "detection-source.mp4"
+        local_source.write_bytes(b"fake video bytes")
+        cleanup_calls: list[bool] = []
+
+        class Source:
+            local_path = local_source
+
+            def cleanup(self) -> None:
+                cleanup_calls.append(True)
+
+        clips = [
+            CloudClip(
+                startTime=0.0,
+                endTime=4.8,
+                eventCenter=2.3,
+                confidence=0.88,
+                label="Dunk",
+                action="Dunk",
+                canonicalLabel="dunk",
+                eventFamily="shot",
+                eventSubtype="finish",
+                shotSubtype="dunk",
+                outcome="made",
+                audioScore=0.7,
+                visualScore=0.8,
+                motionScore=0.82,
+                combinedScore=0.86,
+                detectionMethod="cloud",
+                shouldAutoKeep=True,
+                shouldEnableSlowMotion=True,
+                rankScore=0.9,
+                pipelineStage="merged_candidate",
+                pipelineVersion="detection-pipeline-v2",
+            ),
+            CloudClip(
+                startTime=8.0,
+                endTime=13.5,
+                eventCenter=10.5,
+                confidence=0.79,
+                label="Steal",
+                action="Steal",
+                canonicalLabel="steal",
+                eventFamily="defense",
+                eventSubtype="steal",
+                outcome="uncertain",
+                audioScore=0.45,
+                visualScore=0.68,
+                motionScore=0.77,
+                combinedScore=0.76,
+                detectionMethod="cloud",
+                shouldAutoKeep=True,
+                shouldEnableSlowMotion=False,
+                rankScore=0.8,
+                pipelineStage="merged_candidate",
+                pipelineVersion="detection-pipeline-v2",
+            ),
+        ]
+        result = CloudAnalysisResult(
+            clipCount=2,
+            clips=clips,
+            diagnostics=CloudDiagnostics(
+                processingMs=18,
+                backendModelVersion="editing-cloud-v1+detection-pipeline-v2",
+                usedVideoIntelligence=False,
+                usedGeminiRelabeling=False,
+                candidateSegments=2,
+                finalSegments=2,
+                proposalSegments=2,
+                embeddedSegments=2,
+                classifiedSegments=2,
+                mergedCandidateSegments=2,
+                usedSemanticRerank=True,
+                taxonomyVersion="basketball-detection-taxonomy-v1",
+            ),
+            resultConfidence=0.835,
+            candidateClips=clips,
+        )
+
+        with (
+            patch.object(editing_main, "materialize_team_scan_source", return_value=Source(), create=True) as materialize,
+            patch.object(editing_main, "run_analysis", return_value=result, create=True) as run_cloud_analysis,
+        ):
+            response = client.post(
+                "/v2/detection/analyze",
+                headers={"x-hoops-inference-secret": "editing-secret"},
+                json={
+                    "jobId": "job_detection",
+                    "requestId": "request-detection",
+                    "uploadTraceId": "upload-trace-detection",
+                    "traceId": "trace-detection",
+                    "installId": "install-detection",
+                    "sourceUrl": "https://uploads.example.test/signed/video.mp4?secret=hidden",
+                    "sourceObjectKey": "uploads/install/video.mp4",
+                    "filename": "video.mp4",
+                    "contentType": "video/mp4",
+                    "durationSeconds": 24,
+                    "appVersion": "1.0.0",
+                    "analysisVersion": "detection-v2",
+                    "schemaVersion": "2026-06-23",
+                    "modelVersion": "worker-model-v2",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["clipCount"], 2)
+        self.assertEqual(len(payload["candidateClips"]), 2)
+        self.assertEqual(payload["candidateClips"][0]["canonicalLabel"], "dunk")
+        self.assertEqual(payload["diagnostics"]["usedSemanticRerank"], True)
+        materialize.assert_called_once()
+        run_cloud_analysis.assert_called_once()
+        self.assertEqual(cleanup_calls, [True])
 
     def test_worker_callbacks_use_service_user_agent(self) -> None:
         captured: list[dict] = []
