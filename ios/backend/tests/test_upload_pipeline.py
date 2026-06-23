@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import CloudAnalysisResult, CloudDiagnostics
+from app.models import CloudAnalysisResult, CloudDiagnostics, TeamOption
 
 
 class UploadPipelineTests(unittest.TestCase):
@@ -195,6 +195,45 @@ class UploadPipelineTests(unittest.TestCase):
         polled = poll_response.json()
         self.assertEqual(polled["assetId"], asset["assetId"])
         self.assertEqual(polled["storageKey"], started["storageKey"])
+
+    def test_asset_team_scan_waits_for_proxy_ready(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
+        init_response = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8))
+        asset = init_response.json()
+        self.assertEqual(client.put(asset["uploadUrl"], content=b"video-bytes").status_code, 204)
+
+        too_early = client.post(
+            f"/v1/assets/{asset['assetId']}/team-scan",
+            json={"installId": "install-123456"},
+        )
+        self.assertEqual(too_early.status_code, 409)
+        self.assertEqual(too_early.json()["errorCode"], "asset_not_ready")
+
+        complete_response = client.post(
+            f"/v1/uploads/{asset['assetId']}/complete",
+            json={"installId": "install-123456"},
+        )
+        self.assertEqual(complete_response.status_code, 200)
+
+        detected_team = TeamOption(
+            teamId="team_dark",
+            label="Dark jerseys",
+            colorLabel="black",
+            primaryColorHex="#111111",
+            confidence=0.91,
+            source="quick_scan",
+        )
+        with patch("app.api.apply_team_quick_scan", return_value=([], [detected_team], True)):
+            scan_response = client.post(
+                f"/v1/assets/{asset['assetId']}/team-scan",
+                json={"installId": "install-123456"},
+            )
+
+        self.assertEqual(scan_response.status_code, 200)
+        scan = scan_response.json()
+        self.assertEqual(scan["jobId"], asset["assetId"])
+        self.assertEqual(scan["status"], "scanned")
+        self.assertEqual(scan["detectedTeams"][0]["teamId"], "team_dark")
 
 
 if __name__ == "__main__":

@@ -60,7 +60,8 @@ PYTHONPATH=ios/backend ios/backend/.venv/bin/python -m unittest ios.backend.test
 2. Upload to `uploadUrl` or multipart `parts[].uploadUrl`.
 3. Call `/v1/uploads/{assetId}/complete`.
 4. Poll `/v1/assets/{assetId}` until `status == "proxy_ready"`.
-5. Call `/v1/assets/{assetId}/analysis-jobs`.
-6. Poll the returned `/v1/analysis/jobs/{jobId}` as before.
+5. Optional team-pick flow: call `/v1/assets/{assetId}/team-scan`.
+6. Call `/v1/assets/{assetId}/analysis-jobs`.
+7. Poll the returned `/v1/analysis/jobs/{jobId}` as before.
 
-The old `/v1/analysis/jobs -> uploadUrl -> /start` path remains available for compatibility while the client migrates.
+The iOS client now prefers this asset path and falls back to `/v1/analysis/jobs -> uploadUrl -> /start` only when `/v1/uploads/init` is unavailable.

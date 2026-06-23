@@ -2,7 +2,7 @@
 
 ## Summary
 
-This branch adds an asset-first upload pipeline in the local FastAPI backend and publishes the additive Worker schema needed for UI, detection, and edit agents.
+This branch adds an asset-first upload pipeline in the local FastAPI backend, publishes the additive Worker schema needed for detection/edit migration, and wires the iOS upload client to prefer assets with a legacy job-first fallback.
 
 ## Key Files
 
@@ -12,6 +12,9 @@ This branch adds an asset-first upload pipeline in the local FastAPI backend and
 - `ios/backend/app/api.py`: upload init/complete/status routes, proxy-ready gate, and asset-backed inference materialization.
 - `ios/backend/tests/test_upload_pipeline.py`: lifecycle coverage.
 - `ios/backend/scripts/upload_benchmark.py`: timing and retry/resume benchmark.
+- `ios/HoopsClips/HoopsClips/Models/CloudAnalysisTypes.swift`: asset upload/status/job contract models.
+- `ios/HoopsClips/HoopsClips/Services/CloudAnalysisService.swift`: asset-first upload, proxy-ready wait, asset team scan, asset analysis start, and asset resume bridge.
+- `ios/HoopsClipsTests/HoopsClipsTests.swift`: asset contract decode coverage.
 - `services/control-plane/src/types.ts`: additive `assetId/storageKey` fields.
 - `services/control-plane/src/routes/public.ts`: Worker create/poll payloads expose `assetId`; internal team-scan payloads carry `assetId/storageKey`.
 - `services/control-plane/src/queue/consumer.ts`: inference dispatch includes `assetId/storageKey`.
@@ -31,10 +34,11 @@ This branch adds an asset-first upload pipeline in the local FastAPI backend and
 
 ## UI Agent Notes
 
-- Keep old create-job upload path temporarily.
-- Add the asset path in parallel:
+- The app now keeps the old create-job upload path as fallback when `/v1/uploads/init` is unavailable.
+- The preferred asset path is:
   `init -> upload -> complete -> poll asset -> analysis-jobs -> poll job`.
-- Persist `assetId`, `storageKey`, `uploadMode`, `uploadId`, part count, part size, uploaded parts, and asset status in resume manifests.
+- Team preselection uses `init -> upload -> complete -> poll asset -> team-scan`.
+- Resume manifests persist `assetId`, `storageKey`, `uploadId`, part count, part size, uploaded parts, and asset multipart part targets.
 - Show a dedicated post-upload state such as `Preparing uploaded video` before starting AI.
 - Redact `storageKey`, `sourceObjectKey`, signed URLs, and local paths in proof copy.
 
@@ -49,6 +53,8 @@ This branch adds an asset-first upload pipeline in the local FastAPI backend and
 ```bash
 cd /Users/hanfei/hc-agent-upload
 PYTHONPATH=ios/backend ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_upload_pipeline
+xcodebuild build -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 16e'
+xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 16e' -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudAssetUploadResponsesDecode
 
 cd services/control-plane
 npm test -- --test-name-pattern upload

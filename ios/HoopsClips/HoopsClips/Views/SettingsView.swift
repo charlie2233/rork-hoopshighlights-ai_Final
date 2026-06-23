@@ -1377,7 +1377,7 @@ struct SettingsView: View {
 
     private var testFlightSmokeChecklistText: String {
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
-        TestFlightSmokeChecklistCopy.checklist(
+        return TestFlightSmokeChecklistCopy.checklist(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             appVersion: appVersionString,
             build: appBuildNumber,

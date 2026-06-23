@@ -814,6 +814,41 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         except APIError as error:
             return _error_response(error)
 
+    @router.post(
+        "/v1/assets/{asset_id}/team-scan",
+        response_model=ScanCloudAnalysisTeamsResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def scan_asset_teams(asset_id: str, request: ScanCloudAnalysisTeamsRequest):
+        assert runtime is not None
+        source = None
+        try:
+            _require_public_api_enabled()
+            asset = await _require_asset(asset_id)
+            _require_asset_owner(asset, request.installId)
+            if not asset.status.can_start_analysis:
+                raise APIError(409, "asset_not_ready", "Asset proxy is not ready for team scan.")
+
+            source = await runtime.upload_storage.materialize_storage_key(
+                asset.analysis_storage_key,
+                asset.filename,
+            )
+            prescan_settings = team_quick_prescan_settings(resolved_settings)
+            _, detected_teams, applied = await run_in_threadpool(
+                apply_team_quick_scan,
+                source.local_path,
+                asset.duration_seconds,
+                [],
+                prescan_settings,
+            )
+            status = "scanned" if applied and detected_teams else "unavailable"
+            return ScanCloudAnalysisTeamsResponse(jobId=asset.asset_id, status=status, detectedTeams=detected_teams)
+        except APIError as error:
+            return _error_response(error)
+        finally:
+            if source is not None:
+                source.cleanup()
+
     if resolved_settings.enable_local_upload_emulation:
 
         @router.put(

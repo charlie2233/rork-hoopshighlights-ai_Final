@@ -124,6 +124,37 @@ Response:
 
 UI should use this endpoint for upload state, proxy readiness, and post-upload artifact availability.
 
+## Team Scan From Asset
+
+`POST /v1/assets/{assetId}/team-scan`
+
+Request:
+
+```json
+{
+  "installId": "install-123456"
+}
+```
+
+If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response keeps the existing team-scan shape so the current team-selection UI can continue to route through detected jersey options:
+
+```json
+{
+  "jobId": "asset_...",
+  "status": "scanned",
+  "detectedTeams": [
+    {
+      "teamId": "team_dark",
+      "label": "Dark jerseys",
+      "colorLabel": "black",
+      "primaryColorHex": "#111111",
+      "confidence": 0.91,
+      "source": "quick_scan"
+    }
+  ]
+}
+```
+
 ## Start AI From Asset
 
 `POST /v1/assets/{assetId}/analysis-jobs`

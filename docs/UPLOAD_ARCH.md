@@ -13,7 +13,8 @@ HoopClips now has an asset-first upload path for scalable video intake.
    - thumbnail generation
    - waveform metadata generation
 6. Client polls `GET /v1/assets/{assetId}`.
-7. Client starts AI with `POST /v1/assets/{assetId}/analysis-jobs` only after `proxy_ready`.
+7. Client can scan teams with `POST /v1/assets/{assetId}/team-scan` only after `proxy_ready`.
+8. Client starts AI with `POST /v1/assets/{assetId}/analysis-jobs` only after `proxy_ready`.
 
 ## Local Implementation
 
@@ -35,6 +36,14 @@ AI jobs consume asset identity and storage keys:
 - `proxyStorageKey` is preferred once available.
 
 Legacy internal `sourceUrl` is still accepted as a compatibility path, but normal clients should not depend on public pasted video URLs.
+
+## iOS Client Behavior
+
+The Swift client now attempts the asset upload path first:
+
+`uploads/init -> signed upload -> uploads/{assetId}/complete -> assets/{assetId} proxy_ready -> team-scan or analysis-jobs`
+
+If `/v1/uploads/init` is not available, the client falls back to the legacy `analysis/jobs -> uploadUrl -> start` path for current Worker compatibility. New resume manifests persist optional `assetId`, `storageKey`, and asset multipart targets so foreground-interrupted asset uploads complete through the asset API instead of the legacy job-start route.
 
 ## Status Semantics
 
