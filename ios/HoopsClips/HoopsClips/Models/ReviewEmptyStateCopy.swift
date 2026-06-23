@@ -17,7 +17,7 @@ nonisolated enum ReviewEmptyStateCopy {
         guard isWaitingForReviewClips else {
             return ReviewEmptyStateContent(
                 title: "No clips yet",
-                message: "Back to Player to import or run analysis. Review unlocks when clips are ready.",
+                message: "Go to Player, add a video, then tap Analyze with AI. Review opens when clips are ready.",
                 icon: "film.stack.fill"
             )
         }
