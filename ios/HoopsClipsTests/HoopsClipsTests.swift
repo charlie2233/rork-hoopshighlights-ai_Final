@@ -1300,7 +1300,9 @@ struct HoopsClipsTests {
             keptClips: 8,
             needsReviewClips: 2,
             lastAnalysisBlockReason: "none",
+            fastUploadMode: true,
             latestUploadProgress: "bytes=196/525_MB speed=2.4_MB/s",
+            latestUploadSourceOptimization: "result=optimized savedMB=320",
             latestUnexpectedExit: "none",
             latestCrashReportDelivery: "sent"
         )
@@ -4713,6 +4715,73 @@ struct HoopsClipsTests {
         #expect(response.results?.clips.first?.label == "Three Pointer")
         #expect(response.results?.clips.first?.eventCenter == 3.8)
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
+    }
+
+    @Test func testCloudAssetUploadResponsesDecode() throws {
+        let initPayload = """
+        {
+          "assetId": "asset_123",
+          "storageKey": "assets/asset_123/source/game.mp4",
+          "status": "initialized",
+          "uploadMode": "multipart",
+          "uploadUrl": null,
+          "uploadMethod": "PUT",
+          "uploadHeaders": {},
+          "multipart": {
+            "uploadId": "upload_123",
+            "partSizeBytes": 5242880,
+            "partCount": 2,
+            "parts": [
+              {"partNumber": 1, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/1", "uploadMethod": "PUT", "uploadHeaders": {}},
+              {"partNumber": 2, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/2", "uploadMethod": "PUT", "uploadHeaders": {}}
+            ]
+          },
+          "expiresAt": "2026-05-26T20:00:00Z",
+          "pollAfterSeconds": 1,
+          "uploadState": "waiting_for_client_upload"
+        }
+        """
+        let completePayload = """
+        {
+          "assetId": "asset_123",
+          "storageKey": "assets/asset_123/source/game.mp4",
+          "status": "proxy_ready",
+          "artifacts": {
+            "proxyStorageKey": "assets/asset_123/proxy/proxy.mp4",
+            "thumbnailStorageKeys": ["assets/asset_123/thumbnails/0001.jpg"],
+            "waveformStorageKey": "assets/asset_123/metadata/waveform.json"
+          },
+          "pollAfterSeconds": 1
+        }
+        """
+        let analysisPayload = """
+        {
+          "jobId": "job_asset_123",
+          "assetId": "asset_123",
+          "storageKey": "assets/asset_123/proxy/proxy.mp4",
+          "status": "queued",
+          "pollAfterSeconds": 1,
+          "quotaRemainingToday": 2,
+          "analysisMode": "cloud"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let upload = try decoder.decode(CloudAssetUploadInitResponse.self, from: Data(initPayload.utf8))
+        #expect(upload.assetId == "asset_123")
+        #expect(upload.multipart?.partCount == 2)
+        #expect(upload.multipart?.parts.first?.partNumber == 1)
+
+        let complete = try decoder.decode(CloudAssetUploadCompleteResponse.self, from: Data(completePayload.utf8))
+        #expect(complete.status == "proxy_ready")
+        #expect(complete.artifacts.proxyStorageKey == "assets/asset_123/proxy/proxy.mp4")
+
+        let analysis = try decoder.decode(CloudAssetAnalysisJobResponse.self, from: Data(analysisPayload.utf8))
+        #expect(analysis.jobId == "job_asset_123")
+        #expect(analysis.assetId == upload.assetId)
+        #expect(analysis.storageKey == complete.artifacts.proxyStorageKey)
     }
 
     @Test @MainActor func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {

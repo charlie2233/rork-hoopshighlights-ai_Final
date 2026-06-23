@@ -32,10 +32,45 @@ nonisolated private enum CloudUploadResumePurpose: String, Codable, Sendable {
     case teamScan
 }
 
+nonisolated private struct CloudUploadPartTarget: Sendable {
+    let jobId: String
+    let partNumber: Int
+    let uploadUrl: String
+    let uploadMethod: String
+    let uploadHeaders: [String: String]
+
+    init(_ response: CloudMultipartPartResponse) {
+        self.jobId = response.jobId
+        self.partNumber = response.partNumber
+        self.uploadUrl = response.uploadUrl
+        self.uploadMethod = response.uploadMethod
+        self.uploadHeaders = response.uploadHeaders
+    }
+
+    init(assetID: String, target: CloudAssetUploadTarget) throws {
+        guard let partNumber = target.partNumber else {
+            throw CloudAnalysisError.invalidResponse
+        }
+        self.jobId = assetID
+        self.partNumber = partNumber
+        self.uploadUrl = target.uploadUrl
+        self.uploadMethod = target.uploadMethod
+        self.uploadHeaders = target.uploadHeaders
+    }
+}
+
+nonisolated private struct CloudReadyAsset: Sendable {
+    let assetID: String
+    let storageKey: String
+    let analysisStorageKey: String
+    let pollAfterSeconds: Int
+}
+
 struct CloudAnalysisService {
     typealias HandoffHandler = @MainActor @Sendable (_ jobID: String, _ sourceObjectKey: String?) -> Void
 
     private static let analysisPollTimeoutSeconds: UInt64 = 8 * 60
+    private static let assetPollTimeoutSeconds: UInt64 = 4 * 60
     private static let maxPollDelaySeconds = 5
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
@@ -142,6 +177,8 @@ struct CloudAnalysisService {
         let nextAction: String
         if activeSessions > 0 {
             nextAction = "wait_for_background_session"
+        } else if uploadComplete, manifest.assetID != nil {
+            nextAction = "complete_asset_upload"
         } else if uploadComplete {
             nextAction = manifest.purpose == .teamScan ? "run_team_scan" : "start_cloud_analysis"
         } else {
@@ -149,6 +186,7 @@ struct CloudAnalysisService {
         }
         return [
             "pending=true",
+            "assetUpload=\(manifest.assetID != nil)",
             "purpose=\(manifest.purpose.rawValue)",
             "completed=\(completedParts)/\(partCount)",
             "completedBytes=\(completedBytes)",
@@ -489,6 +527,43 @@ struct CloudAnalysisService {
         )
     }
 
+    private static func recordServerAssetUploadPlan(_ asset: CloudAssetUploadInitResponse) {
+        let multipart = asset.multipart
+        let partCount = max(multipart?.partCount ?? 1, 1)
+        let chunkSizeBytes = max(multipart?.partSizeBytes ?? 0, 0)
+        let chunkSizeMB = chunkSizeBytes > 0
+            ? String(format: "%.1f", Double(chunkSizeBytes) / 1_048_576.0)
+            : "none"
+        let expiresAt = ISO8601DateFormatter().string(from: asset.expiresAt)
+        let summary = [
+            "assetUpload=true",
+            "serverChunked=\(partCount > 1)",
+            "partCount=\(partCount)",
+            "chunkSizeMB=\(chunkSizeMB)",
+            "uploadMode=\(safeUploadPlanComponent(asset.uploadMode))",
+            "uploadMethod=\(safeUploadPlanComponent(asset.uploadMethod))",
+            "uploadState=\(safeUploadPlanComponent(asset.uploadState))",
+            "expiresAt=\(expiresAt)",
+            "privacy=no_urls_no_object_keys_no_upload_ids"
+        ].joined(separator: " ")
+
+        UserDefaults.standard.set(summary, forKey: cloudUploadServerPlanDefaultsKey)
+        let capabilitySummary = [
+            "assetUploadAdvertised=true",
+            "chunkedUploadAdvertised=\(partCount > 1)",
+            "partCount=\(partCount)",
+            "chunkSizeMB=\(chunkSizeMB)",
+            "singleUploadURLPresent=\(!(asset.uploadUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)",
+            "uploadMode=\(safeUploadPlanComponent(asset.uploadMode))",
+            "privacy=no_urls_no_object_keys_no_upload_ids"
+        ].joined(separator: " ")
+        UserDefaults.standard.set(capabilitySummary, forKey: cloudUploadCapabilitySummaryDefaultsKey)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "server_asset_upload_plan_received",
+            metadata: "serverChunked=\(partCount > 1) partCount=\(partCount) chunkSizeMB=\(chunkSizeMB)"
+        )
+    }
+
     private static func recordDeployedUploadCapabilities(_ capabilities: CloudAnalysisCapabilitiesResponse) {
         let maxFileSizeMB = String(format: "%.0f", Double(max(capabilities.maxFileSizeBytes, 0)) / 1_048_576.0)
         let thresholdMB = String(format: "%.0f", Double(max(capabilities.resumableUploadThresholdBytes, 0)) / 1_048_576.0)
@@ -699,6 +774,55 @@ struct CloudAnalysisService {
         )
         let uploadURL = uploadSource.url
         let fileInfo = try fileInfo(for: uploadURL)
+        let assetUpload = try await createAssetUploadIfSupported(
+            baseURL: baseURL,
+            request: CloudAssetUploadInitRequest(
+                filename: uploadSource.filename,
+                contentType: fileInfo.contentType,
+                fileSizeBytes: fileInfo.fileSizeBytes,
+                durationSeconds: duration,
+                installId: installID,
+                appVersion: appVersion,
+                analysisVersion: analysisVersion
+            )
+        )
+        if let assetUpload {
+            let uploadStage = Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes)
+            progress(0.15, uploadStage)
+            let readyAsset = try await uploadAsset(
+                assetUpload,
+                from: uploadURL,
+                baseURL: baseURL,
+                installID: installID,
+                purpose: .analysis,
+                stage: uploadStage,
+                progressStart: 0.15,
+                progressEnd: 0.27,
+                progress: progress
+            )
+
+            progress(0.35, "Starting cloud clip search")
+            let job = try await createAssetAnalysisJob(
+                baseURL: baseURL,
+                assetID: readyAsset.assetID,
+                installID: installID,
+                appVersion: appVersion,
+                analysisVersion: analysisVersion,
+                teamSelection: teamSelection
+            )
+            onCloudHandoff?(job.jobId, job.storageKey)
+            await CloudUploadResumeStore.shared.clearJob(jobID: readyAsset.assetID, reason: "asset_analysis_started")
+            Self.cleanupOptimizedUploadSourceIfNeeded(uploadSource)
+
+            return try await pollJob(
+                baseURL: baseURL,
+                jobID: job.jobId,
+                sourceObjectKey: job.storageKey,
+                initialPollAfterSeconds: job.pollAfterSeconds,
+                progress: progress
+            )
+        }
+
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
@@ -766,6 +890,64 @@ struct CloudAnalysisService {
         )
         let uploadURL = uploadSource.url
         let fileInfo = try fileInfo(for: uploadURL)
+        let assetUpload = try await createAssetUploadIfSupported(
+            baseURL: baseURL,
+            request: CloudAssetUploadInitRequest(
+                filename: uploadSource.filename,
+                contentType: fileInfo.contentType,
+                fileSizeBytes: fileInfo.fileSizeBytes,
+                durationSeconds: duration,
+                installId: installID,
+                appVersion: appVersion,
+                analysisVersion: analysisVersion
+            )
+        )
+        if let assetUpload {
+            let uploadStage = Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes, teamScan: true)
+            progress(0.14, uploadStage)
+            let readyAsset = try await uploadAsset(
+                assetUpload,
+                from: uploadURL,
+                baseURL: baseURL,
+                installID: installID,
+                purpose: .teamScan,
+                stage: uploadStage,
+                progressStart: 0.14,
+                progressEnd: 0.19,
+                progress: progress
+            )
+
+            progress(0.20, "Scanning jersey colors")
+            let scan = try await scanAssetTeams(
+                baseURL: baseURL,
+                assetID: readyAsset.assetID,
+                installID: installID
+            )
+            await CloudUploadResumeStore.shared.clearJob(jobID: readyAsset.assetID, reason: "asset_team_scan_started")
+            Self.cleanupOptimizedUploadSourceIfNeeded(uploadSource)
+            progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
+
+            let job = CreateCloudAnalysisJobResponse(
+                jobId: readyAsset.assetID,
+                assetId: readyAsset.assetID,
+                storageKey: readyAsset.analysisStorageKey,
+                uploadUrl: "",
+                uploadMethod: "PUT",
+                uploadHeaders: [:],
+                expiresAt: Date(),
+                pollAfterSeconds: readyAsset.pollAfterSeconds,
+                quotaRemainingToday: 0,
+                analysisMode: "cloud",
+                sourceObjectKey: readyAsset.analysisStorageKey,
+                resultObjectKey: nil
+            )
+            return PreparedCloudAnalysisJob(
+                sourceURL: url.standardizedFileURL,
+                job: job,
+                detectedTeams: scan.detectedTeams
+            )
+        }
+
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
@@ -815,6 +997,27 @@ struct CloudAnalysisService {
     ) async throws -> CloudAnalysisResult {
         guard let baseURL = configuredBaseURL() else {
             throw CloudAnalysisError.notConfigured
+        }
+
+        if let assetID = preparedJob.job.assetId {
+            progress(0.28, "Starting cloud clip search")
+            let job = try await createAssetAnalysisJob(
+                baseURL: baseURL,
+                assetID: assetID,
+                installID: installID,
+                appVersion: nil,
+                analysisVersion: nil,
+                teamSelection: teamSelection
+            )
+            onCloudHandoff?(job.jobId, job.storageKey)
+
+            return try await pollJob(
+                baseURL: baseURL,
+                jobID: job.jobId,
+                sourceObjectKey: job.storageKey,
+                initialPollAfterSeconds: job.pollAfterSeconds,
+                progress: progress
+            )
         }
 
         progress(0.28, "Starting cloud clip search")
@@ -882,7 +1085,9 @@ struct CloudAnalysisService {
         let sourceURL = URL(fileURLWithPath: manifest.sourceFilePath)
         let sourceFileExists = FileManager.default.fileExists(atPath: sourceURL.path)
         let isSingleSourceUpload = manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix)
+        let isAssetUpload = manifest.assetID != nil
         let uploadPartsCompleted = manifest.completedParts.count >= manifest.partCount
+        var assetCompletedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
         guard sourceFileExists || uploadPartsCompleted else {
             await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_missing")
@@ -982,6 +1187,7 @@ struct CloudAnalysisService {
                 )
             }
         }
+        assetCompletedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
         if isSingleSourceUpload {
             guard !manifest.completedParts.isEmpty else {
                 LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_still_uploading")
@@ -998,13 +1204,16 @@ struct CloudAnalysisService {
             )
         } else if !sourceFileExists, uploadPartsCompleted {
             let uploadedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
-            try await completeMultipartUpload(
-                baseURL: baseURL,
-                jobID: manifest.jobID,
-                installID: manifest.installID,
-                uploadID: manifest.uploadID,
-                parts: uploadedParts
-            )
+            assetCompletedParts = uploadedParts
+            if !isAssetUpload {
+                try await completeMultipartUpload(
+                    baseURL: baseURL,
+                    jobID: manifest.jobID,
+                    installID: manifest.installID,
+                    uploadID: manifest.uploadID,
+                    parts: uploadedParts
+                )
+            }
             await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
             let snapshot = await tracker.snapshot()
             reportUploadProgress(snapshot, false, "saved chunks assembled; checking cloud")
@@ -1019,13 +1228,86 @@ struct CloudAnalysisService {
                 metadata: "partCount=\(manifest.partCount)"
             )
         } else {
-            try await resumeUploadManifest(
-                manifest,
-                sourceURL: sourceURL,
+            if isAssetUpload {
+                assetCompletedParts = try await resumeAssetUploadManifest(
+                    manifest,
+                    sourceURL: sourceURL,
+                    tracker: tracker,
+                    reportUploadProgress: reportUploadProgress
+                )
+            } else {
+                try await resumeUploadManifest(
+                    manifest,
+                    sourceURL: sourceURL,
+                    baseURL: baseURL,
+                    tracker: tracker,
+                    reportUploadProgress: reportUploadProgress
+                )
+            }
+        }
+
+        if let assetID = manifest.assetID {
+            progress(min(progressEnd + 0.01, 0.35), "Preparing uploaded video")
+            let completion = try await completeAssetUpload(
                 baseURL: baseURL,
-                tracker: tracker,
-                reportUploadProgress: reportUploadProgress
+                assetID: assetID,
+                installID: installID,
+                uploadID: isSingleSourceUpload ? nil : manifest.uploadID,
+                parts: isSingleSourceUpload ? [] : assetCompletedParts
             )
+            let readyAsset = try await waitForAssetProxyReady(
+                baseURL: baseURL,
+                assetID: assetID,
+                installID: installID,
+                completion: completion,
+                initialPollAfterSeconds: completion.pollAfterSeconds,
+                progressStart: min(progressEnd + 0.01, 0.35),
+                progressEnd: manifest.purpose == .teamScan ? 0.20 : 0.34,
+                progress: progress
+            )
+
+            switch manifest.purpose {
+            case .analysis:
+                progress(0.35, "Starting cloud clip search")
+                let job = try await createAssetAnalysisJob(
+                    baseURL: baseURL,
+                    assetID: readyAsset.assetID,
+                    installID: installID,
+                    appVersion: nil,
+                    analysisVersion: nil,
+                    teamSelection: teamSelection
+                )
+                onCloudHandoff?(job.jobId, job.storageKey)
+                await CloudUploadResumeStore.shared.clearJob(jobID: assetID, reason: "resumed_asset_analysis_started")
+                let result = try await pollJob(
+                    baseURL: baseURL,
+                    jobID: job.jobId,
+                    sourceObjectKey: job.storageKey,
+                    initialPollAfterSeconds: job.pollAfterSeconds,
+                    progress: progress
+                )
+                return .analysis(result)
+            case .teamScan:
+                progress(0.20, "Scanning jersey colors")
+                let scan = try await scanAssetTeams(baseURL: baseURL, assetID: readyAsset.assetID, installID: installID)
+                await CloudUploadResumeStore.shared.clearJob(jobID: assetID, reason: "resumed_asset_team_scan_started")
+                progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
+                let job = CreateCloudAnalysisJobResponse(
+                    jobId: readyAsset.assetID,
+                    assetId: readyAsset.assetID,
+                    storageKey: readyAsset.analysisStorageKey,
+                    uploadUrl: "",
+                    uploadMethod: "PUT",
+                    uploadHeaders: [:],
+                    expiresAt: Date(),
+                    pollAfterSeconds: readyAsset.pollAfterSeconds,
+                    quotaRemainingToday: 0,
+                    analysisMode: "cloud",
+                    sourceObjectKey: readyAsset.analysisStorageKey,
+                    resultObjectKey: nil
+                )
+                return .teamScan(PreparedCloudAnalysisJob(sourceURL: sourceURL.standardizedFileURL, job: job, detectedTeams: scan.detectedTeams))
+            }
         }
 
         switch manifest.purpose {
@@ -1405,6 +1687,542 @@ struct CloudAnalysisService {
         )
     }
 
+    private func createAssetUploadIfSupported(
+        baseURL: URL,
+        request body: CloudAssetUploadInitRequest
+    ) async throws -> CloudAssetUploadInitResponse? {
+        do {
+            return try await createAssetUpload(baseURL: baseURL, request: body)
+        } catch {
+            guard Self.shouldFallbackToLegacyUpload(after: error) else {
+                throw error
+            }
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "asset_upload_api_unavailable",
+                metadata: "fallback=legacy_job_upload reason=\(Self.uploadRetryReason(for: error))"
+            )
+            return nil
+        }
+    }
+
+    private func createAssetUpload(
+        baseURL: URL,
+        request body: CloudAssetUploadInitRequest
+    ) async throws -> CloudAssetUploadInitResponse {
+        var request = URLRequest(url: baseURL.appending(path: "v1/uploads/init"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudAssetUploadInitResponse.self
+        )
+    }
+
+    private func uploadAsset(
+        _ asset: CloudAssetUploadInitResponse,
+        from url: URL,
+        baseURL: URL,
+        installID: String,
+        purpose: CloudUploadResumePurpose,
+        stage: String,
+        progressStart: Double,
+        progressEnd: Double,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws -> CloudReadyAsset {
+        let tracker = CloudUploadProgressTracker()
+        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void = { snapshot, stalled, transferContext in
+            let fraction = snapshot.fraction
+            let boundedFraction = min(max(fraction, 0), 1)
+            let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
+            Task { @MainActor in
+                let message = Self.uploadProgressMessage(
+                    stage: stage,
+                    fraction: boundedFraction,
+                    elapsedSeconds: snapshot.elapsedSeconds,
+                    uploadedBytes: snapshot.uploadedBytes,
+                    totalBytes: snapshot.totalBytes,
+                    transferContext: transferContext,
+                    stalled: stalled
+                )
+                progress(progressValue, message)
+            }
+        }
+        let delegate = CloudUploadProgressDelegate(
+            onProgress: { uploadedBytes, totalBytes in
+                Task {
+                    await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
+                    let snapshot = await tracker.snapshot()
+                    reportUploadProgress(snapshot, false, nil)
+                }
+            },
+            onWaitingForConnectivity: {
+                Task {
+                    let snapshot = await tracker.snapshot()
+                    reportUploadProgress(snapshot, true, nil)
+                    Self.recordLatestUploadProgressSummary(
+                        stage: stage,
+                        snapshot: snapshot,
+                        transferContext: nil,
+                        stalled: true
+                    )
+                    await MainActor.run {
+                        LaunchTelemetry.shared.recordBackgroundUploadProof(
+                            "upload_waiting_for_connectivity",
+                            metadata: "kind=asset_source"
+                        )
+                    }
+                }
+            }
+        )
+        let uploadMonitorTask = Task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 10 * 1_000_000_000)
+                } catch {
+                    return
+                }
+
+                let snapshot = await tracker.snapshot()
+                let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
+                reportUploadProgress(snapshot, stalled, nil)
+                Self.recordLatestUploadProgressSummary(
+                    stage: stage,
+                    snapshot: snapshot,
+                    transferContext: nil,
+                    stalled: stalled
+                )
+                if snapshot.secondsSinceProgress >= cloudUploadStallProofThresholdSeconds,
+                   snapshot.fraction < 0.99,
+                   await tracker.markStallProofSentIfNeeded() {
+                    let proofText = await MainActor.run {
+                        Self.uploadStallProofText(stage: stage, snapshot: snapshot)
+                    }
+                    Task(priority: .utility) {
+                        await LaunchTelemetry.shared.sendAutomaticUploadStallProof(proofText)
+                    }
+                }
+            }
+        }
+        let uploadPartCount = asset.multipart?.partCount ?? 1
+        LaunchTelemetry.shared.resetBackgroundUploadProofTrail(reason: "fresh_asset_upload_started")
+        Self.recordServerAssetUploadPlan(asset)
+        defer {
+            uploadMonitorTask.cancel()
+        }
+        Self.prepareFileForBackgroundUpload(url, context: "asset_source_file")
+
+        if let multipart = asset.multipart, multipart.partCount > 1 {
+            let initialSnapshot = await tracker.snapshot()
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: initialSnapshot,
+                transferContext: "asset chunked upload starting",
+                stalled: false
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "asset_chunked_upload_selected",
+                metadata: "partCount=\(multipart.partCount) chunkSizeBytes=\(multipart.partSizeBytes)"
+            )
+            let parts = try await uploadAssetInChunks(
+                asset: asset,
+                multipart: multipart,
+                from: url,
+                installID: installID,
+                purpose: purpose,
+                totalFileSizeBytes: FileManager.default.fileExists(atPath: url.path) ? (try fileInfo(for: url).fileSizeBytes) : 0,
+                tracker: tracker,
+                reportUploadProgress: reportUploadProgress
+            )
+            progress(min(progressEnd + 0.01, 0.35), "Preparing uploaded video")
+            let completion = try await completeAssetUpload(
+                baseURL: baseURL,
+                assetID: asset.assetId,
+                installID: installID,
+                uploadID: multipart.uploadId,
+                parts: parts
+            )
+            return try await waitForAssetProxyReady(
+                baseURL: baseURL,
+                assetID: asset.assetId,
+                installID: installID,
+                completion: completion,
+                initialPollAfterSeconds: completion.pollAfterSeconds,
+                progressStart: min(progressEnd + 0.01, 0.35),
+                progressEnd: purpose == .teamScan ? 0.20 : 0.34,
+                progress: progress
+            )
+        }
+
+        let sourceUploadID = Self.singleSourceUploadID(jobID: asset.assetId)
+        let sourceSessionIdentifier = Self.backgroundUploadSessionIdentifier(jobID: asset.assetId)
+        let fileSizeBytes = (try? fileInfo(for: url).fileSizeBytes) ?? 1
+        _ = await CloudUploadResumeStore.shared.begin(
+            jobID: asset.assetId,
+            installID: installID,
+            sourceURL: url.standardizedFileURL,
+            uploadID: sourceUploadID,
+            sourceObjectKey: asset.storageKey,
+            resultObjectKey: nil,
+            pollAfterSeconds: asset.pollAfterSeconds,
+            purpose: purpose,
+            chunkSizeBytes: Int(max(fileSizeBytes, 1)),
+            partCount: 1,
+            totalFileSizeBytes: max(fileSizeBytes, 1),
+            assetID: asset.assetId,
+            storageKey: asset.storageKey,
+            assetMultipartParts: nil
+        )
+        await CloudUploadResumeStore.shared.recordSession(
+            jobID: asset.assetId,
+            uploadID: sourceUploadID,
+            sessionIdentifier: sourceSessionIdentifier
+        )
+        let initialSnapshot = await tracker.snapshot()
+        Self.recordLatestUploadProgressSummary(
+            stage: stage,
+            snapshot: initialSnapshot,
+            transferContext: "asset source upload starting",
+            stalled: false
+        )
+        let uploadSession = URLSession(
+            configuration: Self.uploadSessionConfiguration(
+                backgroundIdentifier: sourceSessionIdentifier
+            ),
+            delegate: delegate,
+            delegateQueue: nil
+        )
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "asset_source_session_started",
+            metadata: "kind=asset_source chunked=false partCount=\(uploadPartCount)"
+        )
+        defer {
+            uploadSession.finishTasksAndInvalidate()
+        }
+
+        do {
+            guard let uploadUrlString = asset.uploadUrl,
+                  let uploadURL = URL(string: uploadUrlString),
+                  uploadURL.scheme?.isEmpty == false else {
+                throw CloudAnalysisError.invalidResponse
+            }
+            var request = URLRequest(url: uploadURL)
+            request.httpMethod = asset.uploadMethod
+            for (header, value) in asset.uploadHeaders {
+                request.setValue(value, forHTTPHeaderField: header)
+            }
+
+            let response = try await delegate.upload(request: request, fromFile: url, using: uploadSession)
+            let finalSnapshot = await tracker.snapshot()
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: finalSnapshot,
+                transferContext: "asset source upload complete",
+                stalled: false
+            )
+            await MainActor.run {
+                progress(
+                    progressEnd,
+                    Self.uploadProgressMessage(
+                        stage: stage,
+                        fraction: 1,
+                        elapsedSeconds: finalSnapshot.elapsedSeconds,
+                        uploadedBytes: finalSnapshot.uploadedBytes,
+                        totalBytes: finalSnapshot.totalBytes
+                    )
+                )
+            }
+
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw CloudAnalysisError.uploadFailed
+            }
+            _ = await CloudUploadResumeStore.shared.recordCompletedPart(
+                jobID: asset.assetId,
+                uploadID: sourceUploadID,
+                partNumber: 1,
+                etag: "source-upload-complete"
+            )
+            await CloudUploadResumeStore.shared.clearActiveSession(
+                jobID: asset.assetId,
+                uploadID: sourceUploadID,
+                sessionIdentifier: sourceSessionIdentifier
+            )
+        } catch {
+            await CloudUploadResumeStore.shared.clearActiveSession(
+                jobID: asset.assetId,
+                uploadID: sourceUploadID,
+                sessionIdentifier: sourceSessionIdentifier
+            )
+            let failedSnapshot = await tracker.snapshot()
+            Self.recordLatestUploadProgressSummary(
+                stage: stage,
+                snapshot: failedSnapshot,
+                transferContext: "asset source upload failed",
+                stalled: true
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "asset_source_upload_failed",
+                metadata: "reason=\(Self.uploadRetryReason(for: error))"
+            )
+            throw error
+        }
+
+        progress(min(progressEnd + 0.01, 0.35), "Preparing uploaded video")
+        let completion = try await completeAssetUpload(
+            baseURL: baseURL,
+            assetID: asset.assetId,
+            installID: installID,
+            uploadID: nil,
+            parts: []
+        )
+        return try await waitForAssetProxyReady(
+            baseURL: baseURL,
+            assetID: asset.assetId,
+            installID: installID,
+            completion: completion,
+            initialPollAfterSeconds: completion.pollAfterSeconds,
+            progressStart: min(progressEnd + 0.01, 0.35),
+            progressEnd: purpose == .teamScan ? 0.20 : 0.34,
+            progress: progress
+        )
+    }
+
+    private func uploadAssetInChunks(
+        asset: CloudAssetUploadInitResponse,
+        multipart: CloudAssetMultipartUpload,
+        from url: URL,
+        installID: String,
+        purpose: CloudUploadResumePurpose,
+        totalFileSizeBytes: Int64,
+        tracker: CloudUploadProgressTracker,
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
+    ) async throws -> [CloudMultipartCompletedPart] {
+        let fileHandle = try FileHandle(forReadingFrom: url)
+        defer {
+            try? fileHandle.close()
+        }
+
+        let safeChunkSize = max(multipart.partSizeBytes, 1)
+        let totalBytes = max(totalFileSizeBytes, 0)
+        var uploadedParts = await CloudUploadResumeStore.shared.begin(
+            jobID: asset.assetId,
+            installID: installID,
+            sourceURL: url.standardizedFileURL,
+            uploadID: multipart.uploadId,
+            sourceObjectKey: asset.storageKey,
+            resultObjectKey: nil,
+            pollAfterSeconds: asset.pollAfterSeconds,
+            purpose: purpose,
+            chunkSizeBytes: safeChunkSize,
+            partCount: multipart.partCount,
+            totalFileSizeBytes: totalBytes,
+            assetID: asset.assetId,
+            storageKey: asset.storageKey,
+            assetMultipartParts: multipart.parts
+        )
+        var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
+        let initialCompletedBytes = Self.completedUploadBytes(
+            completedParts: uploadedParts,
+            chunkSizeBytes: safeChunkSize,
+            totalFileSizeBytes: totalBytes
+        )
+        await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
+        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+            defaultMaximum: Self.maxConcurrentMultipartUploads
+        )
+        let maxConcurrentUploads = min(max(multipart.partCount, 1), networkUploadPolicy.laneLimit)
+        let progressAggregator = CloudMultipartUploadProgressAggregator(
+            completedBytes: initialCompletedBytes,
+            totalBytes: totalBytes,
+            tracker: tracker
+        )
+        let targetsByPart = Dictionary(uniqueKeysWithValues: multipart.parts.compactMap { target -> (Int, CloudAssetUploadTarget)? in
+            guard let partNumber = target.partNumber else { return nil }
+            return (partNumber, target)
+        })
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "asset_multipart_parallel_upload_selected",
+            metadata: "lanes=\(maxConcurrentUploads) partCount=\(multipart.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+        )
+
+        try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
+            var nextPartNumber = 1
+            var inFlightUploads = 0
+
+            while nextPartNumber <= multipart.partCount || inFlightUploads > 0 {
+                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= multipart.partCount {
+                    try Task.checkCancellation()
+                    let partNumber = nextPartNumber
+                    nextPartNumber += 1
+                    let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
+                    if completedPartNumbers.contains(partNumber) {
+                        let snapshot = await tracker.snapshot()
+                        reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(multipart.partCount) saved")
+                        continue
+                    }
+                    try fileHandle.seek(toOffset: offset)
+                    guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
+                        nextPartNumber = multipart.partCount + 1
+                        break
+                    }
+                    guard let uploadTarget = targetsByPart[partNumber] else {
+                        throw CloudAnalysisError.invalidResponse
+                    }
+
+                    let partTarget = try CloudUploadPartTarget(assetID: asset.assetId, target: uploadTarget)
+                    group.addTask {
+                        let etag = try await Self.uploadMultipartChunk(
+                            partTarget,
+                            chunk: chunk,
+                            alreadyUploadedBytes: min(Int64(offset), totalBytes),
+                            totalBytes: totalBytes,
+                            uploadID: multipart.uploadId,
+                            partCount: multipart.partCount,
+                            tracker: tracker,
+                            progressAggregator: progressAggregator,
+                            reportUploadProgress: reportUploadProgress
+                        )
+                        return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
+                    }
+                    inFlightUploads += 1
+                }
+
+                guard inFlightUploads > 0 else {
+                    break
+                }
+
+                if let completedPart = try await group.next() {
+                    uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                        jobID: asset.assetId,
+                        uploadID: multipart.uploadId,
+                        partNumber: completedPart.partNumber,
+                        etag: completedPart.etag
+                    )
+                    completedPartNumbers.insert(completedPart.partNumber)
+                    inFlightUploads -= 1
+                }
+            }
+        }
+
+        guard uploadedParts.count == multipart.partCount else {
+            throw CloudAnalysisError.uploadFailed
+        }
+
+        await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
+        let finalSnapshot = await tracker.snapshot()
+        reportUploadProgress(finalSnapshot, false, "asset chunks complete")
+        Self.recordLatestUploadProgressSummary(
+            stage: "Uploading video chunks",
+            snapshot: finalSnapshot,
+            transferContext: "asset chunks complete",
+            stalled: false
+        )
+        return uploadedParts
+    }
+
+    private func completeAssetUpload(
+        baseURL: URL,
+        assetID: String,
+        installID: String,
+        uploadID: String?,
+        parts: [CloudMultipartCompletedPart]
+    ) async throws -> CloudAssetUploadCompleteResponse {
+        var request = URLRequest(url: baseURL.appending(path: "v1/uploads/\(assetID)/complete"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(
+            CloudAssetUploadCompleteRequest(
+                installId: installID,
+                uploadId: uploadID,
+                parts: parts
+            )
+        )
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudAssetUploadCompleteResponse.self
+        )
+    }
+
+    private func waitForAssetProxyReady(
+        baseURL: URL,
+        assetID: String,
+        installID: String,
+        completion: CloudAssetUploadCompleteResponse,
+        initialPollAfterSeconds: Int,
+        progressStart: Double,
+        progressEnd: Double,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws -> CloudReadyAsset {
+        if Self.isAssetProxyReady(completion.status) {
+            progress(progressEnd, "Uploaded video ready")
+            return Self.readyAsset(
+                assetID: completion.assetId,
+                storageKey: completion.storageKey,
+                artifacts: completion.artifacts,
+                pollAfterSeconds: completion.pollAfterSeconds
+            )
+        }
+        if Self.isAssetFailed(completion.status) {
+            throw CloudAnalysisError.backend(
+                code: "asset_processing_failed",
+                message: "The uploaded video could not be prepared for cloud analysis."
+            )
+        }
+
+        let timeoutNanos: UInt64 = Self.assetPollTimeoutSeconds * 1_000_000_000
+        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanos
+        var pollDelay = max(1, initialPollAfterSeconds)
+
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            progress(progressStart, "Preparing first preview")
+            try await Task.sleep(nanoseconds: UInt64(pollDelay) * 1_000_000_000)
+
+            var components = URLComponents(url: baseURL.appending(path: "v1/assets/\(assetID)"), resolvingAgainstBaseURL: false)
+            components?.queryItems = [URLQueryItem(name: "installId", value: installID)]
+            guard let url = components?.url else {
+                throw CloudAnalysisError.invalidResponse
+            }
+            let request = URLRequest(url: url)
+            let (data, response) = try await session.data(for: request)
+            let asset: CloudAssetStatusResponse = try decodeResponse(
+                data: data,
+                response: response,
+                successType: CloudAssetStatusResponse.self
+            )
+
+            if Self.isAssetProxyReady(asset.status) {
+                progress(progressEnd, "Uploaded video ready")
+                return Self.readyAsset(
+                    assetID: asset.assetId,
+                    storageKey: asset.storageKey,
+                    artifacts: asset.artifacts,
+                    pollAfterSeconds: initialPollAfterSeconds
+                )
+            }
+            if Self.isAssetFailed(asset.status) {
+                throw CloudAnalysisError.backend(
+                    code: "asset_processing_failed",
+                    message: Self.safeBackendMessage(
+                        asset.failureReason ?? "",
+                        fallback: "The uploaded video could not be prepared for cloud analysis."
+                    )
+                )
+            }
+
+            let boundedProgress = progressStart + min(0.8, max(0.0, Double(asset.uploadedBytes) / Double(max(asset.fileSizeBytes, 1)))) * (progressEnd - progressStart)
+            progress(boundedProgress, "Preparing first preview")
+            pollDelay = min(pollDelay + 1, Self.maxPollDelaySeconds)
+        }
+
+        throw CloudAnalysisError.timedOut
+    }
+
     private func uploadVideo(
         to job: CreateCloudAnalysisJobResponse,
         from url: URL,
@@ -1452,10 +2270,12 @@ struct CloudAnalysisService {
                         transferContext: nil,
                         stalled: true
                     )
-                    LaunchTelemetry.shared.recordBackgroundUploadProof(
-                        "upload_waiting_for_connectivity",
-                        metadata: "kind=source"
-                    )
+                    await MainActor.run {
+                        LaunchTelemetry.shared.recordBackgroundUploadProof(
+                            "upload_waiting_for_connectivity",
+                            metadata: "kind=source"
+                        )
+                    }
                 }
             }
         )
@@ -1758,7 +2578,7 @@ struct CloudAnalysisService {
                     )
                     group.addTask {
                         let etag = try await Self.uploadMultipartChunk(
-                            partTarget,
+                            CloudUploadPartTarget(partTarget),
                             chunk: chunk,
                             alreadyUploadedBytes: min(Int64(offset), totalBytes),
                             totalBytes: totalBytes,
@@ -1918,7 +2738,7 @@ struct CloudAnalysisService {
                     )
                     group.addTask {
                         let etag = try await Self.uploadMultipartChunk(
-                            partTarget,
+                            CloudUploadPartTarget(partTarget),
                             chunk: chunk,
                             alreadyUploadedBytes: min(Int64(offset), totalBytes),
                             totalBytes: totalBytes,
@@ -1972,8 +2792,139 @@ struct CloudAnalysisService {
         )
     }
 
+    private func resumeAssetUploadManifest(
+        _ manifest: CloudUploadResumeManifest,
+        sourceURL: URL,
+        tracker: CloudUploadProgressTracker,
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
+    ) async throws -> [CloudMultipartCompletedPart] {
+        guard let assetID = manifest.assetID,
+              let assetMultipartParts = manifest.assetMultipartParts,
+              !assetMultipartParts.isEmpty else {
+            throw CloudAnalysisError.invalidResponse
+        }
+
+        let fileHandle = try FileHandle(forReadingFrom: sourceURL)
+        defer {
+            try? fileHandle.close()
+        }
+
+        let safeChunkSize = max(manifest.chunkSizeBytes, 1)
+        let totalBytes = max(manifest.totalFileSizeBytes, 0)
+        let uploadID = manifest.uploadID
+        let partCount = manifest.partCount
+        var uploadedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
+        var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
+        let initialCompletedBytes = Self.completedUploadBytes(
+            completedParts: uploadedParts,
+            chunkSizeBytes: safeChunkSize,
+            totalFileSizeBytes: totalBytes
+        )
+        await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
+
+        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+            defaultMaximum: Self.maxConcurrentMultipartUploads
+        )
+        let maxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
+        let progressAggregator = CloudMultipartUploadProgressAggregator(
+            completedBytes: initialCompletedBytes,
+            totalBytes: totalBytes,
+            tracker: tracker
+        )
+        let targetsByPart = Dictionary(uniqueKeysWithValues: assetMultipartParts.compactMap { target -> (Int, CloudAssetUploadTarget)? in
+            guard let partNumber = target.partNumber else { return nil }
+            return (partNumber, target)
+        })
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_asset_manifest_parallel_upload_selected",
+            metadata: "lanes=\(maxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+        )
+
+        try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
+            var nextPartNumber = 1
+            var inFlightUploads = 0
+
+            while nextPartNumber <= partCount || inFlightUploads > 0 {
+                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= partCount {
+                    try Task.checkCancellation()
+                    let partNumber = nextPartNumber
+                    nextPartNumber += 1
+                    let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
+
+                    if completedPartNumbers.contains(partNumber) {
+                        let snapshot = await tracker.snapshot()
+                        reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(partCount) saved")
+                        Self.recordLatestUploadProgressSummary(
+                            stage: "Resuming cloud upload",
+                            snapshot: snapshot,
+                            transferContext: "chunk \(partNumber)/\(partCount) saved",
+                            stalled: false
+                        )
+                        continue
+                    }
+
+                    try fileHandle.seek(toOffset: offset)
+                    guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
+                        nextPartNumber = partCount + 1
+                        break
+                    }
+                    guard let uploadTarget = targetsByPart[partNumber] else {
+                        throw CloudAnalysisError.invalidResponse
+                    }
+
+                    let partTarget = try CloudUploadPartTarget(assetID: assetID, target: uploadTarget)
+                    group.addTask {
+                        let etag = try await Self.uploadMultipartChunk(
+                            partTarget,
+                            chunk: chunk,
+                            alreadyUploadedBytes: min(Int64(offset), totalBytes),
+                            totalBytes: totalBytes,
+                            uploadID: uploadID,
+                            partCount: partCount,
+                            tracker: tracker,
+                            progressAggregator: progressAggregator,
+                            reportUploadProgress: reportUploadProgress
+                        )
+                        return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
+                    }
+                    inFlightUploads += 1
+                }
+
+                guard inFlightUploads > 0 else {
+                    break
+                }
+
+                if let completedPart = try await group.next() {
+                    uploadedParts = await CloudUploadResumeStore.shared.recordCompletedPart(
+                        jobID: assetID,
+                        uploadID: uploadID,
+                        partNumber: completedPart.partNumber,
+                        etag: completedPart.etag
+                    )
+                    completedPartNumbers.insert(completedPart.partNumber)
+                    inFlightUploads -= 1
+                }
+            }
+        }
+
+        guard uploadedParts.count == partCount else {
+            throw CloudAnalysisError.uploadFailed
+        }
+
+        await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
+        let finalSnapshot = await tracker.snapshot()
+        reportUploadProgress(finalSnapshot, false, "resumed asset chunks complete")
+        Self.recordLatestUploadProgressSummary(
+            stage: "Resuming cloud upload",
+            snapshot: finalSnapshot,
+            transferContext: "resumed asset chunks complete",
+            stalled: false
+        )
+        return uploadedParts
+    }
+
     private static func uploadMultipartChunk(
-        _ partTarget: CloudMultipartPartResponse,
+        _ partTarget: CloudUploadPartTarget,
         chunk: Data,
         alreadyUploadedBytes: Int64,
         totalBytes: Int64,
@@ -2030,10 +2981,12 @@ struct CloudAnalysisService {
                                 transferContext: transferContext,
                                 stalled: true
                             )
-                            LaunchTelemetry.shared.recordBackgroundUploadProof(
-                                "upload_waiting_for_connectivity",
-                                metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1)"
-                            )
+                            await MainActor.run {
+                                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                                    "upload_waiting_for_connectivity",
+                                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1)"
+                                )
+                            }
                         }
                     }
                 )
@@ -2188,6 +3141,42 @@ struct CloudAnalysisService {
             .joined(separator: "_")
     }
 
+    private static func shouldFallbackToLegacyUpload(after error: Error) -> Bool {
+        guard case CloudAnalysisError.backend(let code, _) = error else {
+            return false
+        }
+        switch code.lowercased() {
+        case "http_404", "not_found", "route_not_found", "endpoint_not_found":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isAssetProxyReady(_ status: String) -> Bool {
+        let normalized = status.lowercased()
+        return normalized == "proxy_ready" || normalized == "ready"
+    }
+
+    private static func isAssetFailed(_ status: String) -> Bool {
+        let normalized = status.lowercased()
+        return normalized == "failed" || normalized == "error"
+    }
+
+    private static func readyAsset(
+        assetID: String,
+        storageKey: String,
+        artifacts: CloudAssetArtifacts,
+        pollAfterSeconds: Int
+    ) -> CloudReadyAsset {
+        CloudReadyAsset(
+            assetID: assetID,
+            storageKey: storageKey,
+            analysisStorageKey: artifacts.proxyStorageKey ?? storageKey,
+            pollAfterSeconds: pollAfterSeconds
+        )
+    }
+
     private func completeMultipartUpload(
         baseURL: URL,
         jobID: String,
@@ -2261,6 +3250,52 @@ struct CloudAnalysisService {
             configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: false)
         }
         return configuration
+    }
+
+    private func createAssetAnalysisJob(
+        baseURL: URL,
+        assetID: String,
+        installID: String,
+        appVersion: String?,
+        analysisVersion: String?,
+        teamSelection: HighlightTeamSelection? = nil
+    ) async throws -> CloudAssetAnalysisJobResponse {
+        var request = URLRequest(url: baseURL.appending(path: "v1/assets/\(assetID)/analysis-jobs"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(
+            CloudAssetAnalysisJobRequest(
+                installId: installID,
+                appVersion: appVersion,
+                analysisVersion: analysisVersion,
+                teamSelection: teamSelection
+            )
+        )
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudAssetAnalysisJobResponse.self
+        )
+    }
+
+    private func scanAssetTeams(
+        baseURL: URL,
+        assetID: String,
+        installID: String
+    ) async throws -> ScanCloudAnalysisTeamsResponse {
+        var request = URLRequest(url: baseURL.appending(path: "v1/assets/\(assetID)/team-scan"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(ScanCloudAnalysisTeamsRequest(installId: installID))
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: ScanCloudAnalysisTeamsResponse.self
+        )
     }
 
     private func startJob(
@@ -2846,6 +3881,9 @@ nonisolated private struct CloudUploadResumeManifest: Codable, Sendable {
     var uploadID: String
     var sourceObjectKey: String?
     var resultObjectKey: String?
+    var assetID: String?
+    var storageKey: String?
+    var assetMultipartParts: [CloudAssetUploadTarget]?
     var pollAfterSeconds: Int
     var purpose: CloudUploadResumePurpose
     var chunkSizeBytes: Int
@@ -2879,7 +3917,10 @@ private actor CloudUploadResumeStore {
         purpose: CloudUploadResumePurpose,
         chunkSizeBytes: Int,
         partCount: Int,
-        totalFileSizeBytes: Int64
+        totalFileSizeBytes: Int64,
+        assetID: String? = nil,
+        storageKey: String? = nil,
+        assetMultipartParts: [CloudAssetUploadTarget]? = nil
     ) -> [CloudMultipartCompletedPart] {
         var manifest = loadManifest()
         if manifest?.jobID != jobID || manifest?.uploadID != uploadID {
@@ -2890,6 +3931,9 @@ private actor CloudUploadResumeStore {
                 uploadID: uploadID,
                 sourceObjectKey: sourceObjectKey,
                 resultObjectKey: resultObjectKey,
+                assetID: assetID,
+                storageKey: storageKey,
+                assetMultipartParts: assetMultipartParts,
                 pollAfterSeconds: pollAfterSeconds,
                 purpose: purpose,
                 chunkSizeBytes: chunkSizeBytes,
@@ -2902,6 +3946,15 @@ private actor CloudUploadResumeStore {
             )
         }
 
+        if let assetID {
+            manifest?.assetID = assetID
+        }
+        if let storageKey {
+            manifest?.storageKey = storageKey
+        }
+        if let assetMultipartParts {
+            manifest?.assetMultipartParts = assetMultipartParts
+        }
         manifest?.updatedAt = Date()
         saveManifest(manifest)
         Self.recordBackgroundUploadProof(

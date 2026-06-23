@@ -164,6 +164,8 @@ nonisolated struct CloudAnalysisCapabilitiesResponse: Codable, Sendable {
 
 nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
     let jobId: String
+    let assetId: String?
+    let storageKey: String?
     let uploadUrl: String
     let uploadMethod: String
     let uploadHeaders: [String: String]
@@ -177,6 +179,8 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
 
     init(
         jobId: String,
+        assetId: String? = nil,
+        storageKey: String? = nil,
         uploadUrl: String,
         uploadMethod: String,
         uploadHeaders: [String: String],
@@ -189,6 +193,8 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
         resumableUpload: CloudResumableUpload? = nil
     ) {
         self.jobId = jobId
+        self.assetId = assetId
+        self.storageKey = storageKey
         self.uploadUrl = uploadUrl
         self.uploadMethod = uploadMethod
         self.uploadHeaders = uploadHeaders
@@ -200,6 +206,100 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
         self.resultObjectKey = resultObjectKey
         self.resumableUpload = resumableUpload
     }
+}
+
+nonisolated struct CloudAssetUploadInitRequest: Codable, Sendable {
+    let filename: String
+    let contentType: String
+    let fileSizeBytes: Int64
+    let durationSeconds: Double
+    let installId: String
+    let appVersion: String
+    let analysisVersion: String
+    var uploadPreference: String? = "auto"
+    var partSizeBytes: Int? = nil
+}
+
+nonisolated struct CloudAssetUploadTarget: Codable, Sendable {
+    let uploadUrl: String
+    let uploadMethod: String
+    let uploadHeaders: [String: String]
+    let partNumber: Int?
+}
+
+nonisolated struct CloudAssetMultipartUpload: Codable, Sendable {
+    let uploadId: String
+    let partSizeBytes: Int
+    let partCount: Int
+    let parts: [CloudAssetUploadTarget]
+}
+
+nonisolated struct CloudAssetUploadInitResponse: Codable, Sendable {
+    let assetId: String
+    let storageKey: String
+    let status: String
+    let uploadMode: String
+    let uploadUrl: String?
+    let uploadMethod: String
+    let uploadHeaders: [String: String]
+    let multipart: CloudAssetMultipartUpload?
+    let expiresAt: Date
+    let pollAfterSeconds: Int
+    let uploadState: String
+}
+
+nonisolated struct CloudAssetUploadCompleteRequest: Codable, Sendable {
+    let installId: String
+    let uploadId: String?
+    let parts: [CloudMultipartCompletedPart]
+}
+
+nonisolated struct CloudAssetArtifacts: Codable, Sendable {
+    let proxyStorageKey: String?
+    let thumbnailStorageKeys: [String]
+    let waveformStorageKey: String?
+}
+
+nonisolated struct CloudAssetUploadCompleteResponse: Codable, Sendable {
+    let assetId: String
+    let storageKey: String
+    let status: String
+    let artifacts: CloudAssetArtifacts
+    let pollAfterSeconds: Int
+}
+
+nonisolated struct CloudAssetStatusResponse: Codable, Sendable {
+    let assetId: String
+    let installId: String
+    let filename: String
+    let contentType: String
+    let fileSizeBytes: Int64
+    let durationSeconds: Double
+    let storageKey: String
+    let status: String
+    let uploadMode: String
+    let uploadedBytes: Int64
+    let artifacts: CloudAssetArtifacts
+    let createdAt: Date
+    let updatedAt: Date
+    let failureReason: String?
+}
+
+nonisolated struct CloudAssetAnalysisJobRequest: Codable, Sendable {
+    let installId: String
+    let appVersion: String?
+    let analysisVersion: String?
+    var teamSelection: HighlightTeamSelection? = nil
+}
+
+nonisolated struct CloudAssetAnalysisJobResponse: Codable, Sendable {
+    let jobId: String
+    let assetId: String
+    let storageKey: String
+    let status: String
+    let pollAfterSeconds: Int
+    let quotaRemainingToday: Int
+    let analysisMode: String
 }
 
 nonisolated struct CloudResumableUpload: Codable, Sendable {
@@ -265,6 +365,8 @@ nonisolated struct PreparedCloudAnalysisJob: Sendable {
 
 nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
     let jobId: String
+    let assetId: String?
+    let storageKey: String?
     let status: String
     let progress: Double
     let stage: String
@@ -277,6 +379,8 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
 
     init(
         jobId: String,
+        assetId: String? = nil,
+        storageKey: String? = nil,
         status: String,
         progress: Double,
         stage: String,
@@ -288,6 +392,8 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
         resultObjectKey: String? = nil
     ) {
         self.jobId = jobId
+        self.assetId = assetId
+        self.storageKey = storageKey
         self.status = status
         self.progress = progress
         self.stage = stage

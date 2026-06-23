@@ -58,6 +58,9 @@ class Settings:
     team_quick_scan_min_team_confidence: float = 0.55
     team_quick_scan_max_candidate_clips: int = 320
     team_quick_scan_max_output_tokens: int = 24000
+    firestore_assets_collection: str = "assets"
+    upload_storage_provider: str = "local"
+    upload_multipart_part_size_bytes: int = 8 * 1024 * 1024
 
     @property
     def is_local(self) -> bool:
@@ -254,6 +257,17 @@ def get_settings() -> Settings:
         team_quick_scan_min_team_confidence=_env_float("HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE", 0.55, 0.0, 0.99),
         team_quick_scan_max_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS", 320, 1, 320),
         team_quick_scan_max_output_tokens=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS", 24000, 512, 24000),
+        firestore_assets_collection=os.getenv("HOOPS_FIRESTORE_ASSETS_COLLECTION", "assets"),
+        upload_storage_provider=os.getenv(
+            "HOOPS_UPLOAD_STORAGE_PROVIDER",
+            "local" if environment == "local" else "object",
+        ).strip().lower(),
+        upload_multipart_part_size_bytes=_env_int(
+            "HOOPS_UPLOAD_MULTIPART_PART_SIZE_BYTES",
+            8 * 1024 * 1024,
+            1,
+            512 * 1024 * 1024,
+        ),
     )
 
     settings.validate()

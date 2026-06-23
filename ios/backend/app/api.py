@@ -14,6 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from .asset_store import AssetStore, FirestoreAssetStore, InMemoryAssetStore
 from .config import Settings, get_settings
 from .editing import (
     CreateEditJobRequest,
@@ -27,24 +28,38 @@ from .editing import (
 from .job_store import FirestoreJobStore, InMemoryJobStore, JobStore
 from .models import (
     APIError,
+    AssetResponse,
+    AssetStatus,
     CreateCloudAnalysisJobRequest,
     CreateCloudAnalysisJobResponse,
+    CreateAssetAnalysisJobRequest,
+    CreateAssetAnalysisJobResponse,
     CloudAnalysisResult,
     ErrorResponse,
     InferenceDispatchRequest,
     JobStatus,
     PipelineError,
     MaterializedSource,
+    PreparedUpload,
     ScanCloudAnalysisSourceRequest,
     ScanCloudAnalysisTeamsRequest,
     ScanCloudAnalysisTeamsResponse,
     StartCloudAnalysisJobRequest,
     StartCloudAnalysisJobResponse,
+    StoredAsset,
     StoredJob,
     TeamSelection,
+    UploadCompleteRequest,
+    UploadCompleteResponse,
+    UploadInitRequest,
+    UploadInitResponse,
+    UploadMode,
+    UploadTargetResponse,
+    MultipartUploadResponse,
     now_utc,
 )
 from .pipeline import run_analysis
+from .post_upload import generate_post_upload_artifacts
 from .render_storage import RenderStorage
 from .renderers.ffmpeg_renderer import FfmpegRenderer
 from .rendering import (
@@ -60,6 +75,11 @@ from .storage import GCSStorageProvider, LocalStorageProvider, StorageProvider
 from .task_dispatcher import CloudTasksDispatcher, InlineTaskDispatcher, TaskDispatcher
 from .team_identity import team_identity_matches
 from .team_quick_scan import apply_team_quick_scan, team_quick_prescan_settings
+from .upload_storage import (
+    LocalDiskUploadStorageAdapter,
+    ObjectStorageCompatibleUploadStorageAdapter,
+    UploadStorageAdapter,
+)
 
 
 async def materialize_remote_source(
@@ -136,6 +156,8 @@ class BackendRuntime:
     settings: Settings
     job_store: JobStore
     storage: StorageProvider
+    asset_store: AssetStore
+    upload_storage: UploadStorageAdapter
     dispatcher: TaskDispatcher
     render_storage: RenderStorage
 
@@ -164,6 +186,137 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         if job is None:
             raise APIError(status_code=404, error_code="job_not_found", error_message="Cloud analysis job was not found.")
         return job
+
+    async def _require_asset(asset_id: str) -> StoredAsset:
+        assert runtime is not None
+        asset = await runtime.asset_store.get_asset(asset_id)
+        if asset is None:
+            raise APIError(status_code=404, error_code="asset_not_found", error_message="Uploaded asset was not found.")
+        return asset
+
+    def _require_asset_owner(asset: StoredAsset, install_id: str) -> None:
+        if asset.install_id != install_id:
+            raise APIError(403, "install_mismatch", "Install ID does not own this uploaded asset.")
+
+    def _choose_upload_mode(request: UploadInitRequest) -> UploadMode:
+        if request.uploadPreference == "single":
+            return UploadMode.SINGLE
+        if request.uploadPreference == "multipart":
+            return UploadMode.MULTIPART
+        if request.fileSizeBytes > resolved_settings.upload_multipart_part_size_bytes:
+            return UploadMode.MULTIPART
+        return UploadMode.SINGLE
+
+    def _upload_state_for(asset: StoredAsset) -> str:
+        if asset.status == AssetStatus.INITIALIZED:
+            return "waiting_for_client_upload"
+        if asset.status == AssetStatus.UPLOADING:
+            return "uploading_parts"
+        if asset.status == AssetStatus.PROCESSING:
+            return "generating_proxy_preview"
+        if asset.status.can_start_analysis:
+            return "proxy_ready"
+        if asset.status == AssetStatus.FAILED:
+            return "failed"
+        return "uploaded_waiting_for_processing"
+
+    def _asset_response(asset: StoredAsset) -> AssetResponse:
+        return asset.to_response()
+
+    def _upload_init_response(asset: StoredAsset, upload_plan: object) -> UploadInitResponse:
+        if asset.upload_mode == UploadMode.MULTIPART:
+            parts = [
+                UploadTargetResponse(
+                    partNumber=part.part_number,
+                    uploadUrl=part.upload_url,
+                    uploadHeaders=part.upload_headers,
+                )
+                for part in upload_plan.parts
+            ]
+            return UploadInitResponse(
+                assetId=asset.asset_id,
+                storageKey=asset.storage_key,
+                status=asset.status.value,
+                uploadMode=asset.upload_mode.value,
+                multipart=MultipartUploadResponse(
+                    uploadId=upload_plan.upload_id,
+                    partSizeBytes=upload_plan.part_size_bytes,
+                    partCount=upload_plan.part_count,
+                    parts=parts,
+                ),
+                expiresAt=upload_plan.expires_at,
+                pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+                uploadState=_upload_state_for(asset),
+            )
+
+        return UploadInitResponse(
+            assetId=asset.asset_id,
+            storageKey=asset.storage_key,
+            status=asset.status.value,
+            uploadMode=asset.upload_mode.value,
+            uploadUrl=upload_plan.upload_url,
+            uploadHeaders=upload_plan.upload_headers,
+            expiresAt=upload_plan.expires_at,
+            pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+            uploadState=_upload_state_for(asset),
+        )
+
+    async def _process_uploaded_asset(asset_id: str) -> StoredAsset:
+        assert runtime is not None
+        asset = await _require_asset(asset_id)
+        if asset.status.can_start_analysis:
+            return asset
+        await runtime.asset_store.update_asset(asset_id, status=AssetStatus.PROCESSING, failure_reason=None)
+        asset = await _require_asset(asset_id)
+        try:
+            if not await runtime.upload_storage.object_exists(asset.storage_key):
+                raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before processing.")
+            artifacts = await generate_post_upload_artifacts(asset, resolved_settings, runtime.upload_storage)
+            return await runtime.asset_store.update_asset(
+                asset_id,
+                status=AssetStatus.PROXY_READY,
+                proxy_storage_key=artifacts.proxy_storage_key,
+                thumbnail_storage_keys=[artifacts.thumbnail_storage_key],
+                waveform_storage_key=artifacts.waveform_storage_key,
+                failure_reason=None,
+            )
+        except APIError as error:
+            await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason=error.error_code)
+            raise
+        except Exception as error:
+            await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason="post_upload_processing_failed")
+            raise APIError(500, "post_upload_processing_failed", "Post-upload processing failed.") from error
+
+    async def _materialize_asset_or_remote_source(
+        *,
+        asset_id: Optional[str],
+        storage_key: Optional[str],
+        source_object_key: Optional[str],
+        source_url: Optional[str],
+        filename: str,
+        install_id: str,
+    ) -> MaterializedSource:
+        assert runtime is not None
+        if asset_id:
+            asset = await _require_asset(asset_id)
+            _require_asset_owner(asset, install_id)
+            if not asset.status.can_start_analysis:
+                raise APIError(409, "asset_not_ready", "Asset proxy is not ready for AI analysis.")
+            return await runtime.upload_storage.materialize_storage_key(asset.analysis_storage_key, asset.filename)
+
+        key = storage_key or source_object_key
+        if key:
+            return await runtime.upload_storage.materialize_storage_key(key, filename)
+
+        if source_url:
+            return await materialize_remote_source(
+                source_url,
+                filename,
+                resolved_settings.max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+
+        raise APIError(400, "source_missing", "AI analysis requires an assetId, storageKey, sourceObjectKey, or legacy sourceUrl.")
 
     def _require_edit_job(edit_job_id: str) -> StoredEditJob:
         job = edit_jobs.get(edit_job_id)
@@ -240,7 +393,9 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             analysis_version=request.analysisVersion,
             created_at=created_at,
             expires_at=created_at + timedelta(seconds=resolved_settings.job_ttl_seconds),
-            object_key=request.sourceObjectKey,
+            object_key=request.storageKey or request.sourceObjectKey or f"assets/{request.assetId or request.jobId}/proxy/proxy.mp4",
+            asset_id=request.assetId,
+            storage_key=request.storageKey or request.sourceObjectKey,
             team_selection=request.teamSelection,
             status=JobStatus.PROCESSING,
             progress=0.62,
@@ -277,11 +432,13 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     async def _run_inference_dispatch(request: InferenceDispatchRequest) -> None:
         source = None
         try:
-            source = await materialize_remote_source(
-                request.sourceUrl,
-                request.filename,
-                resolved_settings.max_file_size_bytes,
-                resolved_settings.upload_root,
+            source = await _materialize_asset_or_remote_source(
+                asset_id=request.assetId,
+                storage_key=request.storageKey,
+                source_object_key=request.sourceObjectKey,
+                source_url=request.sourceUrl,
+                filename=request.filename,
+                install_id=request.installId,
             )
             job = _dispatch_job_from_request(request)
             result = await run_in_threadpool(run_analysis, job, resolved_settings, source.local_path)
@@ -335,7 +492,10 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
             await runtime.job_store.mark_processing(job_id, stage="Analyzing in cloud", progress=0.62)
             job = await _require_job(job_id)
-            source = await runtime.storage.materialize_source(job)
+            if job.asset_id or job.storage_key:
+                source = await runtime.upload_storage.materialize_storage_key(job.storage_key or job.object_key, job.filename)
+            else:
+                source = await runtime.storage.materialize_source(job)
             result = await run_in_threadpool(run_analysis, job, resolved_settings, source.local_path)
             await runtime.job_store.mark_succeeded(job_id, result)
         except APIError as error:
@@ -359,7 +519,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 source.cleanup()
             try:
                 job = await runtime.job_store.get_job(job_id)
-                if job is not None and job.status.is_terminal:
+                if job is not None and job.status.is_terminal and not job.asset_id:
                     runtime.storage.cleanup(job)
             except Exception:
                 pass
@@ -437,23 +597,311 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 source.cleanup()
 
     def _create_runtime() -> BackendRuntime:
+        upload_storage: UploadStorageAdapter
+        if resolved_settings.upload_storage_provider == "local":
+            upload_storage = LocalDiskUploadStorageAdapter(resolved_settings)
+        elif resolved_settings.upload_storage_provider in {"object", "s3", "r2"}:
+            upload_storage = ObjectStorageCompatibleUploadStorageAdapter(resolved_settings)
+        else:
+            raise RuntimeError("HOOPS_UPLOAD_STORAGE_PROVIDER must be local, object, s3, or r2.")
+
         if resolved_settings.is_local:
             job_store = InMemoryJobStore(resolved_settings)
             storage = LocalStorageProvider(resolved_settings)
+            asset_store = InMemoryAssetStore()
             dispatcher = InlineTaskDispatcher(_process_job)
         else:
             job_store = FirestoreJobStore(resolved_settings)
             storage = GCSStorageProvider(resolved_settings)
+            asset_store = FirestoreAssetStore(resolved_settings)
             dispatcher = CloudTasksDispatcher(resolved_settings)
         return BackendRuntime(
             settings=resolved_settings,
             job_store=job_store,
             storage=storage,
+            asset_store=asset_store,
+            upload_storage=upload_storage,
             dispatcher=dispatcher,
             render_storage=RenderStorage(resolved_settings),
         )
 
     runtime = _create_runtime()
+
+    @router.post(
+        "/v1/uploads/init",
+        response_model=UploadInitResponse,
+        responses={400: {"model": ErrorResponse}, 413: {"model": ErrorResponse}},
+    )
+    async def init_upload(request: UploadInitRequest):
+        assert runtime is not None
+        try:
+            _require_public_api_enabled()
+            if request.durationSeconds > resolved_settings.max_duration_seconds:
+                raise APIError(400, "unsupported_duration", "Videos longer than 75 minutes are not supported in cloud analysis right now.")
+            if request.fileSizeBytes > resolved_settings.max_file_size_bytes:
+                raise APIError(413, "file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
+
+            asset_id = "asset_" + uuid4().hex
+            storage_key = runtime.upload_storage.storage_key_for(asset_id, request.filename)
+            upload_mode = _choose_upload_mode(request)
+            now = _now()
+            expires_at = now + timedelta(seconds=resolved_settings.signed_upload_ttl_seconds)
+            part_size = request.partSizeBytes or resolved_settings.upload_multipart_part_size_bytes
+
+            if upload_mode == UploadMode.MULTIPART:
+                upload_plan = runtime.upload_storage.prepare_multipart_upload(
+                    asset_id,
+                    storage_key,
+                    request.contentType,
+                    request.fileSizeBytes,
+                    part_size,
+                )
+                upload_id = upload_plan.upload_id
+                part_count = upload_plan.part_count
+                part_size = upload_plan.part_size_bytes
+                expires_at = upload_plan.expires_at
+            else:
+                upload_plan = runtime.upload_storage.prepare_single_upload(asset_id, storage_key, request.contentType)
+                upload_id = None
+                part_count = None
+                expires_at = upload_plan.expires_at
+
+            asset = StoredAsset(
+                asset_id=asset_id,
+                install_id=request.installId,
+                filename=request.filename,
+                content_type=request.contentType,
+                file_size_bytes=request.fileSizeBytes,
+                duration_seconds=request.durationSeconds,
+                app_version=request.appVersion,
+                analysis_version=request.analysisVersion,
+                storage_key=storage_key,
+                created_at=now,
+                updated_at=now,
+                expires_at=expires_at,
+                upload_mode=upload_mode,
+                status=AssetStatus.INITIALIZED,
+                upload_id=upload_id,
+                part_size_bytes=part_size if upload_mode == UploadMode.MULTIPART else None,
+                part_count=part_count,
+            )
+            asset = await runtime.asset_store.create_asset(asset)
+            return _upload_init_response(asset, upload_plan)
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/assets/{asset_id}",
+        response_model=AssetResponse,
+        responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def get_asset(
+        asset_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+    ):
+        try:
+            _require_public_api_enabled()
+            asset = await _require_asset(asset_id)
+            owner = _request_install_id(installId, x_hoops_install_id)
+            if owner:
+                _require_asset_owner(asset, owner)
+            return _asset_response(asset)
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/uploads/{asset_id}/complete",
+        response_model=UploadCompleteResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def complete_upload(asset_id: str, request: UploadCompleteRequest):
+        assert runtime is not None
+        try:
+            _require_public_api_enabled()
+            asset = await _require_asset(asset_id)
+            _require_asset_owner(asset, request.installId)
+            if asset.status.can_start_analysis:
+                return UploadCompleteResponse(
+                    assetId=asset.asset_id,
+                    storageKey=asset.storage_key,
+                    status=asset.status.value,
+                    artifacts=asset.artifacts_response(),
+                    pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+                )
+            if asset.upload_mode == UploadMode.MULTIPART:
+                if request.uploadId and request.uploadId != asset.upload_id:
+                    raise APIError(400, "upload_id_mismatch", "Multipart upload ID does not match this asset.")
+                supplied_parts = {
+                    part.partNumber: part.etag or asset.parts.get(part.partNumber) or ""
+                    for part in request.parts
+                }
+                supplied_parts = {part_number: etag for part_number, etag in supplied_parts.items() if etag}
+                merged_parts = {**asset.parts, **supplied_parts}
+                runtime.upload_storage.complete_multipart_upload(asset, merged_parts)
+                asset = await runtime.asset_store.update_asset(
+                    asset_id,
+                    status=AssetStatus.UPLOADED,
+                    parts=merged_parts,
+                    uploaded_bytes=asset.file_size_bytes,
+                )
+            else:
+                if not await runtime.upload_storage.object_exists(asset.storage_key):
+                    raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before processing.")
+                asset = await runtime.asset_store.update_asset(
+                    asset_id,
+                    status=AssetStatus.UPLOADED,
+                    uploaded_bytes=asset.file_size_bytes,
+                )
+
+            asset = await _process_uploaded_asset(asset.asset_id)
+            return UploadCompleteResponse(
+                assetId=asset.asset_id,
+                storageKey=asset.storage_key,
+                status=asset.status.value,
+                artifacts=asset.artifacts_response(),
+                pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+            )
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/assets/{asset_id}/analysis-jobs",
+        response_model=CreateAssetAnalysisJobResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def create_analysis_job_from_asset(asset_id: str, request: CreateAssetAnalysisJobRequest):
+        assert runtime is not None
+        try:
+            _require_public_api_enabled()
+            asset = await _require_asset(asset_id)
+            _require_asset_owner(asset, request.installId)
+            if not asset.status.can_start_analysis:
+                raise APIError(409, "asset_not_ready", "Asset proxy is not ready for AI analysis.")
+
+            quota_remaining = await runtime.job_store.reserve_quota(request.installId)
+            job_id = uuid4().hex
+            storage_key = asset.analysis_storage_key
+            upload = PreparedUpload(
+                object_key=storage_key,
+                upload_url="asset://ready",
+                upload_headers={},
+                expires_at=asset.expires_at,
+            )
+            create_request = CreateCloudAnalysisJobRequest(
+                filename=asset.filename,
+                contentType=asset.content_type,
+                fileSizeBytes=asset.file_size_bytes,
+                durationSeconds=asset.duration_seconds,
+                installId=request.installId,
+                appVersion=request.appVersion or asset.app_version,
+                analysisVersion=request.analysisVersion or asset.analysis_version,
+                teamSelection=request.teamSelection,
+                assetId=asset.asset_id,
+                storageKey=storage_key,
+            )
+            job = await runtime.job_store.create_job(job_id, create_request, upload, quota_remaining)
+            job = await runtime.job_store.mark_queued(job.job_id)
+            await runtime.dispatcher.enqueue_process(job)
+            return CreateAssetAnalysisJobResponse(
+                jobId=job.job_id,
+                assetId=asset.asset_id,
+                storageKey=storage_key,
+                status=job.status.value,
+                pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+                quotaRemainingToday=quota_remaining,
+            )
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/assets/{asset_id}/team-scan",
+        response_model=ScanCloudAnalysisTeamsResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def scan_asset_teams(asset_id: str, request: ScanCloudAnalysisTeamsRequest):
+        assert runtime is not None
+        source = None
+        try:
+            _require_public_api_enabled()
+            asset = await _require_asset(asset_id)
+            _require_asset_owner(asset, request.installId)
+            if not asset.status.can_start_analysis:
+                raise APIError(409, "asset_not_ready", "Asset proxy is not ready for team scan.")
+
+            source = await runtime.upload_storage.materialize_storage_key(
+                asset.analysis_storage_key,
+                asset.filename,
+            )
+            prescan_settings = team_quick_prescan_settings(resolved_settings)
+            _, detected_teams, applied = await run_in_threadpool(
+                apply_team_quick_scan,
+                source.local_path,
+                asset.duration_seconds,
+                [],
+                prescan_settings,
+            )
+            status = "scanned" if applied and detected_teams else "unavailable"
+            return ScanCloudAnalysisTeamsResponse(jobId=asset.asset_id, status=status, detectedTeams=detected_teams)
+        except APIError as error:
+            return _error_response(error)
+        finally:
+            if source is not None:
+                source.cleanup()
+
+    if resolved_settings.enable_local_upload_emulation:
+
+        @router.put(
+            "/v1/internal/assets/{asset_id}/upload",
+            status_code=204,
+            responses={404: {"model": ErrorResponse}, 413: {"model": ErrorResponse}},
+        )
+        async def upload_asset(asset_id: str, request: Request):
+            assert runtime is not None
+            try:
+                asset = await _require_asset(asset_id)
+                if asset.upload_mode != UploadMode.SINGLE:
+                    raise APIError(400, "multipart_required", "This asset uses multipart upload.")
+                payload = await request.body()
+                if not payload:
+                    raise APIError(400, "empty_upload", "The uploaded file body was empty.")
+                if len(payload) > resolved_settings.max_file_size_bytes:
+                    raise APIError(413, "file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
+                runtime.upload_storage.accept_local_upload(asset, payload)
+                await runtime.asset_store.update_asset(
+                    asset_id,
+                    status=AssetStatus.UPLOADED,
+                    uploaded_bytes=len(payload),
+                )
+                return Response(status_code=204)
+            except APIError as error:
+                return _error_response(error)
+
+        @router.put(
+            "/v1/internal/assets/{asset_id}/parts/{part_number}",
+            status_code=204,
+            responses={404: {"model": ErrorResponse}, 413: {"model": ErrorResponse}},
+        )
+        async def upload_asset_part(asset_id: str, part_number: int, request: Request):
+            assert runtime is not None
+            try:
+                asset = await _require_asset(asset_id)
+                if asset.upload_mode != UploadMode.MULTIPART:
+                    raise APIError(400, "single_upload_required", "This asset uses single-part upload.")
+                payload = await request.body()
+                if not payload:
+                    raise APIError(400, "empty_upload", "The uploaded part body was empty.")
+                etag = runtime.upload_storage.accept_local_part(asset, part_number, payload)
+                parts = {**asset.parts, part_number: etag}
+                await runtime.asset_store.update_asset(
+                    asset_id,
+                    status=AssetStatus.UPLOADING,
+                    parts=parts,
+                    uploaded_bytes=asset.uploaded_bytes + len(payload),
+                )
+                return Response(status_code=204, headers={"ETag": etag})
+            except APIError as error:
+                return _error_response(error)
 
     @router.post(
         "/v1/analysis/jobs",
@@ -565,11 +1013,13 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         source = None
         try:
             _require_internal_process_secret(x_hoops_inference_secret or x_hoops_internal_secret)
-            source = await materialize_remote_source(
-                request.sourceUrl,
-                request.filename,
-                resolved_settings.max_file_size_bytes,
-                resolved_settings.upload_root,
+            source = await _materialize_asset_or_remote_source(
+                asset_id=request.assetId,
+                storage_key=request.storageKey,
+                source_object_key=request.sourceObjectKey,
+                source_url=request.sourceUrl,
+                filename=request.filename,
+                install_id=request.installId,
             )
             prescan_settings = team_quick_prescan_settings(resolved_settings)
             _, detected_teams, applied = await run_in_threadpool(
