@@ -1300,7 +1300,9 @@ struct HoopsClipsTests {
             keptClips: 8,
             needsReviewClips: 2,
             lastAnalysisBlockReason: "none",
+            fastUploadMode: false,
             latestUploadProgress: "bytes=196/525_MB speed=2.4_MB/s",
+            latestUploadSourceOptimization: "none",
             latestUnexpectedExit: "none",
             latestCrashReportDelivery: "sent"
         )

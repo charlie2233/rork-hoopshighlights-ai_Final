@@ -3034,6 +3034,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return "Duplicate"
         case .wrongTeam: return "Wrong team"
         case .badWindow: return "Bad window"
+        case .wrongLabel: return "Wrong label"
+        case .lowQuality: return "Low quality"
         }
     }
 
@@ -3042,6 +3044,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return "rectangle.on.rectangle.angled"
         case .wrongTeam: return "person.2.slash.fill"
         case .badWindow: return "crop"
+        case .wrongLabel: return "tag.slash"
+        case .lowQuality: return "exclamationmark.magnifyingglass"
         }
     }
 
@@ -3050,6 +3054,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return AppTheme.warningYellow
         case .wrongTeam: return AppTheme.dangerRed
         case .badWindow: return .orange
+        case .wrongLabel: return AppTheme.courtBlue
+        case .lowQuality: return AppTheme.subtleText
         }
     }
 }

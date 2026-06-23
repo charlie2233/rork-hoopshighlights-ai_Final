@@ -498,6 +498,8 @@ nonisolated enum ClipReviewFeedbackTag: String, Codable, Sendable, Equatable, Ha
     case duplicate
     case wrongTeam = "wrong_team"
     case badWindow = "bad_window"
+    case wrongLabel = "wrong_label"
+    case lowQuality = "low_quality"
 
     var id: String { rawValue }
 }
