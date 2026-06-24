@@ -15,6 +15,7 @@
 - [x] Add canonical asset integrity/retry/cancel metadata: `checksumSha256`, `integrityStatus`, `progress`, `retryCount`, `retryable`, `lastErrorCode`, `cancellationReason`, and render attachment fields.
 - [x] Add structured upload capabilities endpoints for limits, part sizing, checksums, cancellation, and idempotent completion.
 - [x] Keep multipart completion idempotent and retryable with persisted part ETags and part-size progress.
+- [x] Expose Worker canonical asset route aliases for init, complete, status, analysis start, and team scan while preserving legacy job routes.
 
 ## UI Agent
 

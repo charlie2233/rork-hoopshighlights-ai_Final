@@ -318,7 +318,9 @@ Render jobs continue to use the existing durable render state store, leases, ind
 
 The Cloudflare Worker includes additive `assetId` fields in create/poll responses and additive `assetId/storageKey` fields in internal team-scan and inference dispatch payloads. For the existing R2 flow, `assetId` maps to `jobId` and internal `storageKey` maps to `sourceObjectKey`.
 
-Public Worker responses keep `storageKey` null/redacted to preserve object-key redaction guarantees. Providers may continue reading `sourceUrl` during migration, but new inference/editing code should prefer `assetId` plus internal `storageKey` when present. Swift and shared TypeScript DTOs intentionally model completed/status asset `storageKey` as nullable; analysis handoff still requires a resolved key from `storageKey`, `sourceObjectKey`, `proxyKey`, or `artifacts.proxyStorageKey`.
+The Worker also accepts the canonical asset route aliases used by the managed smoke harness: `POST /v1/uploads/init`, `POST /v1/uploads/{assetId}/complete`, `GET /v1/assets/{assetId}`, `POST /v1/assets/{assetId}/analysis-jobs`, and `POST /v1/assets/{assetId}/team-scan`. These aliases bridge to the current R2-backed job flow while keeping the legacy `/v1/uploads/presign`, `/v1/uploads/multipart/*`, `/v1/jobs`, `/v1/jobs/{jobId}`, and `/v1/jobs/{jobId}/start` routes valid during migration.
+
+Public Worker status/complete responses keep `storageKey` null/redacted to preserve object-key redaction guarantees. Canonical init and analysis-job compatibility responses may echo the same object key through `storageKey` that they also expose as `sourceObjectKey`, because current iOS upload/start flows need that key until the deployed backend and client cut fully to proxy-ready assets. Providers may continue reading `sourceUrl` during migration, but new inference/editing code should prefer `assetId` plus internal `storageKey` when present. Swift and shared TypeScript DTOs intentionally model completed/status asset `storageKey` as nullable; analysis handoff still requires a resolved key from `storageKey`, `sourceObjectKey`, `proxyKey`, or `artifacts.proxyStorageKey`.
 
 ## Legacy Manual URL Compatibility
 

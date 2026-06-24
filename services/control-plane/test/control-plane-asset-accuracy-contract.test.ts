@@ -63,6 +63,146 @@ test("control plane keeps asset aliases while preserving redacted public storage
   assert.equal(pollJson.storageKey, null);
 });
 
+test("canonical asset upload routes bridge to the Worker R2 job flow", async () => {
+  const controlPlane = createControlPlaneHarness();
+
+  const initResponse = await invokePublicRoute(
+    controlPlane,
+    "POST",
+    "/uploads/init",
+    {
+      filename: "asset-canonical.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 2048,
+      durationSeconds: 18,
+      installId: "install-asset-canonical",
+      appVersion: "1.0.0",
+      analysisVersion: "asset-v1",
+      uploadPreference: "single",
+    },
+  );
+
+  assert.equal(initResponse.status, 201);
+  const initJson = await parseJsonResponse<{
+    assetId: string;
+    storageKey: string;
+    status: string;
+    uploadMode: string;
+    uploadUrl: string;
+    uploadMethod: string;
+    uploadHeaders: Record<string, string>;
+  }>(initResponse);
+  assert.equal(initJson.status, "initialized");
+  assert.equal(initJson.uploadMode, "single");
+  assert.equal(initJson.uploadMethod, "PUT");
+  assert.equal(initJson.storageKey.length > 0, true);
+  assert.equal(initJson.assetId.length > 0, true);
+
+  await uploadObject(
+    controlPlane,
+    initJson.uploadUrl,
+    new TextEncoder().encode("canonical asset upload clip"),
+  );
+
+  const completeResponse = await invokePublicRoute(
+    controlPlane,
+    "POST",
+    `/uploads/${initJson.assetId}/complete`,
+    {
+      installId: "install-asset-canonical",
+    },
+  );
+  assert.equal(completeResponse.status, 200);
+  const completeJson = await parseJsonResponse<{
+    assetId: string;
+    storageKey: string | null;
+    sourceObjectKey: string;
+    status: string;
+    integrityStatus: string;
+  }>(completeResponse);
+  assert.equal(completeJson.assetId, initJson.assetId);
+  assert.equal(completeJson.storageKey, null);
+  assert.equal(completeJson.sourceObjectKey, initJson.storageKey);
+  assert.equal(completeJson.status, "ready");
+  assert.equal(completeJson.integrityStatus, "unavailable");
+
+  const duplicateCompleteResponse = await invokePublicRoute(
+    controlPlane,
+    "POST",
+    `/uploads/${initJson.assetId}/complete`,
+    {
+      installId: "install-asset-canonical",
+    },
+  );
+  assert.equal(duplicateCompleteResponse.status, 200);
+  const duplicateCompleteJson = await parseJsonResponse<{ assetId: string; status: string }>(duplicateCompleteResponse);
+  assert.equal(duplicateCompleteJson.assetId, initJson.assetId);
+  assert.equal(duplicateCompleteJson.status, "ready");
+
+  const statusResponse = await invokePublicRoute(
+    controlPlane,
+    "GET",
+    `/assets/${initJson.assetId}?installId=install-asset-canonical`,
+  );
+  assert.equal(statusResponse.status, 200);
+  const statusJson = await parseJsonResponse<{
+    assetId: string;
+    storageKey: string | null;
+    sourceObjectKey: string;
+    status: string;
+    uploadedBytes: number;
+  }>(statusResponse);
+  assert.equal(statusJson.assetId, initJson.assetId);
+  assert.equal(statusJson.storageKey, null);
+  assert.equal(statusJson.sourceObjectKey, initJson.storageKey);
+  assert.equal(statusJson.status, "ready");
+  assert.equal(statusJson.uploadedBytes, 2048);
+
+  const analysisResponse = await invokePublicRoute(
+    controlPlane,
+    "POST",
+    `/assets/${initJson.assetId}/analysis-jobs`,
+    {
+      installId: "install-asset-canonical",
+      appVersion: "1.0.0",
+      analysisVersion: "asset-v1",
+    },
+  );
+  assert.equal(analysisResponse.status, 200);
+  const analysisJson = await parseJsonResponse<{
+    jobId: string;
+    assetId: string;
+    storageKey: string;
+    sourceObjectKey: string;
+    status: string;
+  }>(analysisResponse);
+  assert.equal(analysisJson.jobId, initJson.assetId);
+  assert.equal(analysisJson.assetId, initJson.assetId);
+  assert.equal(analysisJson.storageKey, initJson.storageKey);
+  assert.equal(analysisJson.sourceObjectKey, initJson.storageKey);
+  assert.equal(analysisJson.status, "queued");
+  assert.equal(controlPlane.state.queueMessages[0]?.assetId, initJson.assetId);
+  assert.equal(controlPlane.state.queueMessages[0]?.storageKey, initJson.storageKey);
+
+  const lateCompleteResponse = await invokePublicRoute(
+    controlPlane,
+    "POST",
+    `/uploads/${initJson.assetId}/complete`,
+    {
+      installId: "install-asset-canonical",
+    },
+  );
+  assert.equal(lateCompleteResponse.status, 200);
+  const lateCompleteJson = await parseJsonResponse<{ assetId: string; status: string }>(lateCompleteResponse);
+  assert.equal(lateCompleteJson.assetId, initJson.assetId);
+  assert.equal(lateCompleteJson.status, "ready");
+
+  const legacyPollResponse = await invokePublicRoute(controlPlane, "GET", `/jobs/${initJson.assetId}`);
+  const legacyPollJson = await parseJsonResponse<{ jobId: string; status: string }>(legacyPollResponse);
+  assert.equal(legacyPollJson.jobId, initJson.assetId);
+  assert.equal(legacyPollJson.status, "queued");
+});
+
 test("admin clip review echoes and stores canonical review feedback tags", async () => {
   const controlPlane = createControlPlaneHarness();
   const capturedBinds: unknown[][] = [];
