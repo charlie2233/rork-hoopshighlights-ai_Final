@@ -13,6 +13,18 @@
 - [x] Replace inline local post-upload processing with the durable managed queue.
 - [x] Add durable post-upload queue for managed mode instead of inline local processing.
 
+## Detection Agent
+
+- [x] Add staged detection pipeline contracts for proposal, embedding rerank, classifier, merge, and taxonomy.
+- [x] Add `/v2/detection/analyze` as an internal validation route.
+- [x] Add `candidateClips`, `rankScore`, stage scores, top labels, raw labels, canonical label fields, and provenance metadata.
+- [x] Preserve `/v1/analysis/jobs`, `/v1/analysis/jobs/{jobId}/start`, and `/v1/analysis/jobs/{jobId}` compatibility.
+- [x] Preserve `/api/ai/analyze` and `/api/ai/result/{jobId}` legacy Worker aliases.
+- [x] Add detection taxonomy data and model registry docs.
+- [x] Add deterministic benchmark CLI for the detection pipeline.
+- [ ] Add real OpenCLIP/SigLIP runtime adapters behind `EmbeddingAdapter` without changing response shapes.
+- [ ] Add real R2Plus1D model loading behind `VideoClassifierAdapter` without changing response shapes.
+
 ## UI Agent
 
 - [x] Introduce `AssetUploadInitResponse`, `AssetStatusResponse`, and `AssetAnalysisJobResponse` Swift models.
@@ -25,20 +37,24 @@
 - [x] Keep Review actions wired to `Clip.isKept`: Keep, Nah, Keep Strong, Skip Weak, team filters, feedback tags, and boundary nudges.
 - [x] Keep Review shortcut routing: `K` keep, `D` discard, `N` Nah compatibility, `1`-`5` feedback tags, `[`/`]` boundary nudges.
 - [x] Persist the five canonical review feedback tags: `duplicate`, `wrong_team`, `bad_window`, `wrong_label`, `low_quality`.
+- [x] Read detection output as `results.candidateClips ?? results.clips` where detection v2 metadata is available.
 - [x] Keep Exports focused on rendered/downloaded MP4 states and read latest status from `HighlightsViewModel.latestCloudEditRenderStatus`.
 - [x] Keep the existing manual URL input behind compatibility/debug UI only.
 
 ## Detection/Edit Agents
 
-- [x] Prefer `assetId` and `storageKey` in inference/team-scan/edit request payloads.
+- [x] Prefer `assetId` and `storageKey` in inference/team-scan/detection/edit request payloads.
 - [x] Treat `sourceUrl` as legacy fallback only.
 - [x] Consume `proxyStorageKey` for first-preview/edit planning when available.
 - [x] Do not start expensive analysis/edit planning before `proxy_ready`.
 - [x] Confirm AI Edit tab still calls cloud edit plan and render endpoints through `CloudEditService`; `assetId` and `sourceClipIds` are additive live fields and `sourceObjectKey` plus full `clips` remain the compatibility route.
+- [x] Prefer `rankScore` and `scores.finalScore` for candidate ordering when present.
+- [x] Preserve `teamAttributionStatus`, `nativeShotSignals`, and `shouldAutoKeep` gates.
 - [x] Send structured `editIntent` with style, pace, audio preference, chronology, caption density, and hard constraints.
 - [x] Send an edit-job `idempotencyKey` and preserve replay-safe edit creation in backend/service storage.
 - [x] Echo `assetId`, `sourceObjectKey`, `sourceClipIds`, `editIntent`, candidate clip count, and full candidate clips on edit-job responses.
 - [x] Confirm boundary nudges remain metadata-only and are reflected in cloud edit candidate clips through `CreateCloudEditJobRequest.clips`.
+- [x] Reset AI Edit/render state when source asset identity or candidate clips change.
 
 ## Verification
 
@@ -50,8 +66,13 @@
 - [x] Add workflow UI smoke coverage for Uploads -> Review -> AI Edit -> Exports navigation.
 - [x] Add edit request encoding coverage for `assetId`, `sourceClipIds`, `editIntent`, and `idempotencyKey`.
 - [x] Add backend/service idempotency replay coverage for edit-job creation.
-- [x] Re-run iOS build-for-testing after this integration branch resolves conflicts.
-- [x] Re-run focused `HoopsClipsTests` integration lanes: `WorkflowStateTests`, edit request encoding, asset upload decode, and asset queue decode.
-- [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
-- [ ] Re-run the full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
+- [x] Add detection v2 route and pipeline unit tests.
+- [x] Add editing service tests for Worker dispatch and detection v2 candidate output.
+- [x] Re-run backend py_compile after detection merge.
+- [x] Re-run upload and detection backend tests after detection merge.
+- [x] Re-run editing service tests after detection merge.
+- [x] Re-run detection benchmark CLI after detection merge.
+- [x] Re-run Worker typecheck and tests after detection merge.
+- [x] Re-run focused iOS AI Edit state reset test after detection merge.
+- [ ] Re-run full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
 - [ ] Add managed object-storage smoke after Worker/provider deployment is available.

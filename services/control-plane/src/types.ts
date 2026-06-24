@@ -318,6 +318,42 @@ export interface CloudRawLabelScore {
   modelVersion?: string | null;
 }
 
+export type DetectionPipelineStage =
+  | "proposal"
+  | "embedding_rerank"
+  | "classifier"
+  | "merge"
+  | "taxonomy";
+
+export interface DetectionStageProvenance {
+  stage: DetectionPipelineStage;
+  status?: "applied" | "fallback" | "skipped" | "unavailable";
+  source: string;
+  modelId?: string | null;
+  modelVersion?: string | null;
+  adapter?: string | null;
+  score?: number | null;
+  rank?: number | null;
+  rawLabel?: string | null;
+  details?: Record<string, unknown> | null;
+}
+
+export interface CloudClipProvenance {
+  proposal: DetectionStageProvenance;
+  embeddingRerank?: DetectionStageProvenance | null;
+  classifier?: DetectionStageProvenance | null;
+  merge?: DetectionStageProvenance | null;
+  taxonomy?: DetectionStageProvenance | null;
+}
+
+export interface CloudClipScores {
+  proposalScore: number;
+  embeddingScore?: number | null;
+  classifierScore?: number | null;
+  mergeScore?: number | null;
+  finalScore: number;
+}
+
 export interface CloudClip {
   startTime: number;
   endTime: number;
@@ -361,6 +397,10 @@ export interface CloudClip {
   comparisonTopLabels?: CloudLabelScore[] | null;
   rawTopLabels?: CloudRawLabelScore[] | null;
   comparisonRawTopLabels?: CloudRawLabelScore[] | null;
+  pipelineStage?: "proposal" | "embedding_rerank" | "classified" | "merged_candidate" | null;
+  pipelineVersion?: string | null;
+  provenance?: CloudClipProvenance | null;
+  scores?: CloudClipScores | null;
   nativeShotSignals?: NativeShotSignals | null;
   teamAttribution?: ClipTeamAttribution | null;
   teamAttributionStatus?: "all" | "matched" | "opponent" | "uncertain" | null;
@@ -388,6 +428,12 @@ export interface CloudDiagnostics {
   usedGeminiRelabeling: boolean;
   candidateSegments: number;
   finalSegments: number;
+  proposalSegments?: number;
+  embeddedSegments?: number;
+  classifiedSegments?: number;
+  mergedCandidateSegments?: number;
+  usedSemanticRerank?: boolean;
+  taxonomyVersion?: string | null;
   usedTeamQuickScan?: boolean;
   preTeamFilterSegments?: number;
   teamMatchedCandidateSegments?: number;
@@ -400,6 +446,19 @@ export interface CloudDiagnostics {
   stealReviewSegments?: number;
   forcedTurnoverReviewSegments?: number;
   defensiveStopReviewSegments?: number;
+}
+
+export interface DetectionPipelineSummary {
+  pipelineVersion: string;
+  stages: DetectionPipelineStage[];
+  proposalCount: number;
+  rerankedCount: number;
+  classifiedCount: number;
+  mergedCandidateCount: number;
+  models: Record<string, string>;
+  taxonomyVersion: string;
+  fallbackUsed?: boolean;
+  fallbackReasons?: string[];
 }
 
 export interface CloudAnalysisResult extends ResponseEnvelope {
@@ -417,6 +476,8 @@ export interface CloudAnalysisResult extends ResponseEnvelope {
   clips: CloudClip[];
   diagnostics: CloudDiagnostics;
   resultConfidence: number;
+  candidateClips?: CloudClip[] | null;
+  pipeline?: DetectionPipelineSummary | null;
   detectedTeams?: TeamOption[] | null;
   teamSelection?: TeamSelection | null;
 }

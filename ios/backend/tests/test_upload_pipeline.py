@@ -248,6 +248,50 @@ class UploadPipelineTests(unittest.TestCase):
         self.assertEqual(scan["status"], "scanned")
         self.assertEqual(scan["detectedTeams"][0]["teamId"], "team_dark")
 
+    def test_detection_v2_prefers_source_object_key_without_signed_url(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
+        source_key = "uploads/install-123456/source.mp4"
+        source_path = self._temp_dir / source_key
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b"video-bytes")
+        fake_result = CloudAnalysisResult(
+            clipCount=0,
+            clips=[],
+            diagnostics=CloudDiagnostics(
+                processingMs=1,
+                backendModelVersion="detection-v2-test",
+                usedVideoIntelligence=False,
+                usedGeminiRelabeling=False,
+                candidateSegments=0,
+                finalSegments=0,
+            ),
+        )
+
+        with patch("app.api.run_analysis", return_value=fake_result) as run_analysis:
+            response = client.post(
+                "/v2/detection/analyze",
+                json={
+                    "jobId": "job_detection_source_key",
+                    "requestId": "request_detection_source_key",
+                    "installId": "install-123456",
+                    "sourceObjectKey": source_key,
+                    "filename": "source.mp4",
+                    "contentType": "video/mp4",
+                    "durationSeconds": 12.0,
+                    "appVersion": "1.0",
+                    "analysisVersion": "detection-v2",
+                    "schemaVersion": "2026-06-23",
+                    "modelVersion": "detection-pipeline-v2",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        run_analysis.assert_called_once()
+        job, _, local_path = run_analysis.call_args.args
+        self.assertEqual(job.object_key, source_key)
+        self.assertEqual(job.storage_key, source_key)
+        self.assertEqual(Path(local_path), source_path)
+
 
 if __name__ == "__main__":
     unittest.main()

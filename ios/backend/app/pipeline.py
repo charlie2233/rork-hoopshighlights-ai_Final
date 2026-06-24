@@ -17,8 +17,14 @@ from typing import List, Optional, Sequence, Tuple
 
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
+from .detection_pipeline import (
+    annotate_external_clips,
+    pipeline_summary_for_clips,
+    run_staged_detection_pipeline,
+    with_merge_provenance,
+)
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
-from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
+from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, DetectionPipelineSummary, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
 from .team_identity import team_identity_matches, team_key
 from .team_quick_scan import apply_team_quick_scan
 
@@ -122,6 +128,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         raise PipelineError("unsupported_duration", "Videos longer than 75 minutes are not supported in cloud analysis right now.")
 
     provider_tags: list[str] = []
+    pipeline_summary: DetectionPipelineSummary | None = None
     candidate_pool_limit = _analysis_candidate_pool_limit(settings, job.team_selection)
     expanded_settings = _settings_with_candidate_limit(settings, candidate_pool_limit)
 
@@ -133,10 +140,16 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
 
     if detection_provider and settings.detection_provider == "hoopcut":
         provider_tags.append(detection_provider)
-        clips = external_clips[:candidate_pool_limit]
+        external_pipeline = annotate_external_clips(
+            external_clips[:candidate_pool_limit],
+            source=detection_provider,
+            model_version=f"{settings.backend_model_version}+{detection_provider}",
+        )
+        clips = external_pipeline.clips
+        pipeline_summary = external_pipeline.summary
         candidate_segments = len(external_clips)
     else:
-        native_clips, native_candidate_segments = _run_native_candidate_detection(
+        native_clips, native_candidate_segments, native_pipeline_summary = _run_native_candidate_detection(
             source_path,
             duration_seconds,
             settings,
@@ -144,19 +157,31 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         )
         if detection_provider:
             provider_tags.append(detection_provider)
+            external_pipeline = annotate_external_clips(
+                external_clips,
+                source=detection_provider,
+                model_version=f"{settings.backend_model_version}+{detection_provider}",
+            )
             clips = _merge_hybrid_detection_clips(
-                external_clips=external_clips,
+                external_clips=external_pipeline.clips,
                 native_clips=native_clips,
                 clip_limit=candidate_pool_limit,
                 duration_seconds=duration_seconds,
                 settings=settings,
             )
             candidate_segments = len(external_clips) + native_candidate_segments
+            pipeline_summary = pipeline_summary_for_clips(
+                clips,
+                taxonomy_version=native_pipeline_summary.taxonomyVersion,
+                model_version=f"{settings.backend_model_version}+hybrid",
+            )
         else:
             clips = native_clips
             candidate_segments = native_candidate_segments
+            pipeline_summary = native_pipeline_summary
 
     clips = _normalize_analysis_clips(clips, duration_seconds, settings, clip_limit=candidate_pool_limit)
+    clips = [with_merge_provenance(clip, rank=index + 1) for index, clip in enumerate(clips)]
 
     clips, ranking_provider = rerank_with_optional_external_provider(
         clips=clips,
@@ -175,6 +200,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     pre_team_filter_clips = list(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
     clips = _trim_analysis_clips_for_review(clips, job.team_selection, settings.max_returned_clips)
+    clips = [with_merge_provenance(clip, rank=index + 1) for index, clip in enumerate(clips)]
     clips = _annotate_analysis_team_status(clips, job.team_selection)
     team_diagnostics = _analysis_team_diagnostic_counts(
         candidate_clips=pre_team_filter_clips,
@@ -197,13 +223,30 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         usedGeminiRelabeling=used_gemini,
         candidateSegments=candidate_segments,
         finalSegments=len(clips),
+        proposalSegments=pipeline_summary.proposalCount if pipeline_summary is not None else candidate_segments,
+        embeddedSegments=pipeline_summary.rerankedCount if pipeline_summary is not None else 0,
+        classifiedSegments=pipeline_summary.classifiedCount if pipeline_summary is not None else len(clips),
+        mergedCandidateSegments=len(clips),
+        usedSemanticRerank=bool(pipeline_summary and pipeline_summary.rerankedCount > 0),
+        taxonomyVersion=pipeline_summary.taxonomyVersion if pipeline_summary is not None else None,
         **team_diagnostics,
     )
+
+    if pipeline_summary is not None:
+        pipeline_summary = pipeline_summary.model_copy(
+            update={
+                "mergedCandidateCount": len(clips),
+                "classifiedCount": max(pipeline_summary.classifiedCount, len(clips)),
+            }
+        )
 
     return CloudAnalysisResult(
         clipCount=len(clips),
         clips=clips,
         diagnostics=diagnostics,
+        resultConfidence=_analysis_result_confidence(clips),
+        candidateClips=clips,
+        pipeline=pipeline_summary,
         detectedTeams=detected_teams,
         teamSelection=job.team_selection,
     )
@@ -235,6 +278,12 @@ def _analysis_team_diagnostic_counts(
     }
 
 
+def _analysis_result_confidence(clips: Sequence[CloudClip]) -> float:
+    if not clips:
+        return 0.0
+    return round(sum(clamp(clip.confidence, 0.0, 1.0) for clip in clips) / len(clips), 4)
+
+
 def build_team_quick_scan_candidate_clips(
     source_path: Path,
     duration_seconds: float,
@@ -245,7 +294,7 @@ def build_team_quick_scan_candidate_clips(
     candidate_limit = _team_quick_scan_candidate_pool_limit(settings)
     try:
         probed_duration = _probe_duration(source_path, fallback=duration_seconds)
-        clips, _ = _run_native_candidate_detection(
+        clips, _, _ = _run_native_candidate_detection(
             source_path,
             probed_duration,
             settings,
@@ -598,7 +647,7 @@ def _run_native_candidate_detection(
     duration_seconds: float,
     settings: Settings,
     clip_limit: Optional[int] = None,
-) -> tuple[list[CloudClip], int]:
+) -> tuple[list[CloudClip], int, DetectionPipelineSummary]:
     audio_profile = _extract_audio_profile(source_path, duration_seconds)
     shot_boundaries = _detect_shot_boundaries(source_path, duration_seconds, audio_profile)
     windows = _build_candidate_windows(
@@ -613,8 +662,8 @@ def _run_native_candidate_detection(
         windows = [_fallback_window(duration_seconds, audio_profile, settings)]
 
     resolved_limit = clip_limit or settings.max_returned_clips
-    clips = [classify_window(window) for window in windows[:resolved_limit]]
-    return clips, len(windows)
+    result = run_staged_detection_pipeline(windows, clip_limit=resolved_limit)
+    return result.clips, len(windows), result.summary
 
 
 def _normalize_analysis_clips(

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -218,6 +218,53 @@ class CloudNativeShotSignals(APIModel):
 AudioCueType = Literal["spike", "cluster", "super_loud_cluster", "swell", "steady_noise", "none"]
 
 
+class CloudLabelScore(APIModel):
+    label: str = Field(min_length=1, max_length=80)
+    confidence: float = Field(ge=0.0, le=1.0)
+    rawLabel: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    modelVersion: Optional[str] = Field(default=None, min_length=1, max_length=120)
+
+
+class CloudRawLabelScore(APIModel):
+    rawLabel: str = Field(min_length=1, max_length=120)
+    confidence: float = Field(ge=0.0, le=1.0)
+    canonicalLabel: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    modelVersion: Optional[str] = Field(default=None, min_length=1, max_length=120)
+
+
+DetectionPipelineStage = Literal["proposal", "embedding_rerank", "classifier", "merge", "taxonomy"]
+DetectionStageStatus = Literal["applied", "fallback", "skipped", "unavailable"]
+
+
+class DetectionStageProvenance(APIModel):
+    stage: DetectionPipelineStage
+    status: DetectionStageStatus = "applied"
+    source: str = Field(min_length=1, max_length=80)
+    modelId: Optional[str] = Field(default=None, min_length=1, max_length=160)
+    modelVersion: Optional[str] = Field(default=None, min_length=1, max_length=160)
+    adapter: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    rank: Optional[int] = Field(default=None, ge=1)
+    rawLabel: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CloudClipProvenance(APIModel):
+    proposal: DetectionStageProvenance
+    embeddingRerank: Optional[DetectionStageProvenance] = None
+    classifier: Optional[DetectionStageProvenance] = None
+    merge: Optional[DetectionStageProvenance] = None
+    taxonomy: Optional[DetectionStageProvenance] = None
+
+
+class CloudClipScores(APIModel):
+    proposalScore: float = Field(ge=0.0, le=1.0)
+    embeddingScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    classifierScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    mergeScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    finalScore: float = Field(ge=0.0, le=1.0)
+
+
 class CloudClip(APIModel):
     startTime: float
     endTime: float
@@ -225,19 +272,61 @@ class CloudClip(APIModel):
     confidence: float
     label: str
     action: str
+    canonicalLabel: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    eventFamily: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    eventSubtype: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    shotSubtype: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    outcome: Optional[Literal["made", "missed", "blocked", "uncertain"]] = None
     audioScore: float
     visualScore: float
     motionScore: float
     combinedScore: float
+    confidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    confidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eventFamilyConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eventFamilyConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    shotSubtypeConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    shotSubtypeConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    outcomeConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    outcomeConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     audioCueType: Optional[AudioCueType] = None
     audioCueConfidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     audioCueTime: Optional[float] = Field(default=None, ge=0.0)
     detectionMethod: str = "cloud"
     shouldAutoKeep: bool
     shouldEnableSlowMotion: bool
+    isUncertain: Optional[bool] = None
+    promptSetVersion: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    eventType: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    shotType: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    makeMiss: Optional[Literal["make", "miss", "unknown"]] = None
+    rankScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    reviewState: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    reviewerNotes: Optional[str] = Field(default=None, max_length=500)
+    topLabels: Optional[List[CloudLabelScore]] = None
+    comparisonTopLabels: Optional[List[CloudLabelScore]] = None
+    rawTopLabels: Optional[List[CloudRawLabelScore]] = None
+    comparisonRawTopLabels: Optional[List[CloudRawLabelScore]] = None
+    pipelineStage: Optional[Literal["proposal", "embedding_rerank", "classified", "merged_candidate"]] = None
+    pipelineVersion: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    provenance: Optional[CloudClipProvenance] = None
+    scores: Optional[CloudClipScores] = None
     nativeShotSignals: Optional[CloudNativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
     teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
+
+
+class DetectionPipelineSummary(APIModel):
+    pipelineVersion: str = Field(min_length=1, max_length=80)
+    stages: List[DetectionPipelineStage]
+    proposalCount: int = Field(ge=0)
+    rerankedCount: int = Field(ge=0)
+    classifiedCount: int = Field(ge=0)
+    mergedCandidateCount: int = Field(ge=0)
+    models: Dict[str, str] = Field(default_factory=dict)
+    taxonomyVersion: str = Field(min_length=1, max_length=80)
+    fallbackUsed: bool = False
+    fallbackReasons: List[str] = Field(default_factory=list)
 
 
 class CloudDiagnostics(APIModel):
@@ -247,6 +336,12 @@ class CloudDiagnostics(APIModel):
     usedGeminiRelabeling: bool
     candidateSegments: int
     finalSegments: int
+    proposalSegments: int = 0
+    embeddedSegments: int = 0
+    classifiedSegments: int = 0
+    mergedCandidateSegments: int = 0
+    usedSemanticRerank: bool = False
+    taxonomyVersion: Optional[str] = None
     usedTeamQuickScan: bool = False
     preTeamFilterSegments: int = 0
     teamMatchedCandidateSegments: int = 0
@@ -276,6 +371,9 @@ class CloudAnalysisResult(APIModel):
     clipCount: int
     clips: List[CloudClip]
     diagnostics: CloudDiagnostics
+    resultConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    candidateClips: Optional[List[CloudClip]] = None
+    pipeline: Optional[DetectionPipelineSummary] = None
     detectedTeams: List[TeamOption] = Field(default_factory=list)
     teamSelection: Optional[TeamSelection] = None
 
