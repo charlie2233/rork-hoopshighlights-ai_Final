@@ -72,7 +72,7 @@
 - [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [x] Re-run Worker typecheck and test suite after shared type changes.
 - [x] Run managed asset upload smoke harness against the local backend with multipart, duplicate complete, integrity, and proxy-ready proof.
-- [ ] Re-run the full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
+- [x] Re-run full `HoopsClipsTests` target coverage in XcodeBuildMCP chunks: 42 + 44 + 46 + 34 selected tests from `HoopsClipsTests`, plus 50 selected tests from the remaining suites. The prior single monolithic target invocation timed out at the tool boundary after build.
 - [ ] Run managed object-storage smoke against the deployed Worker/provider once deployment credentials and endpoint are available.
 
 ## Merge Points For Coworking Agents
