@@ -285,7 +285,7 @@ nonisolated struct CloudAssetRenderAttachment: Codable, Sendable {
 
 nonisolated struct CloudAssetUploadCompleteResponse: Codable, Sendable {
     let assetId: String
-    let storageKey: String
+    let storageKey: String?
     let sourceObjectKey: String?
     let proxyKey: String?
     let status: String
@@ -306,7 +306,7 @@ nonisolated struct CloudAssetStatusResponse: Codable, Sendable {
     let contentType: String
     let fileSizeBytes: Int64
     let durationSeconds: Double
-    let storageKey: String
+    let storageKey: String?
     let sourceObjectKey: String?
     let proxyKey: String?
     let status: String

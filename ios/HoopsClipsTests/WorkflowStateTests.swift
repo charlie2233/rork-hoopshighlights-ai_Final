@@ -344,6 +344,61 @@ struct WorkflowStateTests {
           "failureReason": null
         }
         """
+        let redactedCompletePayload = """
+        {
+          "assetId": "asset_redacted",
+          "storageKey": null,
+          "status": "proxy_ready",
+          "sourceObjectKey": "assets/asset_redacted/source/game.mp4",
+          "proxyKey": "assets/asset_redacted/proxy/proxy.mp4",
+          "progress": 1.0,
+          "checksumSha256": null,
+          "integrityStatus": "unavailable",
+          "retryCount": 0,
+          "retryable": false,
+          "lastErrorCode": null,
+          "artifacts": {
+            "proxyStorageKey": "assets/asset_redacted/proxy/proxy.mp4",
+            "thumbnailStorageKeys": [],
+            "waveformStorageKey": null
+          },
+          "pollAfterSeconds": 1
+        }
+        """
+        let redactedStatusPayload = """
+        {
+          "assetId": "asset_pending",
+          "installId": "install-123456",
+          "filename": "game.mp4",
+          "contentType": "video/mp4",
+          "fileSizeBytes": 10485760,
+          "durationSeconds": 42,
+          "storageKey": null,
+          "sourceObjectKey": "assets/asset_pending/source/game.mp4",
+          "proxyKey": null,
+          "status": "uploading",
+          "uploadMode": "multipart",
+          "uploadedBytes": 5242880,
+          "progress": 0.5,
+          "checksumSha256": null,
+          "integrityStatus": "pending",
+          "analysisJobId": null,
+          "renderAttachments": [],
+          "retryCount": 0,
+          "retryable": true,
+          "lastErrorCode": null,
+          "cancellationReason": null,
+          "cancelledAt": null,
+          "artifacts": {
+            "proxyStorageKey": null,
+            "thumbnailStorageKeys": [],
+            "waveformStorageKey": null
+          },
+          "createdAt": "2026-05-26T20:00:00Z",
+          "updatedAt": "2026-05-26T20:01:00Z",
+          "failureReason": null
+        }
+        """
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -377,6 +432,16 @@ struct WorkflowStateTests {
         #expect(status.analysisJobId == "job_asset_123")
         #expect(status.renderAttachments?.count == 1)
         #expect(status.retryCount == 1)
+
+        let redactedComplete = try decoder.decode(CloudAssetUploadCompleteResponse.self, from: Data(redactedCompletePayload.utf8))
+        #expect(redactedComplete.storageKey == nil)
+        #expect(redactedComplete.sourceObjectKey == "assets/asset_redacted/source/game.mp4")
+        #expect(redactedComplete.artifacts.proxyStorageKey == "assets/asset_redacted/proxy/proxy.mp4")
+
+        let redactedStatus = try decoder.decode(CloudAssetStatusResponse.self, from: Data(redactedStatusPayload.utf8))
+        #expect(redactedStatus.storageKey == nil)
+        #expect(redactedStatus.sourceObjectKey == "assets/asset_pending/source/game.mp4")
+        #expect(redactedStatus.status == "uploading")
     }
 
     @Test func reviewFeedbackTagsExposeFiveCanonicalValues() {

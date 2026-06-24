@@ -66,6 +66,7 @@
 - [x] Re-run focused `HoopsClipsTests` integration lanes: `WorkflowStateTests`, edit request encoding, asset upload decode, and asset queue decode.
 - [x] Add focused Swift coverage for structured capability policy persistence and pending asset-upload backend cancellation reporting.
 - [x] Add focused Swift coverage proving asset multipart resume manifests persist signed upload expiry.
+- [x] Allow completed/status asset DTOs to decode pending or redacted `storageKey` while preserving source/proxy fallbacks for ready assets.
 - [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [x] Re-run Worker typecheck and test suite after shared type changes.
 - [x] Run managed asset upload smoke harness against the local backend with multipart, duplicate complete, integrity, and proxy-ready proof.

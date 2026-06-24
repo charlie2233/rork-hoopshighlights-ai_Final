@@ -110,7 +110,7 @@ export interface AssetRecord {
   contentType: string;
   fileSizeBytes: number;
   durationSeconds: number;
-  storageKey: string;
+  storageKey?: string | null;
   sourceObjectKey?: string | null;
   proxyKey?: string | null;
   status: AssetStatus;
@@ -184,7 +184,7 @@ export interface UploadCompleteRequest {
 
 export interface UploadCompleteResponse extends ResponseEnvelope {
   assetId: string;
-  storageKey: string;
+  storageKey?: string | null;
   sourceObjectKey?: string | null;
   proxyKey?: string | null;
   status: AssetStatus;
@@ -210,7 +210,7 @@ export interface CreateAssetAnalysisJobRequest {
 export interface AssetAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
   assetId: string;
-  storageKey: string;
+  storageKey?: string | null;
   sourceObjectKey?: string | null;
   status: JobStatus;
   pollAfterSeconds: number;

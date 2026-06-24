@@ -2283,12 +2283,17 @@ struct CloudAnalysisService {
     ) async throws -> CloudReadyAsset {
         if Self.isAssetProxyReady(completion.status) {
             progress(progressEnd, "Uploaded video ready")
-            return Self.readyAsset(
+            guard let readyAsset = Self.readyAsset(
                 assetID: completion.assetId,
                 storageKey: completion.storageKey,
+                sourceObjectKey: completion.sourceObjectKey,
+                proxyKey: completion.proxyKey,
                 artifacts: completion.artifacts,
                 pollAfterSeconds: completion.pollAfterSeconds
-            )
+            ) else {
+                throw CloudAnalysisError.invalidResponse
+            }
+            return readyAsset
         }
         if Self.isAssetFailed(completion.status) {
             throw CloudAnalysisError.backend(
@@ -2320,12 +2325,17 @@ struct CloudAnalysisService {
 
             if Self.isAssetProxyReady(asset.status) {
                 progress(progressEnd, "Uploaded video ready")
-                return Self.readyAsset(
+                guard let readyAsset = Self.readyAsset(
                     assetID: asset.assetId,
                     storageKey: asset.storageKey,
+                    sourceObjectKey: asset.sourceObjectKey,
+                    proxyKey: asset.proxyKey,
                     artifacts: asset.artifacts,
                     pollAfterSeconds: initialPollAfterSeconds
-                )
+                ) else {
+                    throw CloudAnalysisError.invalidResponse
+                }
+                return readyAsset
             }
             if Self.isAssetFailed(asset.status) {
                 throw CloudAnalysisError.backend(
@@ -3280,16 +3290,28 @@ struct CloudAnalysisService {
 
     private static func readyAsset(
         assetID: String,
-        storageKey: String,
+        storageKey: String?,
+        sourceObjectKey: String?,
+        proxyKey: String?,
         artifacts: CloudAssetArtifacts,
         pollAfterSeconds: Int
-    ) -> CloudReadyAsset {
-        CloudReadyAsset(
+    ) -> CloudReadyAsset? {
+        guard let storageKey = firstNonEmpty(storageKey, sourceObjectKey, proxyKey, artifacts.proxyStorageKey) else {
+            return nil
+        }
+        let analysisStorageKey = firstNonEmpty(artifacts.proxyStorageKey, proxyKey, storageKey) ?? storageKey
+        return CloudReadyAsset(
             assetID: assetID,
             storageKey: storageKey,
-            analysisStorageKey: artifacts.proxyStorageKey ?? storageKey,
+            analysisStorageKey: analysisStorageKey,
             pollAfterSeconds: pollAfterSeconds
         )
+    }
+
+    private static func firstNonEmpty(_ candidates: String?...) -> String? {
+        candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     private func completeMultipartUpload(

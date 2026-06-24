@@ -39,7 +39,7 @@ Status order:
 5. `proxy_ready`
 6. `ready`, `failed`, or `cancelled`
 
-Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse` and additive DTO fields named `assetId`, `storageKey`, `sourceObjectKey`, `proxyKey`, and `proxyStorageKey`. During migration, legacy job fields stay valid: `jobId`, `uploadUrl`, `sourceObjectKey`, `resultObjectKey`, `sourceUrl`, and `/v1/analysis/jobs/{jobId}/start` remain supported. New asset fields are authoritative when present; legacy job/source fields are compatibility projections.
+Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse` and additive DTO fields named `assetId`, `storageKey`, `sourceObjectKey`, `proxyKey`, and `proxyStorageKey`. During migration, legacy job fields stay valid: `jobId`, `uploadUrl`, `sourceObjectKey`, `resultObjectKey`, `sourceUrl`, and `/v1/analysis/jobs/{jobId}/start` remain supported. New asset fields are authoritative when present; legacy job/source fields are compatibility projections. Public and pending DTOs may report `storageKey=null`; clients must keep the row asset-first and use `sourceObjectKey`, `proxyKey`, or `artifacts.proxyStorageKey` only as compatibility fallbacks when the asset is ready.
 
 `AssetRecord` fields:
 
@@ -49,7 +49,7 @@ Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse`
 - `contentType`
 - `fileSizeBytes`
 - `durationSeconds`
-- `storageKey`
+- `storageKey` (nullable while pending or redacted)
 - `sourceObjectKey`
 - `proxyKey`
 - `status`
@@ -318,7 +318,7 @@ Render jobs continue to use the existing durable render state store, leases, ind
 
 The Cloudflare Worker includes additive `assetId` fields in create/poll responses and additive `assetId/storageKey` fields in internal team-scan and inference dispatch payloads. For the existing R2 flow, `assetId` maps to `jobId` and internal `storageKey` maps to `sourceObjectKey`.
 
-Public Worker responses keep `storageKey` null/redacted to preserve object-key redaction guarantees. Providers may continue reading `sourceUrl` during migration, but new inference/editing code should prefer `assetId` plus internal `storageKey` when present.
+Public Worker responses keep `storageKey` null/redacted to preserve object-key redaction guarantees. Providers may continue reading `sourceUrl` during migration, but new inference/editing code should prefer `assetId` plus internal `storageKey` when present. Swift and shared TypeScript DTOs intentionally model completed/status asset `storageKey` as nullable; analysis handoff still requires a resolved key from `storageKey`, `sourceObjectKey`, `proxyKey`, or `artifacts.proxyStorageKey`.
 
 ## Legacy Manual URL Compatibility
 
