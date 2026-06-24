@@ -8,6 +8,7 @@ private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPla
 private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
 private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
+private let cloudUploadServerCapabilityPolicyDefaultsKey = "hoopsclips.cloudUpload.serverCapabilityPolicy.v1"
 private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudUpload.sourceOptimizationSummary.v1"
 private let optimizedUploadSourceMaximumAge: TimeInterval = 24 * 60 * 60
 private let compactOptimizedUploadDurationSeconds: Double = 45 * 60
@@ -139,6 +140,18 @@ struct CloudAnalysisService {
             }
         }
 
+        let assetCancelReported: Bool
+        if let assetID = manifest.assetID, let baseURL = configuredBaseURL() {
+            assetCancelReported = await reportAssetUploadCancellation(
+                baseURL: baseURL,
+                assetID: assetID,
+                installID: manifest.installID,
+                reason: reason
+            )
+        } else {
+            assetCancelReported = false
+        }
+
         await CloudUploadResumeStore.shared.clearAnyManifest(reason: reason)
         Self.recordCancelledUploadProofState(
             reason: reason,
@@ -149,7 +162,7 @@ struct CloudAnalysisService {
         )
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "background_upload_cancel_cleanup",
-            metadata: "reason=\(reason) sessions=\(sessionIdentifiers.count) hadManifest=true"
+            metadata: "reason=\(reason) sessions=\(sessionIdentifiers.count) hadManifest=true assetCancelReported=\(assetCancelReported)"
         )
     }
 
@@ -224,12 +237,20 @@ struct CloudAnalysisService {
     }
 
     static func multipartUploadPolicySummary() -> String {
+        let serverPolicy = currentServerCapabilityPolicy()
+        let configuredMax = effectiveMultipartUploadMaximum()
         let networkPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
-            defaultMaximum: maxConcurrentMultipartUploads
+            defaultMaximum: configuredMax
         )
         return [
             "maxConcurrentMultipartUploads=\(networkPolicy.laneLimit)",
             "configuredMaxConcurrentMultipartUploads=\(maxConcurrentMultipartUploads)",
+            "serverMaxConcurrentPartUploads=\(serverPolicy?.maxConcurrentPartUploads.map(String.init) ?? "none")",
+            "serverConcurrencyApplied=\(serverPolicy?.maxConcurrentPartUploads != nil)",
+            "supportsMultipartUpload=\(serverPolicy?.supportsMultipartUpload.map(String.init) ?? "unknown")",
+            "supportsChecksumSha256=\(serverPolicy?.supportsChecksumSha256.map(String.init) ?? "unknown")",
+            "supportsCancellation=\(serverPolicy?.supportsCancellation.map(String.init) ?? "unknown")",
+            "supportsIdempotentComplete=\(serverPolicy?.supportsIdempotentComplete.map(String.init) ?? "unknown")",
             "multipartLaneReason=\(networkPolicy.reason)",
             "networkExpensive=\(networkPolicy.isExpensive)",
             "networkConstrained=\(networkPolicy.isConstrained)",
@@ -575,13 +596,23 @@ struct CloudAnalysisService {
     private static func recordDeployedUploadCapabilities(_ capabilities: CloudAnalysisCapabilitiesResponse) {
         let maxFileSizeMB = String(format: "%.0f", Double(max(capabilities.maxFileSizeBytes, 0)) / 1_048_576.0)
         let thresholdMB = String(format: "%.0f", Double(max(capabilities.resumableUploadThresholdBytes, 0)) / 1_048_576.0)
+        let multipartThresholdMB = capabilities.multipartThresholdBytes.map { String(format: "%.0f", Double(max($0, 0)) / 1_048_576.0) } ?? "none"
+        let recommendedPartSizeMB = capabilities.recommendedPartSizeBytes.map { String(format: "%.1f", Double(max($0, 0)) / 1_048_576.0) } ?? "none"
+        recordServerCapabilityPolicy(capabilities)
         let summary = [
             "source=worker_capabilities",
             "maxFileSizeMB=\(maxFileSizeMB)",
             "maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down)))",
             "supportsResumableUpload=\(capabilities.supportsResumableUpload)",
+            "supportsMultipartUpload=\(capabilities.supportsMultipartUpload ?? capabilities.supportsResumableUpload)",
             "recommendedUploadPreference=\(safeUploadPlanComponent(capabilities.recommendedUploadPreference ?? "unknown"))",
             "resumableThresholdMB=\(thresholdMB)",
+            "multipartThresholdMB=\(multipartThresholdMB)",
+            "recommendedPartSizeMB=\(recommendedPartSizeMB)",
+            "maxConcurrentPartUploads=\(capabilities.maxConcurrentPartUploads.map(String.init) ?? "none")",
+            "supportsChecksumSha256=\(capabilities.supportsChecksumSha256 ?? false)",
+            "supportsCancellation=\(capabilities.supportsCancellation ?? false)",
+            "supportsIdempotentComplete=\(capabilities.supportsIdempotentComplete ?? false)",
             "signedUploadTtlSeconds=\(max(capabilities.signedUploadTtlSeconds, 0))",
             "defaultPollAfterSeconds=\(max(capabilities.defaultPollAfterSeconds, 0))",
             "analysisMode=\(safeUploadPlanComponent(capabilities.analysisMode))",
@@ -590,8 +621,45 @@ struct CloudAnalysisService {
         UserDefaults.standard.set(summary, forKey: cloudUploadDeployedCapabilitySummaryDefaultsKey)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "server_upload_capabilities_received",
-            metadata: "maxFileSizeMB=\(maxFileSizeMB) maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down))) resumable=\(capabilities.supportsResumableUpload) recommended=\(safeUploadPlanComponent(capabilities.recommendedUploadPreference ?? "unknown")) thresholdMB=\(thresholdMB)"
+            metadata: "maxFileSizeMB=\(maxFileSizeMB) maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down))) resumable=\(capabilities.supportsResumableUpload) multipart=\(capabilities.supportsMultipartUpload ?? capabilities.supportsResumableUpload) maxConcurrentPartUploads=\(capabilities.maxConcurrentPartUploads.map(String.init) ?? "none") recommended=\(safeUploadPlanComponent(capabilities.recommendedUploadPreference ?? "unknown")) thresholdMB=\(thresholdMB)"
         )
+    }
+
+    private static func recordServerCapabilityPolicy(_ capabilities: CloudAnalysisCapabilitiesResponse) {
+        let policy = CloudUploadServerCapabilityPolicy(
+            supportsMultipartUpload: capabilities.supportsMultipartUpload,
+            multipartThresholdBytes: capabilities.multipartThresholdBytes,
+            recommendedPartSizeBytes: capabilities.recommendedPartSizeBytes,
+            minPartSizeBytes: capabilities.minPartSizeBytes,
+            maxPartSizeBytes: capabilities.maxPartSizeBytes,
+            maxConcurrentPartUploads: capabilities.maxConcurrentPartUploads,
+            supportsChecksumSha256: capabilities.supportsChecksumSha256,
+            supportsCancellation: capabilities.supportsCancellation,
+            supportsIdempotentComplete: capabilities.supportsIdempotentComplete
+        )
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(policy) {
+            UserDefaults.standard.set(data, forKey: cloudUploadServerCapabilityPolicyDefaultsKey)
+        }
+    }
+
+    private static func currentServerCapabilityPolicy() -> CloudUploadServerCapabilityPolicy? {
+        guard let data = UserDefaults.standard.data(forKey: cloudUploadServerCapabilityPolicyDefaultsKey) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        return try? decoder.decode(CloudUploadServerCapabilityPolicy.self, from: data)
+    }
+
+    private static func effectiveMultipartUploadMaximum() -> Int {
+        let serverMaximum = currentServerCapabilityPolicy()?.maxConcurrentPartUploads
+            .map { max($0, 1) }
+        return min(maxConcurrentMultipartUploads, serverMaximum ?? maxConcurrentMultipartUploads)
+    }
+
+    private static func multipartUploadNetworkPolicy(partCount: Int) -> CloudUploadNetworkLanePolicy {
+        let requestedMaximum = min(max(partCount, 1), effectiveMultipartUploadMaximum())
+        return CloudUploadNetworkPolicy.shared.currentPolicy(defaultMaximum: requestedMaximum)
     }
 
     private nonisolated static func safeUploadPlanComponent(_ value: String) -> String {
@@ -2047,10 +2115,8 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
-            defaultMaximum: Self.maxConcurrentMultipartUploads
-        )
-        let maxConcurrentUploads = min(max(multipart.partCount, 1), networkUploadPolicy.laneLimit)
+        let networkUploadPolicy = Self.multipartUploadNetworkPolicy(partCount: multipart.partCount)
+        let maxConcurrentUploads = networkUploadPolicy.laneLimit
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2164,6 +2230,43 @@ struct CloudAnalysisService {
             response: response,
             successType: CloudAssetUploadCompleteResponse.self
         )
+    }
+
+    private func reportAssetUploadCancellation(
+        baseURL: URL,
+        assetID: String,
+        installID: String,
+        reason: String
+    ) async -> Bool {
+        do {
+            var request = URLRequest(url: baseURL.appending(path: "v1/uploads/\(assetID)/cancel"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try encoder.encode(
+                CloudAssetUploadCancelRequest(
+                    installId: installID,
+                    reason: Self.safeUploadPlanComponent(reason)
+                )
+            )
+
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw CloudAnalysisError.invalidResponse
+            }
+
+            let reported = (200..<300).contains(http.statusCode)
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                reported ? "asset_upload_cancel_reported" : "asset_upload_cancel_report_rejected",
+                metadata: "status=\(http.statusCode)"
+            )
+            return reported
+        } catch {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "asset_upload_cancel_report_failed",
+                metadata: "reason=\(Self.uploadRetryReason(for: error))"
+            )
+            return false
+        }
     }
 
     private func waitForAssetProxyReady(
@@ -2553,10 +2656,8 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
-            defaultMaximum: Self.maxConcurrentMultipartUploads
-        )
-        let maxConcurrentUploads = min(max(resumableUpload.partCount, 1), networkUploadPolicy.laneLimit)
+        let networkUploadPolicy = Self.multipartUploadNetworkPolicy(partCount: resumableUpload.partCount)
+        let maxConcurrentUploads = networkUploadPolicy.laneLimit
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2705,10 +2806,8 @@ struct CloudAnalysisService {
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
 
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
-            defaultMaximum: Self.maxConcurrentMultipartUploads
-        )
-        let maxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
+        let networkUploadPolicy = Self.multipartUploadNetworkPolicy(partCount: partCount)
+        let maxConcurrentUploads = networkUploadPolicy.laneLimit
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2841,10 +2940,8 @@ struct CloudAnalysisService {
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
 
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
-            defaultMaximum: Self.maxConcurrentMultipartUploads
-        )
-        let maxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
+        let networkUploadPolicy = Self.multipartUploadNetworkPolicy(partCount: partCount)
+        let maxConcurrentUploads = networkUploadPolicy.laneLimit
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -3118,10 +3215,7 @@ struct CloudAnalysisService {
     }
 
     private static func multipartUploadConcurrency(partCount: Int) -> Int {
-        let networkPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
-            defaultMaximum: maxConcurrentMultipartUploads
-        )
-        return min(max(partCount, 1), networkPolicy.laneLimit)
+        multipartUploadNetworkPolicy(partCount: partCount).laneLimit
     }
 
     private static func prepareFileForBackgroundUpload(_ url: URL, context: String) {
@@ -3446,6 +3540,18 @@ struct CloudAnalysisService {
             throw CloudAnalysisError.invalidResponse
         }
     }
+}
+
+private struct CloudUploadServerCapabilityPolicy: Codable, Sendable {
+    let supportsMultipartUpload: Bool?
+    let multipartThresholdBytes: Int64?
+    let recommendedPartSizeBytes: Int?
+    let minPartSizeBytes: Int?
+    let maxPartSizeBytes: Int?
+    let maxConcurrentPartUploads: Int?
+    let supportsChecksumSha256: Bool?
+    let supportsCancellation: Bool?
+    let supportsIdempotentComplete: Bool?
 }
 
 private struct CloudUploadNetworkLanePolicy {

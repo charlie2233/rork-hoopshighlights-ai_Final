@@ -25,6 +25,8 @@
 - [x] Redact `storageKey`, `sourceObjectKey`, signed URLs, and full paths in proof/status copy.
 - [x] Keep `UploadQueueProjection` as a view projection over canonical job state; do not persist it.
 - [x] Feed Uploads queue projection with real asset integrity/retry/progress metadata when available.
+- [x] Persist structured upload capability policy on iOS and apply `maxConcurrentPartUploads` as the multipart lane ceiling.
+- [x] Pair local pending asset-upload cancellation with backend `/v1/uploads/{assetId}/cancel` when a manifest has an `assetId`.
 - [x] Promote AI Edit into its own primary workflow tab while keeping History and Settings secondary.
 - [x] Keep Review actions wired to `Clip.isKept`: Keep, Nah, Keep Strong, Skip Weak, team filters, feedback tags, and boundary nudges.
 - [x] Keep Review shortcut routing: `K` keep, `D` discard, `N` Nah compatibility, `1`-`5` feedback tags, `[`/`]` boundary nudges.
@@ -58,6 +60,7 @@
 - [x] Add backend/service idempotency replay coverage for edit-job creation.
 - [x] Re-run iOS build-for-testing after this integration branch resolves conflicts.
 - [x] Re-run focused `HoopsClipsTests` integration lanes: `WorkflowStateTests`, edit request encoding, asset upload decode, and asset queue decode.
+- [x] Add focused Swift coverage for structured capability policy persistence and pending asset-upload backend cancellation reporting.
 - [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [x] Re-run Worker typecheck and test suite after shared type changes.
 - [ ] Re-run the full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.

@@ -832,6 +832,115 @@ struct HoopsClipsTests {
         #expect(retrying?.message.contains("No need to restart yet") == true)
     }
 
+    @Test @MainActor func testCloudAnalysisCapabilitiesPersistStructuredUploadPolicy() async throws {
+        UserDefaults.standard.removeObject(forKey: "hoopsclips.cloudUpload.deployedCapabilitySummary.v1")
+        UserDefaults.standard.removeObject(forKey: "hoopsclips.cloudUpload.serverCapabilityPolicy.v1")
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            UserDefaults.standard.removeObject(forKey: "hoopsclips.cloudUpload.deployedCapabilitySummary.v1")
+            UserDefaults.standard.removeObject(forKey: "hoopsclips.cloudUpload.serverCapabilityPolicy.v1")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            #expect(request.httpMethod == "GET")
+            #expect(url.path == "/v1/analysis/capabilities")
+            return try cloudAnalysisJSONResponse(for: request, body: """
+            {
+              "maxFileSizeBytes": 3221225472,
+              "maxDurationSeconds": 7200,
+              "resumableUploadThresholdBytes": 67108864,
+              "supportsResumableUpload": true,
+              "recommendedUploadPreference": "asset_multipart",
+              "signedUploadTtlSeconds": 900,
+              "defaultPollAfterSeconds": 2,
+              "analysisMode": "cloud",
+              "supportsMultipartUpload": true,
+              "multipartThresholdBytes": 67108864,
+              "recommendedPartSizeBytes": 8388608,
+              "minPartSizeBytes": 5242880,
+              "maxPartSizeBytes": 67108864,
+              "maxConcurrentPartUploads": 2,
+              "supportsChecksumSha256": true,
+              "supportsCancellation": true,
+              "supportsIdempotentComplete": true
+            }
+            """)
+        })
+
+        let capabilities = try await service.fetchAnalysisCapabilities()
+        #expect(capabilities.maxConcurrentPartUploads == 2)
+        #expect(capabilities.supportsCancellation == true)
+
+        let deployedSummary = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
+        #expect(deployedSummary.contains("supportsMultipartUpload=true"))
+        #expect(deployedSummary.contains("recommendedPartSizeMB=8.0"))
+        #expect(deployedSummary.contains("maxConcurrentPartUploads=2"))
+        #expect(deployedSummary.contains("supportsChecksumSha256=true"))
+        #expect(deployedSummary.contains("supportsCancellation=true"))
+        #expect(deployedSummary.contains("supportsIdempotentComplete=true"))
+        #expect(!deployedSummary.localizedCaseInsensitiveContains("https://"))
+
+        let policySummary = CloudAnalysisService.multipartUploadPolicySummary()
+        #expect(policySummary.contains("serverMaxConcurrentPartUploads=2"))
+        #expect(policySummary.contains("serverConcurrencyApplied=true"))
+        #expect(policySummary.contains("supportsCancellation=true"))
+        #expect(policySummary.contains("supportsIdempotentComplete=true"))
+    }
+
+    @Test @MainActor func testCancelPendingAssetUploadReportsBackendCancellation() async throws {
+        let manifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        UserDefaults.standard.set(Data("""
+        {
+          "jobID": "asset_cancel",
+          "installID": "install-123456",
+          "sourceFilePath": "/tmp/hoopsclips-cancel-test.mp4",
+          "uploadID": "upload_cancel",
+          "sourceObjectKey": "assets/asset_cancel/source/game.mp4",
+          "resultObjectKey": null,
+          "assetID": "asset_cancel",
+          "storageKey": "assets/asset_cancel/source/game.mp4",
+          "assetMultipartParts": [],
+          "pollAfterSeconds": 1,
+          "purpose": "analysis",
+          "chunkSizeBytes": 5242880,
+          "partCount": 2,
+          "totalFileSizeBytes": 10485760,
+          "completedParts": [],
+          "activeSessionIdentifiers": [],
+          "uploadExpiresAt": "2099-06-24T00:00:00Z",
+          "createdAt": "2026-06-24T00:00:00Z",
+          "updatedAt": "2026-06-24T00:00:00Z"
+        }
+        """.utf8), forKey: manifestDefaultsKey)
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            UserDefaults.standard.removeObject(forKey: manifestDefaultsKey)
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        var requestedPaths: [String] = []
+        var cancelPayload: [String: Any]?
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+            #expect(request.httpMethod == "POST")
+            #expect(url.path == "/v1/uploads/asset_cancel/cancel")
+            cancelPayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+            return try cloudAnalysisEmptyResponse(for: request, statusCode: 204)
+        })
+
+        await service.cancelPendingBackgroundUpload(reason: "user_cancelled")
+
+        #expect(requestedPaths == ["POST /v1/uploads/asset_cancel/cancel"])
+        #expect(cancelPayload?["installId"] as? String == "install-123456")
+        #expect(cancelPayload?["reason"] as? String == "user_cancelled")
+        #expect(CloudAnalysisService.pendingBackgroundUploadManifestSummary() == "none")
+    }
+
     @Test func testCloudAnalysisUploadSourceOptimizationPolicyIsHonest() {
         let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
             durationSeconds: 8 * 60,

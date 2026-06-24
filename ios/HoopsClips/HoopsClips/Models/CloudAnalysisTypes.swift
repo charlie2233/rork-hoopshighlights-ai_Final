@@ -263,6 +263,11 @@ nonisolated struct CloudAssetUploadCompleteRequest: Codable, Sendable {
     let parts: [CloudMultipartCompletedPart]
 }
 
+nonisolated struct CloudAssetUploadCancelRequest: Codable, Sendable {
+    let installId: String
+    let reason: String?
+}
+
 nonisolated struct CloudAssetArtifacts: Codable, Sendable {
     let proxyStorageKey: String?
     let thumbnailStorageKeys: [String]

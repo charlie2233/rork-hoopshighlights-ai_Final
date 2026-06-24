@@ -94,6 +94,8 @@ Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse`
 - `supportsCancellation`
 - `supportsIdempotentComplete`
 
+The iOS client persists the latest structured capability policy from `GET /v1/analysis/capabilities` and applies `maxConcurrentPartUploads` as the server-side ceiling for multipart lanes, with network conditions still allowed to reduce concurrency further. Capability summaries must not include signed URLs, object keys, upload IDs, or local file paths.
+
 ## Upload Init
 
 `POST /v1/uploads/init`
@@ -201,6 +203,8 @@ Request:
 ```
 
 The response is the canonical `AssetRecord`. Ready assets cannot be cancelled; cancelled uploads cannot be completed.
+
+When a pending iOS background-upload manifest has an `assetId`, local cancellation is best-effort paired with this endpoint before the manifest is cleared. The app still clears local URLSession/chunk state if the server cancel report is unavailable, but proof metadata records whether the backend cancel was reported.
 
 ## Team Scan From Asset
 
