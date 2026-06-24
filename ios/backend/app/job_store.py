@@ -295,8 +295,6 @@ class FirestoreJobStore(JobStoreBase):
             "assetId": job.asset_id,
             "storageKey": job.storage_key,
             "uploadHeaders": job.upload_headers,
-            "assetId": job.asset_id,
-            "storageKey": job.storage_key,
             "teamSelection": job.team_selection.model_dump(mode="json") if job.team_selection is not None else None,
             "detectedTeams": [team.model_dump(mode="json") for team in job.detected_teams],
             "teamScanStatus": job.team_scan_status,

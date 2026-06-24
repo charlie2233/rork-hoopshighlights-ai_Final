@@ -94,9 +94,18 @@ class FirestoreAssetStore:
             "partCount": asset.part_count,
             "uploadedBytes": asset.uploaded_bytes,
             "parts": {str(key): value for key, value in asset.parts.items()},
+            "partSizes": {str(key): value for key, value in asset.part_sizes.items()},
             "proxyStorageKey": asset.proxy_storage_key,
             "thumbnailStorageKeys": asset.thumbnail_storage_keys,
             "waveformStorageKey": asset.waveform_storage_key,
+            "checksumSha256": asset.checksum_sha256,
+            "integrityStatus": asset.integrity_status,
+            "analysisJobId": asset.analysis_job_id,
+            "renderAttachments": asset.render_attachments,
+            "retryCount": asset.retry_count,
+            "lastErrorCode": asset.last_error_code,
+            "cancellationReason": asset.cancellation_reason,
+            "cancelledAt": asset.cancelled_at,
             "failureReason": asset.failure_reason,
         }
 
@@ -104,6 +113,10 @@ class FirestoreAssetStore:
         parts = {
             int(part_number): str(etag)
             for part_number, etag in dict(payload.get("parts") or {}).items()
+        }
+        part_sizes = {
+            int(part_number): int(size)
+            for part_number, size in dict(payload.get("partSizes") or {}).items()
         }
         return StoredAsset(
             asset_id=payload["assetId"],
@@ -125,9 +138,18 @@ class FirestoreAssetStore:
             part_count=payload.get("partCount"),
             uploaded_bytes=int(payload.get("uploadedBytes") or 0),
             parts=parts,
+            part_sizes=part_sizes,
             proxy_storage_key=payload.get("proxyStorageKey"),
             thumbnail_storage_keys=list(payload.get("thumbnailStorageKeys") or []),
             waveform_storage_key=payload.get("waveformStorageKey"),
+            checksum_sha256=payload.get("checksumSha256"),
+            integrity_status=payload.get("integrityStatus") or "pending",
+            analysis_job_id=payload.get("analysisJobId"),
+            render_attachments=list(payload.get("renderAttachments") or []),
+            retry_count=int(payload.get("retryCount") or 0),
+            last_error_code=payload.get("lastErrorCode"),
+            cancellation_reason=payload.get("cancellationReason"),
+            cancelled_at=_coerce_datetime(payload["cancelledAt"]) if payload.get("cancelledAt") else None,
             failure_reason=payload.get("failureReason"),
         )
 

@@ -160,6 +160,15 @@ nonisolated struct CloudAnalysisCapabilitiesResponse: Codable, Sendable {
     let signedUploadTtlSeconds: Int
     let defaultPollAfterSeconds: Int
     let analysisMode: String
+    let supportsMultipartUpload: Bool?
+    let multipartThresholdBytes: Int64?
+    let recommendedPartSizeBytes: Int?
+    let minPartSizeBytes: Int?
+    let maxPartSizeBytes: Int?
+    let maxConcurrentPartUploads: Int?
+    let supportsChecksumSha256: Bool?
+    let supportsCancellation: Bool?
+    let supportsIdempotentComplete: Bool?
 }
 
 nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
@@ -260,10 +269,27 @@ nonisolated struct CloudAssetArtifacts: Codable, Sendable {
     let waveformStorageKey: String?
 }
 
+nonisolated struct CloudAssetRenderAttachment: Codable, Sendable {
+    let editJobId: String?
+    let renderJobId: String?
+    let status: String
+    let outputStorageKey: String?
+    let downloadUrl: String?
+    let updatedAt: Date?
+}
+
 nonisolated struct CloudAssetUploadCompleteResponse: Codable, Sendable {
     let assetId: String
     let storageKey: String
+    let sourceObjectKey: String?
+    let proxyKey: String?
     let status: String
+    let progress: Double?
+    let checksumSha256: String?
+    let integrityStatus: String?
+    let retryCount: Int?
+    let retryable: Bool?
+    let lastErrorCode: String?
     let artifacts: CloudAssetArtifacts
     let pollAfterSeconds: Int
 }
@@ -276,9 +302,21 @@ nonisolated struct CloudAssetStatusResponse: Codable, Sendable {
     let fileSizeBytes: Int64
     let durationSeconds: Double
     let storageKey: String
+    let sourceObjectKey: String?
+    let proxyKey: String?
     let status: String
     let uploadMode: String
     let uploadedBytes: Int64
+    let progress: Double?
+    let checksumSha256: String?
+    let integrityStatus: String?
+    let analysisJobId: String?
+    let renderAttachments: [CloudAssetRenderAttachment]?
+    let retryCount: Int?
+    let retryable: Bool?
+    let lastErrorCode: String?
+    let cancellationReason: String?
+    let cancelledAt: Date?
     let artifacts: CloudAssetArtifacts
     let createdAt: Date
     let updatedAt: Date
@@ -298,6 +336,7 @@ nonisolated struct CloudAssetAnalysisJobResponse: Codable, Sendable {
     let jobId: String
     let assetId: String
     let storageKey: String
+    let sourceObjectKey: String?
     let status: String
     let pollAfterSeconds: Int
     let quotaRemainingToday: Int
@@ -417,6 +456,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     let assetStatus: String?
     let uploadedBytes: Int64?
     let fileSizeBytes: Int64?
+    let assetProgress: Double?
+    let assetChecksumSha256: String?
+    let assetIntegrityStatus: String?
+    let assetRetryCount: Int?
+    let assetRetryable: Bool?
+    let assetLastErrorCode: String?
+    let assetCancellationReason: String?
+    let assetRenderAttachmentCount: Int?
     let assetFailureReason: String?
     let sourceObjectKey: String?
     let clipCount: Int
@@ -436,6 +483,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         assetStatus: String? = nil,
         uploadedBytes: Int64? = nil,
         fileSizeBytes: Int64? = nil,
+        assetProgress: Double? = nil,
+        assetChecksumSha256: String? = nil,
+        assetIntegrityStatus: String? = nil,
+        assetRetryCount: Int? = nil,
+        assetRetryable: Bool? = nil,
+        assetLastErrorCode: String? = nil,
+        assetCancellationReason: String? = nil,
+        assetRenderAttachmentCount: Int? = nil,
         assetFailureReason: String? = nil,
         sourceObjectKey: String? = nil,
         assetUploadedBytes: Int64? = nil,
@@ -454,6 +509,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         self.assetStatus = assetStatus
         self.uploadedBytes = uploadedBytes ?? assetUploadedBytes
         self.fileSizeBytes = fileSizeBytes ?? assetFileSizeBytes
+        self.assetProgress = assetProgress
+        self.assetChecksumSha256 = assetChecksumSha256
+        self.assetIntegrityStatus = assetIntegrityStatus
+        self.assetRetryCount = assetRetryCount
+        self.assetRetryable = assetRetryable
+        self.assetLastErrorCode = assetLastErrorCode
+        self.assetCancellationReason = assetCancellationReason
+        self.assetRenderAttachmentCount = assetRenderAttachmentCount
         self.assetFailureReason = assetFailureReason
         self.sourceObjectKey = sourceObjectKey
         self.clipCount = clipCount
@@ -472,6 +535,23 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         case assetStatus
         case uploadedBytes
         case fileSizeBytes
+        case assetProgress
+        case progress
+        case assetChecksumSha256
+        case checksumSha256
+        case assetIntegrityStatus
+        case integrityStatus
+        case assetRetryCount
+        case retryCount
+        case assetRetryable
+        case retryable
+        case assetLastErrorCode
+        case lastErrorCode
+        case assetCancellationReason
+        case cancellationReason
+        case assetRenderAttachmentCount
+        case renderAttachmentCount
+        case renderAttachments
         case assetFailureReason
         case sourceObjectKey
         case status
@@ -502,6 +582,26 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
             ?? container.decodeIfPresent(Int64.self, forKey: .uploadedBytes)
         fileSizeBytes = try container.decodeIfPresent(Int64.self, forKey: .assetFileSizeBytes)
             ?? container.decodeIfPresent(Int64.self, forKey: .fileSizeBytes)
+        assetProgress = try container.decodeIfPresent(Double.self, forKey: .assetProgress)
+            ?? container.decodeIfPresent(Double.self, forKey: .progress)
+        assetChecksumSha256 = try container.decodeIfPresent(String.self, forKey: .assetChecksumSha256)
+            ?? container.decodeIfPresent(String.self, forKey: .checksumSha256)
+        assetIntegrityStatus = try container.decodeIfPresent(String.self, forKey: .assetIntegrityStatus)
+            ?? container.decodeIfPresent(String.self, forKey: .integrityStatus)
+        assetRetryCount = try container.decodeIfPresent(Int.self, forKey: .assetRetryCount)
+            ?? container.decodeIfPresent(Int.self, forKey: .retryCount)
+        assetRetryable = try container.decodeIfPresent(Bool.self, forKey: .assetRetryable)
+            ?? container.decodeIfPresent(Bool.self, forKey: .retryable)
+        assetLastErrorCode = try container.decodeIfPresent(String.self, forKey: .assetLastErrorCode)
+            ?? container.decodeIfPresent(String.self, forKey: .lastErrorCode)
+        assetCancellationReason = try container.decodeIfPresent(String.self, forKey: .assetCancellationReason)
+            ?? container.decodeIfPresent(String.self, forKey: .cancellationReason)
+        if let explicitCount = try container.decodeIfPresent(Int.self, forKey: .assetRenderAttachmentCount)
+            ?? container.decodeIfPresent(Int.self, forKey: .renderAttachmentCount) {
+            assetRenderAttachmentCount = explicitCount
+        } else {
+            assetRenderAttachmentCount = try container.decodeIfPresent([CloudAssetRenderAttachment].self, forKey: .renderAttachments)?.count
+        }
         clipCount = try container.decode(Int.self, forKey: .clipCount)
         clips = try container.decode([CloudClip].self, forKey: .clips)
         diagnostics = try container.decode(CloudDiagnostics.self, forKey: .diagnostics)
@@ -519,6 +619,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
         try container.encodeIfPresent(assetStatus, forKey: .assetStatus)
         try container.encodeIfPresent(uploadedBytes, forKey: .uploadedBytes)
         try container.encodeIfPresent(fileSizeBytes, forKey: .fileSizeBytes)
+        try container.encodeIfPresent(assetProgress, forKey: .assetProgress)
+        try container.encodeIfPresent(assetChecksumSha256, forKey: .assetChecksumSha256)
+        try container.encodeIfPresent(assetIntegrityStatus, forKey: .assetIntegrityStatus)
+        try container.encodeIfPresent(assetRetryCount, forKey: .assetRetryCount)
+        try container.encodeIfPresent(assetRetryable, forKey: .assetRetryable)
+        try container.encodeIfPresent(assetLastErrorCode, forKey: .assetLastErrorCode)
+        try container.encodeIfPresent(assetCancellationReason, forKey: .assetCancellationReason)
+        try container.encodeIfPresent(assetRenderAttachmentCount, forKey: .assetRenderAttachmentCount)
         try container.encodeIfPresent(assetFailureReason, forKey: .assetFailureReason)
         try container.encode(clipCount, forKey: .clipCount)
         try container.encode(clips, forKey: .clips)
@@ -537,6 +645,14 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
             assetStatus: assetStatus,
             uploadedBytes: uploadedBytes,
             fileSizeBytes: fileSizeBytes,
+            assetProgress: assetProgress,
+            assetChecksumSha256: assetChecksumSha256,
+            assetIntegrityStatus: assetIntegrityStatus,
+            assetRetryCount: assetRetryCount,
+            assetRetryable: assetRetryable,
+            assetLastErrorCode: assetLastErrorCode,
+            assetCancellationReason: assetCancellationReason,
+            assetRenderAttachmentCount: assetRenderAttachmentCount,
             assetFailureReason: assetFailureReason,
             sourceObjectKey: sourceObjectKey ?? self.sourceObjectKey,
             clipCount: clipCount,

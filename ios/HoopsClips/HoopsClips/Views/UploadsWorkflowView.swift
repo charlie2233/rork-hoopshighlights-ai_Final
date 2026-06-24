@@ -178,8 +178,16 @@ struct UploadsWorkflowView: View {
                 status: status,
                 uploadedBytes: viewModel.cloudUploadAssetUploadedBytes,
                 fileSizeBytes: viewModel.cloudUploadAssetFileSizeBytes,
+                progress: viewModel.cloudUploadAssetProgress,
+                checksumSha256: viewModel.cloudUploadAssetChecksumSha256,
+                integrityStatus: viewModel.cloudUploadAssetIntegrityStatus,
                 analysisJobId: viewModel.cloudAnalysisJobID,
                 clipCount: viewModel.clips.count,
+                retryCount: viewModel.cloudUploadAssetRetryCount,
+                retryable: viewModel.cloudUploadAssetRetryable,
+                lastErrorCode: viewModel.cloudUploadAssetLastErrorCode,
+                cancellationReason: viewModel.cloudUploadAssetCancellationReason,
+                renderAttachmentCount: viewModel.cloudUploadAssetRenderAttachmentCount ?? 0,
                 failureReason: viewModel.cloudUploadAssetFailureReason
             )
         ]

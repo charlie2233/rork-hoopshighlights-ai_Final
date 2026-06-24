@@ -17,7 +17,8 @@ export type AssetStatus =
   | "processing"
   | "proxy_ready"
   | "ready"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type ReviewFeedbackTag =
   | "duplicate"
@@ -59,6 +60,15 @@ export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
   signedUploadTtlSeconds: number;
   defaultPollAfterSeconds: number;
   analysisMode: "cloud";
+  supportsMultipartUpload?: boolean;
+  multipartThresholdBytes?: number;
+  recommendedPartSizeBytes?: number;
+  minPartSizeBytes?: number;
+  maxPartSizeBytes?: number;
+  maxConcurrentPartUploads?: number;
+  supportsChecksumSha256?: boolean;
+  supportsCancellation?: boolean;
+  supportsIdempotentComplete?: boolean;
 }
 
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
@@ -84,6 +94,15 @@ export interface AssetArtifacts {
   waveformStorageKey?: string | null;
 }
 
+export interface AssetRenderAttachment {
+  editJobId?: string | null;
+  renderJobId?: string | null;
+  status: string;
+  outputStorageKey?: string | null;
+  downloadUrl?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface AssetRecord {
   assetId: string;
   installId: string;
@@ -92,9 +111,21 @@ export interface AssetRecord {
   fileSizeBytes: number;
   durationSeconds: number;
   storageKey: string;
+  sourceObjectKey?: string | null;
+  proxyKey?: string | null;
   status: AssetStatus;
   uploadMode: "single" | "multipart";
   uploadedBytes: number;
+  progress?: number;
+  checksumSha256?: string | null;
+  integrityStatus?: "pending" | "verified" | "mismatch" | "unavailable";
+  analysisJobId?: string | null;
+  renderAttachments?: AssetRenderAttachment[];
+  retryCount?: number;
+  retryable?: boolean;
+  lastErrorCode?: string | null;
+  cancellationReason?: string | null;
+  cancelledAt?: string | null;
   artifacts: AssetArtifacts;
   createdAt: string;
   updatedAt: string;
@@ -154,7 +185,15 @@ export interface UploadCompleteRequest {
 export interface UploadCompleteResponse extends ResponseEnvelope {
   assetId: string;
   storageKey: string;
+  sourceObjectKey?: string | null;
+  proxyKey?: string | null;
   status: AssetStatus;
+  progress?: number;
+  checksumSha256?: string | null;
+  integrityStatus?: "pending" | "verified" | "mismatch" | "unavailable";
+  retryCount?: number;
+  retryable?: boolean;
+  lastErrorCode?: string | null;
   artifacts: AssetArtifacts;
   pollAfterSeconds: number;
 }
@@ -172,6 +211,7 @@ export interface AssetAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
   assetId: string;
   storageKey: string;
+  sourceObjectKey?: string | null;
   status: JobStatus;
   pollAfterSeconds: number;
   quotaRemainingToday: number;

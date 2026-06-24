@@ -37,9 +37,9 @@ Status order:
 3. `uploaded`
 4. `processing`
 5. `proxy_ready`
-6. `ready` or `failed`
+6. `ready`, `failed`, or `cancelled`
 
-Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse` and additive DTO fields named `assetId`, `storageKey`, and `proxyStorageKey`. During migration, legacy job fields stay valid: `jobId`, `uploadUrl`, `sourceObjectKey`, `resultObjectKey`, `sourceUrl`, and `/v1/analysis/jobs/{jobId}/start` remain supported.
+Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse` and additive DTO fields named `assetId`, `storageKey`, `sourceObjectKey`, `proxyKey`, and `proxyStorageKey`. During migration, legacy job fields stay valid: `jobId`, `uploadUrl`, `sourceObjectKey`, `resultObjectKey`, `sourceUrl`, and `/v1/analysis/jobs/{jobId}/start` remain supported. New asset fields are authoritative when present; legacy job/source fields are compatibility projections.
 
 `AssetRecord` fields:
 
@@ -50,15 +50,49 @@ Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse`
 - `fileSizeBytes`
 - `durationSeconds`
 - `storageKey`
+- `sourceObjectKey`
+- `proxyKey`
 - `status`
 - `uploadMode`
 - `uploadedBytes`
+- `progress`
+- `checksumSha256`
+- `integrityStatus`
+- `analysisJobId`
 - `artifacts.proxyStorageKey`
 - `artifacts.thumbnailStorageKeys`
 - `artifacts.waveformStorageKey`
+- `renderAttachments`
+- `retryCount`
+- `retryable`
+- `lastErrorCode`
+- `cancellationReason`
+- `cancelledAt`
 - `createdAt`
 - `updatedAt`
 - `failureReason`
+
+`integrityStatus` is `pending`, `verified`, `mismatch`, or `unavailable`. Local upload emulation verifies SHA-256 and declared byte length; object-storage deployments preserve the fields and may report `unavailable` when the provider does not expose a SHA-256 checksum. Cancelled assets use status `cancelled`, `failureReason=cancelled`, `lastErrorCode=cancelled`, and `retryable=false`.
+
+## Upload Capabilities
+
+`GET /v1/uploads/capabilities` and `GET /v1/analysis/capabilities` expose structured upload limits and behavior flags:
+
+- `maxFileSizeBytes`
+- `maxDurationSeconds`
+- `supportsMultipartUpload`
+- `supportsResumableUpload`
+- `multipartThresholdBytes`
+- `resumableUploadThresholdBytes`
+- `recommendedPartSizeBytes`
+- `minPartSizeBytes`
+- `maxPartSizeBytes`
+- `maxConcurrentPartUploads`
+- `signedUploadTtlSeconds`
+- `defaultPollAfterSeconds`
+- `supportsChecksumSha256`
+- `supportsCancellation`
+- `supportsIdempotentComplete`
 
 ## Upload Init
 
@@ -128,7 +162,15 @@ Response:
 {
   "assetId": "asset_...",
   "storageKey": "assets/asset_.../source/game.mp4",
+  "sourceObjectKey": "assets/asset_.../source/game.mp4",
+  "proxyKey": null,
   "status": "processing",
+  "progress": 0.86,
+  "checksumSha256": "optional_sha256",
+  "integrityStatus": "verified",
+  "retryCount": 0,
+  "retryable": true,
+  "lastErrorCode": null,
   "artifacts": {
     "proxyStorageKey": null,
     "thumbnailStorageKeys": [],
@@ -140,11 +182,25 @@ Response:
 
 Managed runtimes enqueue post-upload proxy/thumbnail/waveform generation through Cloud Tasks at `POST /v1/internal/assets/{assetId}/process`, so `/complete` can return `processing` while the client polls `GET /v1/assets/{assetId}`. Local runtimes use the same dispatcher interface with an inline emulator, so local tests may still observe `proxy_ready` directly from `/complete`.
 
+`/complete` is idempotent once an asset is `processing`, `proxy_ready`, or `ready`. Multipart completion can be retried with an empty `parts` list when the asset already has uploaded part ETags stored. Missing parts and upload ID mismatches keep the asset retryable and update `retryCount` plus `lastErrorCode`.
+
 ## Asset Poll
 
 `GET /v1/assets/{assetId}?installId=install-123456`
 
 The Uploads workflow and upload resume path use this endpoint for upload state, proxy readiness, and post-upload artifact availability.
+
+## Cancel Upload
+
+`POST /v1/uploads/{assetId}/cancel`
+
+Request:
+
+```json
+{"installId": "install-123456", "reason": "user_cancelled"}
+```
+
+The response is the canonical `AssetRecord`. Ready assets cannot be cancelled; cancelled uploads cannot be completed.
 
 ## Team Scan From Asset
 
@@ -192,7 +248,10 @@ For asset uploads, `storageKey` should be the proxy key after post-upload proces
 - `proxyKey`
 - upload asset status
 - byte progress
+- checksum and integrity status
+- retry count and latest retryable error
 - optional analysis job ID
+- render attachment count
 - clip count
 - failure reason
 - current import/upload/analysis status text

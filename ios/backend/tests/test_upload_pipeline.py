@@ -91,6 +91,20 @@ class UploadPipelineTests(unittest.TestCase):
         self.assertEqual(payload["uploadState"], "waiting_for_client_upload")
         self.assertIsNone(payload.get("multipart"))
 
+    def test_upload_capabilities_surface_structured_limits(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=4)))
+
+        response = client.get("/v1/uploads/capabilities")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["maxFileSizeBytes"], 100 * 1024 * 1024)
+        self.assertEqual(payload["multipartThresholdBytes"], 4)
+        self.assertTrue(payload["supportsMultipartUpload"])
+        self.assertTrue(payload["supportsChecksumSha256"])
+        self.assertTrue(payload["supportsCancellation"])
+        self.assertTrue(payload["supportsIdempotentComplete"])
+
     def test_multipart_completion_assembles_parts_and_marks_proxy_ready(self) -> None:
         client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=4)))
 
@@ -121,12 +135,77 @@ class UploadPipelineTests(unittest.TestCase):
         self.assertEqual(complete_response.status_code, 200)
         completed = complete_response.json()
         self.assertEqual(completed["status"], "proxy_ready")
+        self.assertEqual(completed["sourceObjectKey"], init_payload["storageKey"])
+        self.assertEqual(completed["proxyKey"], completed["artifacts"]["proxyStorageKey"])
+        self.assertEqual(completed["integrityStatus"], "verified")
+        self.assertEqual(completed["retryCount"], 0)
+        self.assertTrue(completed["retryable"] is False)
+        self.assertRegex(completed["checksumSha256"], r"^[0-9a-f]{64}$")
         self.assertTrue(completed["artifacts"]["proxyStorageKey"].endswith("/proxy/proxy.mp4"))
         self.assertEqual(len(completed["artifacts"]["thumbnailStorageKeys"]), 1)
         self.assertTrue(completed["artifacts"]["waveformStorageKey"].endswith("/metadata/waveform.json"))
 
         source_path = self._temp_dir / init_payload["storageKey"]
         self.assertEqual(source_path.read_bytes(), b"abcdefgh")
+
+    def test_multipart_completion_is_idempotent_and_can_resume_from_stored_parts(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=4)))
+        init_payload = client.post(
+            "/v1/uploads/init",
+            json=self._init_payload(fileSizeBytes=8, uploadPreference="multipart", partSizeBytes=4),
+        ).json()
+
+        for part, body in zip(init_payload["multipart"]["parts"], [b"abcd", b"efgh"]):
+            self.assertEqual(client.put(part["uploadUrl"], content=body).status_code, 204)
+
+        resumed_complete = client.post(
+            f"/v1/uploads/{init_payload['assetId']}/complete",
+            json={
+                "installId": "install-123456",
+                "uploadId": init_payload["multipart"]["uploadId"],
+                "parts": [],
+            },
+        )
+        duplicate_complete = client.post(
+            f"/v1/uploads/{init_payload['assetId']}/complete",
+            json={
+                "installId": "install-123456",
+                "uploadId": init_payload["multipart"]["uploadId"],
+                "parts": [],
+            },
+        )
+
+        self.assertEqual(resumed_complete.status_code, 200)
+        self.assertEqual(duplicate_complete.status_code, 200)
+        self.assertEqual(resumed_complete.json()["status"], "proxy_ready")
+        self.assertEqual(duplicate_complete.json()["checksumSha256"], resumed_complete.json()["checksumSha256"])
+
+    def test_multipart_partial_failure_preserves_retryable_progress(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=4)))
+        init_payload = client.post(
+            "/v1/uploads/init",
+            json=self._init_payload(fileSizeBytes=8, uploadPreference="multipart", partSizeBytes=4),
+        ).json()
+        first_part = init_payload["multipart"]["parts"][0]
+        self.assertEqual(client.put(first_part["uploadUrl"], content=b"abcd").status_code, 204)
+
+        failed_complete = client.post(
+            f"/v1/uploads/{init_payload['assetId']}/complete",
+            json={
+                "installId": "install-123456",
+                "uploadId": init_payload["multipart"]["uploadId"],
+                "parts": [],
+            },
+        )
+        status = client.get(f"/v1/assets/{init_payload['assetId']}", params={"installId": "install-123456"}).json()
+
+        self.assertEqual(failed_complete.status_code, 400)
+        self.assertEqual(failed_complete.json()["errorCode"], "missing_parts")
+        self.assertEqual(status["status"], "uploading")
+        self.assertEqual(status["uploadedBytes"], 4)
+        self.assertEqual(status["lastErrorCode"], "missing_parts")
+        self.assertEqual(status["retryCount"], 1)
+        self.assertTrue(status["retryable"])
 
     def test_asset_status_transitions_from_initialized_to_uploaded_to_proxy_ready(self) -> None:
         client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
@@ -136,11 +215,13 @@ class UploadPipelineTests(unittest.TestCase):
         initial_status = client.get(f"/v1/assets/{asset['assetId']}", params={"installId": "install-123456"}).json()
         self.assertEqual(initial_status["status"], "initialized")
 
-        upload_response = client.put(asset["uploadUrl"], content=b"video-bytes")
+        upload_response = client.put(asset["uploadUrl"], content=b"12345678")
         self.assertEqual(upload_response.status_code, 204)
         uploaded_status = client.get(f"/v1/assets/{asset['assetId']}", params={"installId": "install-123456"}).json()
         self.assertEqual(uploaded_status["status"], "uploaded")
-        self.assertEqual(uploaded_status["uploadedBytes"], len(b"video-bytes"))
+        self.assertEqual(uploaded_status["uploadedBytes"], len(b"12345678"))
+        self.assertEqual(uploaded_status["integrityStatus"], "verified")
+        self.assertRegex(uploaded_status["checksumSha256"], r"^[0-9a-f]{64}$")
 
         complete_response = client.post(
             f"/v1/uploads/{asset['assetId']}/complete",
@@ -149,11 +230,34 @@ class UploadPipelineTests(unittest.TestCase):
         self.assertEqual(complete_response.status_code, 200)
         self.assertEqual(complete_response.json()["status"], "proxy_ready")
 
+    def test_upload_cancellation_marks_asset_terminal(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
+        asset = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8)).json()
+
+        cancel_response = client.post(
+            f"/v1/uploads/{asset['assetId']}/cancel",
+            json={"installId": "install-123456", "reason": "user_cancelled"},
+        )
+        complete_response = client.post(
+            f"/v1/uploads/{asset['assetId']}/complete",
+            json={"installId": "install-123456"},
+        )
+
+        self.assertEqual(cancel_response.status_code, 200)
+        cancelled = cancel_response.json()
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(cancelled["failureReason"], "cancelled")
+        self.assertEqual(cancelled["lastErrorCode"], "cancelled")
+        self.assertEqual(cancelled["cancellationReason"], "user_cancelled")
+        self.assertFalse(cancelled["retryable"])
+        self.assertEqual(complete_response.status_code, 409)
+        self.assertEqual(complete_response.json()["errorCode"], "upload_cancelled")
+
     def test_internal_post_upload_process_marks_uploaded_asset_proxy_ready(self) -> None:
         client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
         init_response = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8))
         asset = init_response.json()
-        self.assertEqual(client.put(asset["uploadUrl"], content=b"video-bytes").status_code, 204)
+        self.assertEqual(client.put(asset["uploadUrl"], content=b"12345678").status_code, 204)
 
         process_response = client.post(f"/v1/internal/assets/{asset['assetId']}/process")
 
@@ -166,7 +270,7 @@ class UploadPipelineTests(unittest.TestCase):
         client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
         init_response = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8))
         asset = init_response.json()
-        self.assertEqual(client.put(asset["uploadUrl"], content=b"video-bytes").status_code, 204)
+        self.assertEqual(client.put(asset["uploadUrl"], content=b"12345678").status_code, 204)
 
         too_early = client.post(
             f"/v1/assets/{asset['assetId']}/analysis-jobs",
@@ -203,6 +307,7 @@ class UploadPipelineTests(unittest.TestCase):
         started = start_response.json()
         self.assertEqual(started["assetId"], asset["assetId"])
         self.assertTrue(started["storageKey"].endswith("/proxy/proxy.mp4"))
+        self.assertEqual(started["sourceObjectKey"], started["storageKey"])
         poll_response = client.get(f"/v1/analysis/jobs/{started['jobId']}")
         self.assertEqual(poll_response.status_code, 200)
         polled = poll_response.json()
@@ -213,7 +318,7 @@ class UploadPipelineTests(unittest.TestCase):
         client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
         init_response = client.post("/v1/uploads/init", json=self._init_payload(fileSizeBytes=8))
         asset = init_response.json()
-        self.assertEqual(client.put(asset["uploadUrl"], content=b"video-bytes").status_code, 204)
+        self.assertEqual(client.put(asset["uploadUrl"], content=b"12345678").status_code, 204)
 
         too_early = client.post(
             f"/v1/assets/{asset['assetId']}/team-scan",
@@ -247,6 +352,24 @@ class UploadPipelineTests(unittest.TestCase):
         self.assertEqual(scan["jobId"], asset["assetId"])
         self.assertEqual(scan["status"], "scanned")
         self.assertEqual(scan["detectedTeams"][0]["teamId"], "team_dark")
+
+    def test_legacy_job_create_preserves_asset_aliases_for_migration(self) -> None:
+        client = TestClient(create_app(self._settings(upload_multipart_part_size_bytes=64)))
+
+        response = client.post(
+            "/v1/analysis/jobs",
+            json={
+                **self._init_payload(fileSizeBytes=8),
+                "assetId": "asset_legacy_bridge",
+                "storageKey": "assets/asset_legacy_bridge/proxy/proxy.mp4",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assetId"], "asset_legacy_bridge")
+        self.assertEqual(payload["storageKey"], "assets/asset_legacy_bridge/proxy/proxy.mp4")
+        self.assertTrue(payload["sourceObjectKey"].startswith("uploads/"))
 
 
 if __name__ == "__main__":

@@ -128,6 +128,14 @@ final class HighlightsViewModel {
     var cloudUploadAssetStatus: String?
     var cloudUploadAssetUploadedBytes: Int64?
     var cloudUploadAssetFileSizeBytes: Int64?
+    var cloudUploadAssetProgress: Double?
+    var cloudUploadAssetChecksumSha256: String?
+    var cloudUploadAssetIntegrityStatus: String?
+    var cloudUploadAssetRetryCount: Int?
+    var cloudUploadAssetRetryable: Bool?
+    var cloudUploadAssetLastErrorCode: String?
+    var cloudUploadAssetCancellationReason: String?
+    var cloudUploadAssetRenderAttachmentCount: Int?
     var cloudUploadAssetFailureReason: String?
     var cloudDetectedTeams: [CloudTeamOption] = []
     var hasConfirmedHighlightTeamSelection = false
@@ -2330,6 +2338,14 @@ final class HighlightsViewModel {
         cloudUploadAssetStatus = result.assetStatus ?? (result.assetId == nil ? cloudUploadAssetStatus : "ready")
         cloudUploadAssetUploadedBytes = result.assetUploadedBytes ?? cloudUploadAssetUploadedBytes
         cloudUploadAssetFileSizeBytes = result.assetFileSizeBytes ?? cloudUploadAssetFileSizeBytes
+        cloudUploadAssetProgress = result.assetProgress ?? cloudUploadAssetProgress
+        cloudUploadAssetChecksumSha256 = result.assetChecksumSha256 ?? cloudUploadAssetChecksumSha256
+        cloudUploadAssetIntegrityStatus = result.assetIntegrityStatus ?? cloudUploadAssetIntegrityStatus
+        cloudUploadAssetRetryCount = result.assetRetryCount ?? cloudUploadAssetRetryCount
+        cloudUploadAssetRetryable = result.assetRetryable ?? cloudUploadAssetRetryable
+        cloudUploadAssetLastErrorCode = result.assetLastErrorCode ?? cloudUploadAssetLastErrorCode
+        cloudUploadAssetCancellationReason = result.assetCancellationReason ?? cloudUploadAssetCancellationReason
+        cloudUploadAssetRenderAttachmentCount = result.assetRenderAttachmentCount ?? cloudUploadAssetRenderAttachmentCount
         cloudUploadAssetFailureReason = result.assetFailureReason
     }
 
@@ -2340,6 +2356,14 @@ final class HighlightsViewModel {
         cloudUploadAssetStatus = nil
         cloudUploadAssetUploadedBytes = nil
         cloudUploadAssetFileSizeBytes = nil
+        cloudUploadAssetProgress = nil
+        cloudUploadAssetChecksumSha256 = nil
+        cloudUploadAssetIntegrityStatus = nil
+        cloudUploadAssetRetryCount = nil
+        cloudUploadAssetRetryable = nil
+        cloudUploadAssetLastErrorCode = nil
+        cloudUploadAssetCancellationReason = nil
+        cloudUploadAssetRenderAttachmentCount = nil
         cloudUploadAssetFailureReason = nil
     }
 

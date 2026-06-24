@@ -78,7 +78,16 @@ function handleCapabilities(
     recommendedUploadPreference: "resumable",
     signedUploadTtlSeconds: runtime.signedUploadTtlSeconds,
     defaultPollAfterSeconds: runtime.defaultPollAfterSeconds,
-    analysisMode: "cloud"
+    analysisMode: "cloud",
+    supportsMultipartUpload: true,
+    multipartThresholdBytes: RESUMABLE_UPLOAD_THRESHOLD_BYTES,
+    recommendedPartSizeBytes: RESUMABLE_UPLOAD_THRESHOLD_BYTES,
+    minPartSizeBytes: 5 * 1024 * 1024,
+    maxPartSizeBytes: Math.max(RESUMABLE_UPLOAD_THRESHOLD_BYTES, 64 * 1024 * 1024),
+    maxConcurrentPartUploads: 3,
+    supportsChecksumSha256: true,
+    supportsCancellation: false,
+    supportsIdempotentComplete: true
   };
   return jsonResponse(response, { status: 200 }, requestId);
 }

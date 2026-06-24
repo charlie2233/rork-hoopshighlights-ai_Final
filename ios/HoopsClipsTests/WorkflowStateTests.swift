@@ -13,8 +13,15 @@ struct WorkflowStateTests {
                 status: "proxy_ready",
                 uploadedBytes: 42_000_000,
                 fileSizeBytes: 42_000_000,
+                progress: 1,
+                checksumSha256: "abc123",
+                integrityStatus: "verified",
                 analysisJobId: "job_123",
                 clipCount: 0,
+                retryCount: 0,
+                retryable: false,
+                lastErrorCode: nil,
+                renderAttachmentCount: 1,
                 failureReason: nil
             )
         ])
@@ -29,6 +36,9 @@ struct WorkflowStateTests {
         #expect(items[0].status == "Asset proxy is ready. AI analysis can start.")
         #expect(items[0].contractSummary.contains("assetId=asset_123"))
         #expect(items[0].contractSummary.contains("proxy ready"))
+        #expect(items[0].contractSummary.contains("integrity=verified"))
+        #expect(items[0].contractSummary.contains("retryCount=0"))
+        #expect(items[0].contractSummary.contains("renderAttachments=1"))
     }
 
     @Test func uploadQueueProjectionUsesAssetIdForStableMultiItemIdentity() {
@@ -199,6 +209,27 @@ struct WorkflowStateTests {
     }
 
     @Test func cloudAssetUploadResponsesDecode() throws {
+        let capabilitiesPayload = """
+        {
+          "maxFileSizeBytes": 2147483648,
+          "maxDurationSeconds": 4500,
+          "resumableUploadThresholdBytes": 67108864,
+          "supportsResumableUpload": true,
+          "recommendedUploadPreference": "resumable",
+          "signedUploadTtlSeconds": 900,
+          "defaultPollAfterSeconds": 1,
+          "analysisMode": "cloud",
+          "supportsMultipartUpload": true,
+          "multipartThresholdBytes": 67108864,
+          "recommendedPartSizeBytes": 67108864,
+          "minPartSizeBytes": 5242880,
+          "maxPartSizeBytes": 67108864,
+          "maxConcurrentPartUploads": 3,
+          "supportsChecksumSha256": true,
+          "supportsCancellation": true,
+          "supportsIdempotentComplete": true
+        }
+        """
         let initPayload = """
         {
           "assetId": "asset_123",
@@ -227,6 +258,14 @@ struct WorkflowStateTests {
           "assetId": "asset_123",
           "storageKey": "assets/asset_123/source/game.mp4",
           "status": "proxy_ready",
+          "sourceObjectKey": "assets/asset_123/source/game.mp4",
+          "proxyKey": "assets/asset_123/proxy/proxy.mp4",
+          "progress": 1.0,
+          "checksumSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "integrityStatus": "verified",
+          "retryCount": 0,
+          "retryable": false,
+          "lastErrorCode": null,
           "artifacts": {
             "proxyStorageKey": "assets/asset_123/proxy/proxy.mp4",
             "thumbnailStorageKeys": ["assets/asset_123/thumbnails/0001.jpg"],
@@ -240,15 +279,55 @@ struct WorkflowStateTests {
           "jobId": "job_asset_123",
           "assetId": "asset_123",
           "storageKey": "assets/asset_123/proxy/proxy.mp4",
+          "sourceObjectKey": "assets/asset_123/proxy/proxy.mp4",
           "status": "queued",
           "pollAfterSeconds": 1,
           "quotaRemainingToday": 2,
           "analysisMode": "cloud"
         }
         """
+        let statusPayload = """
+        {
+          "assetId": "asset_123",
+          "installId": "install-123456",
+          "filename": "game.mp4",
+          "contentType": "video/mp4",
+          "fileSizeBytes": 10485760,
+          "durationSeconds": 42,
+          "storageKey": "assets/asset_123/source/game.mp4",
+          "sourceObjectKey": "assets/asset_123/source/game.mp4",
+          "proxyKey": "assets/asset_123/proxy/proxy.mp4",
+          "status": "proxy_ready",
+          "uploadMode": "multipart",
+          "uploadedBytes": 10485760,
+          "progress": 1.0,
+          "checksumSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "integrityStatus": "verified",
+          "analysisJobId": "job_asset_123",
+          "renderAttachments": [{"editJobId": "edit_1", "renderJobId": "render_1", "status": "rendered"}],
+          "retryCount": 1,
+          "retryable": false,
+          "lastErrorCode": null,
+          "cancellationReason": null,
+          "cancelledAt": null,
+          "artifacts": {
+            "proxyStorageKey": "assets/asset_123/proxy/proxy.mp4",
+            "thumbnailStorageKeys": [],
+            "waveformStorageKey": null
+          },
+          "createdAt": "2026-05-26T20:00:00Z",
+          "updatedAt": "2026-05-26T20:01:00Z",
+          "failureReason": null
+        }
+        """
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+
+        let capabilities = try decoder.decode(CloudAnalysisCapabilitiesResponse.self, from: Data(capabilitiesPayload.utf8))
+        #expect(capabilities.supportsMultipartUpload == true)
+        #expect(capabilities.supportsChecksumSha256 == true)
+        #expect(capabilities.maxConcurrentPartUploads == 3)
 
         let upload = try decoder.decode(CloudAssetUploadInitResponse.self, from: Data(initPayload.utf8))
         #expect(upload.assetId == "asset_123")
@@ -258,10 +337,22 @@ struct WorkflowStateTests {
         let complete = try decoder.decode(CloudAssetUploadCompleteResponse.self, from: Data(completePayload.utf8))
         #expect(complete.status == "proxy_ready")
         #expect(complete.artifacts.proxyStorageKey == "assets/asset_123/proxy/proxy.mp4")
+        #expect(complete.sourceObjectKey == "assets/asset_123/source/game.mp4")
+        #expect(complete.proxyKey == "assets/asset_123/proxy/proxy.mp4")
+        #expect(complete.integrityStatus == "verified")
+        #expect(complete.retryable == false)
 
         let analysis = try decoder.decode(CloudAssetAnalysisJobResponse.self, from: Data(analysisPayload.utf8))
         #expect(analysis.assetId == "asset_123")
         #expect(analysis.storageKey == "assets/asset_123/proxy/proxy.mp4")
+        #expect(analysis.sourceObjectKey == "assets/asset_123/proxy/proxy.mp4")
+
+        let status = try decoder.decode(CloudAssetStatusResponse.self, from: Data(statusPayload.utf8))
+        #expect(status.proxyKey == "assets/asset_123/proxy/proxy.mp4")
+        #expect(status.integrityStatus == "verified")
+        #expect(status.analysisJobId == "job_asset_123")
+        #expect(status.renderAttachments?.count == 1)
+        #expect(status.retryCount == 1)
     }
 
     @Test func reviewFeedbackTagsExposeFiveCanonicalValues() {

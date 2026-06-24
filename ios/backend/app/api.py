@@ -49,6 +49,8 @@ from .models import (
     StoredAsset,
     StoredJob,
     TeamSelection,
+    UploadCancelRequest,
+    UploadCapabilitiesResponse,
     UploadCompleteRequest,
     UploadCompleteResponse,
     UploadInitRequest,
@@ -218,10 +220,67 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             return "proxy_ready"
         if asset.status == AssetStatus.FAILED:
             return "failed"
+        if asset.status == AssetStatus.CANCELLED:
+            return "cancelled"
         return "uploaded_waiting_for_processing"
 
     def _asset_response(asset: StoredAsset) -> AssetResponse:
         return asset.to_response()
+
+    def _upload_complete_response(asset: StoredAsset) -> UploadCompleteResponse:
+        return UploadCompleteResponse(
+            assetId=asset.asset_id,
+            storageKey=asset.storage_key,
+            sourceObjectKey=asset.storage_key,
+            proxyKey=asset.proxy_storage_key,
+            status=asset.status.value,
+            progress=asset.progress,
+            checksumSha256=asset.checksum_sha256,
+            integrityStatus=asset.integrity_status,  # type: ignore[arg-type]
+            retryCount=asset.retry_count,
+            retryable=asset.retryable,
+            lastErrorCode=asset.last_error_code,
+            artifacts=asset.artifacts_response(),
+            pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+        )
+
+    def _upload_capabilities_response() -> UploadCapabilitiesResponse:
+        part_size = resolved_settings.upload_multipart_part_size_bytes
+        return UploadCapabilitiesResponse(
+            maxFileSizeBytes=resolved_settings.max_file_size_bytes,
+            maxDurationSeconds=resolved_settings.max_duration_seconds,
+            supportsMultipartUpload=True,
+            supportsResumableUpload=True,
+            multipartThresholdBytes=part_size,
+            resumableUploadThresholdBytes=part_size,
+            recommendedPartSizeBytes=part_size,
+            minPartSizeBytes=5 * 1024 * 1024,
+            maxPartSizeBytes=max(part_size, 64 * 1024 * 1024),
+            maxConcurrentPartUploads=3,
+            signedUploadTtlSeconds=resolved_settings.signed_upload_ttl_seconds,
+            defaultPollAfterSeconds=resolved_settings.default_poll_after_seconds,
+            supportsChecksumSha256=True,
+            supportsCancellation=True,
+            supportsIdempotentComplete=True,
+        )
+
+    async def _record_recoverable_asset_error(asset: StoredAsset, error_code: str) -> StoredAsset:
+        assert runtime is not None
+        return await runtime.asset_store.update_asset(
+            asset.asset_id,
+            retry_count=asset.retry_count + 1,
+            last_error_code=error_code,
+        )
+
+    async def _record_terminal_asset_error(asset: StoredAsset, error_code: str, status: AssetStatus = AssetStatus.FAILED) -> StoredAsset:
+        assert runtime is not None
+        return await runtime.asset_store.update_asset(
+            asset.asset_id,
+            status=status,
+            retry_count=asset.retry_count + 1,
+            last_error_code=error_code,
+            failure_reason=error_code,
+        )
 
     def _upload_init_response(asset: StoredAsset, upload_plan: object) -> UploadInitResponse:
         if asset.upload_mode == UploadMode.MULTIPART:
@@ -279,12 +338,13 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 thumbnail_storage_keys=[artifacts.thumbnail_storage_key],
                 waveform_storage_key=artifacts.waveform_storage_key,
                 failure_reason=None,
+                last_error_code=None,
             )
         except APIError as error:
-            await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason=error.error_code)
+            await _record_terminal_asset_error(asset, error.error_code)
             raise
         except Exception as error:
-            await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason="post_upload_processing_failed")
+            await _record_terminal_asset_error(asset, "post_upload_processing_failed")
             raise APIError(500, "post_upload_processing_failed", "Post-upload processing failed.") from error
 
     async def _enqueue_post_upload_processing(asset_id: str) -> StoredAsset:
@@ -301,7 +361,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         except APIError:
             raise
         except Exception as error:
-            await runtime.asset_store.update_asset(asset_id, status=AssetStatus.FAILED, failure_reason="post_upload_queue_failed")
+            await _record_terminal_asset_error(asset, "post_upload_queue_failed")
             raise APIError(500, "post_upload_queue_failed", "Post-upload processing could not be queued.") from error
         return await _require_asset(asset_id)
 
@@ -647,6 +707,30 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
     runtime = _create_runtime()
 
+    @router.get(
+        "/v1/uploads/capabilities",
+        response_model=UploadCapabilitiesResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def upload_capabilities():
+        try:
+            _require_public_api_enabled()
+            return _upload_capabilities_response()
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/analysis/capabilities",
+        response_model=UploadCapabilitiesResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def analysis_capabilities():
+        try:
+            _require_public_api_enabled()
+            return _upload_capabilities_response()
+        except APIError as error:
+            return _error_response(error)
+
     @router.post(
         "/v1/uploads/init",
         response_model=UploadInitResponse,
@@ -742,54 +826,98 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             asset = await _require_asset(asset_id)
             _require_asset_owner(asset, request.installId)
             if asset.status.can_start_analysis:
-                return UploadCompleteResponse(
-                    assetId=asset.asset_id,
-                    storageKey=asset.storage_key,
-                    status=asset.status.value,
-                    artifacts=asset.artifacts_response(),
-                    pollAfterSeconds=resolved_settings.default_poll_after_seconds,
-                )
+                return _upload_complete_response(asset)
             if asset.status == AssetStatus.PROCESSING:
-                return UploadCompleteResponse(
-                    assetId=asset.asset_id,
-                    storageKey=asset.storage_key,
-                    status=asset.status.value,
-                    artifacts=asset.artifacts_response(),
-                    pollAfterSeconds=resolved_settings.default_poll_after_seconds,
-                )
+                return _upload_complete_response(asset)
+            if asset.status == AssetStatus.CANCELLED:
+                raise APIError(409, "upload_cancelled", "This upload was cancelled and cannot be completed.")
             if asset.upload_mode == UploadMode.MULTIPART:
                 if request.uploadId and request.uploadId != asset.upload_id:
+                    await _record_recoverable_asset_error(asset, "upload_id_mismatch")
                     raise APIError(400, "upload_id_mismatch", "Multipart upload ID does not match this asset.")
                 supplied_parts = {
                     part.partNumber: part.etag or asset.parts.get(part.partNumber) or ""
                     for part in request.parts
                 }
                 supplied_parts = {part_number: etag for part_number, etag in supplied_parts.items() if etag}
+                supplied_part_sizes = {
+                    part.partNumber: part.sizeBytes
+                    for part in request.parts
+                    if part.sizeBytes is not None
+                }
                 merged_parts = {**asset.parts, **supplied_parts}
-                runtime.upload_storage.complete_multipart_upload(asset, merged_parts)
+                merged_part_sizes = {**asset.part_sizes, **supplied_part_sizes}
+                try:
+                    runtime.upload_storage.complete_multipart_upload(asset, merged_parts)
+                except APIError as error:
+                    await _record_recoverable_asset_error(asset, error.error_code)
+                    raise
+                assembled_size = runtime.upload_storage.size_bytes_for_storage_key(asset.storage_key)
+                checksum = runtime.upload_storage.checksum_sha256_for_storage_key(asset.storage_key)
+                integrity_status = "verified" if assembled_size == asset.file_size_bytes and checksum else "unavailable"
+                if assembled_size is not None and assembled_size != asset.file_size_bytes:
+                    await _record_recoverable_asset_error(asset, "size_mismatch")
+                    raise APIError(400, "size_mismatch", "Multipart upload size does not match the initialized asset size.")
                 asset = await runtime.asset_store.update_asset(
                     asset_id,
                     status=AssetStatus.UPLOADED,
                     parts=merged_parts,
+                    part_sizes=merged_part_sizes,
                     uploaded_bytes=asset.file_size_bytes,
+                    checksum_sha256=checksum,
+                    integrity_status=integrity_status,
+                    last_error_code=None,
+                    failure_reason=None,
                 )
             else:
                 if not await runtime.upload_storage.object_exists(asset.storage_key):
+                    await _record_recoverable_asset_error(asset, "upload_missing")
                     raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before processing.")
+                uploaded_size = runtime.upload_storage.size_bytes_for_storage_key(asset.storage_key)
+                checksum = runtime.upload_storage.checksum_sha256_for_storage_key(asset.storage_key)
+                integrity_status = "verified" if uploaded_size == asset.file_size_bytes and checksum else "unavailable"
+                if uploaded_size is not None and uploaded_size != asset.file_size_bytes:
+                    await _record_recoverable_asset_error(asset, "size_mismatch")
+                    raise APIError(400, "size_mismatch", "Uploaded file size does not match the initialized asset size.")
                 asset = await runtime.asset_store.update_asset(
                     asset_id,
                     status=AssetStatus.UPLOADED,
                     uploaded_bytes=asset.file_size_bytes,
+                    checksum_sha256=checksum,
+                    integrity_status=integrity_status,
+                    last_error_code=None,
+                    failure_reason=None,
                 )
 
             asset = await _enqueue_post_upload_processing(asset.asset_id)
-            return UploadCompleteResponse(
-                assetId=asset.asset_id,
-                storageKey=asset.storage_key,
-                status=asset.status.value,
-                artifacts=asset.artifacts_response(),
-                pollAfterSeconds=resolved_settings.default_poll_after_seconds,
+            return _upload_complete_response(asset)
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/uploads/{asset_id}/cancel",
+        response_model=AssetResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def cancel_upload(asset_id: str, request: UploadCancelRequest):
+        assert runtime is not None
+        try:
+            _require_public_api_enabled()
+            asset = await _require_asset(asset_id)
+            _require_asset_owner(asset, request.installId)
+            if asset.status.can_start_analysis:
+                raise APIError(409, "asset_already_ready", "Ready assets cannot be cancelled.")
+            if asset.status == AssetStatus.CANCELLED:
+                return _asset_response(asset)
+            asset = await runtime.asset_store.update_asset(
+                asset_id,
+                status=AssetStatus.CANCELLED,
+                failure_reason="cancelled",
+                last_error_code="cancelled",
+                cancellation_reason=request.reason or "user_cancelled",
+                cancelled_at=_now(),
             )
+            return _asset_response(asset)
         except APIError as error:
             return _error_response(error)
 
@@ -830,11 +958,13 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             )
             job = await runtime.job_store.create_job(job_id, create_request, upload, quota_remaining)
             job = await runtime.job_store.mark_queued(job.job_id)
+            await runtime.asset_store.update_asset(asset.asset_id, analysis_job_id=job.job_id)
             await runtime.dispatcher.enqueue_process(job)
             return CreateAssetAnalysisJobResponse(
                 jobId=job.job_id,
                 assetId=asset.asset_id,
                 storageKey=storage_key,
+                sourceObjectKey=storage_key,
                 status=job.status.value,
                 pollAfterSeconds=resolved_settings.default_poll_after_seconds,
                 quotaRemainingToday=quota_remaining,
@@ -895,11 +1025,19 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                     raise APIError(400, "empty_upload", "The uploaded file body was empty.")
                 if len(payload) > resolved_settings.max_file_size_bytes:
                     raise APIError(413, "file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
+                if len(payload) != asset.file_size_bytes:
+                    await _record_recoverable_asset_error(asset, "size_mismatch")
+                    raise APIError(400, "size_mismatch", "Uploaded file size does not match the initialized asset size.")
                 runtime.upload_storage.accept_local_upload(asset, payload)
+                checksum = runtime.upload_storage.checksum_sha256_for_storage_key(asset.storage_key)
                 await runtime.asset_store.update_asset(
                     asset_id,
                     status=AssetStatus.UPLOADED,
                     uploaded_bytes=len(payload),
+                    checksum_sha256=checksum,
+                    integrity_status="verified" if checksum else "unavailable",
+                    last_error_code=None,
+                    failure_reason=None,
                 )
                 return Response(status_code=204)
             except APIError as error:
@@ -921,11 +1059,14 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                     raise APIError(400, "empty_upload", "The uploaded part body was empty.")
                 etag = runtime.upload_storage.accept_local_part(asset, part_number, payload)
                 parts = {**asset.parts, part_number: etag}
+                part_sizes = {**asset.part_sizes, part_number: len(payload)}
                 await runtime.asset_store.update_asset(
                     asset_id,
                     status=AssetStatus.UPLOADING,
                     parts=parts,
-                    uploaded_bytes=asset.uploaded_bytes + len(payload),
+                    part_sizes=part_sizes,
+                    uploaded_bytes=min(sum(part_sizes.values()), asset.file_size_bytes),
+                    last_error_code=None,
                 )
                 return Response(status_code=204, headers={"ETag": etag})
             except APIError as error:
@@ -968,11 +1109,14 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
             return CreateCloudAnalysisJobResponse(
                 jobId=job.job_id,
+                assetId=job.asset_id,
+                storageKey=job.storage_key,
                 uploadUrl=upload.upload_url,
                 uploadHeaders=upload.upload_headers,
                 expiresAt=upload.expires_at,
                 pollAfterSeconds=resolved_settings.default_poll_after_seconds,
                 quotaRemainingToday=quota_remaining,
+                sourceObjectKey=job.object_key,
             )
         except APIError as error:
             return _error_response(error)

@@ -34,6 +34,7 @@ class AssetStatus(str, Enum):
     PROXY_READY = "proxy_ready"
     READY = "ready"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
     @property
     def can_start_analysis(self) -> bool:
@@ -123,6 +124,8 @@ class CreateCloudAnalysisJobResponse(APIModel):
     pollAfterSeconds: int
     quotaRemainingToday: int
     analysisMode: str = "cloud"
+    sourceObjectKey: Optional[str] = None
+    resultObjectKey: Optional[str] = None
 
 
 class StartCloudAnalysisJobRequest(APIModel):
@@ -290,8 +293,6 @@ class CloudAnalysisJobResponse(APIModel):
     errorCode: Optional[str] = None
     errorMessage: Optional[str] = None
     analysisVersion: str
-    assetId: Optional[str] = None
-    storageKey: Optional[str] = None
     results: Optional[CloudAnalysisResult] = None
     sourceObjectKey: Optional[str] = None
     resultObjectKey: Optional[str] = None
@@ -355,6 +356,15 @@ class AssetArtifactsResponse(APIModel):
     waveformStorageKey: Optional[str] = None
 
 
+class AssetRenderAttachmentResponse(APIModel):
+    editJobId: Optional[str] = None
+    renderJobId: Optional[str] = None
+    status: str = "unknown"
+    outputStorageKey: Optional[str] = None
+    downloadUrl: Optional[str] = None
+    updatedAt: Optional[datetime] = None
+
+
 class AssetResponse(APIModel):
     assetId: str
     installId: str
@@ -363,9 +373,21 @@ class AssetResponse(APIModel):
     fileSizeBytes: int
     durationSeconds: float
     storageKey: str
+    sourceObjectKey: str
+    proxyKey: Optional[str] = None
     status: str
     uploadMode: str
     uploadedBytes: int
+    progress: float
+    checksumSha256: Optional[str] = None
+    integrityStatus: Literal["pending", "verified", "mismatch", "unavailable"] = "pending"
+    analysisJobId: Optional[str] = None
+    renderAttachments: List[AssetRenderAttachmentResponse] = Field(default_factory=list)
+    retryCount: int = 0
+    retryable: bool = True
+    lastErrorCode: Optional[str] = None
+    cancellationReason: Optional[str] = None
+    cancelledAt: Optional[datetime] = None
     artifacts: AssetArtifactsResponse
     createdAt: datetime
     updatedAt: datetime
@@ -378,9 +400,22 @@ AssetRecord = AssetResponse
 class UploadCompleteResponse(APIModel):
     assetId: str
     storageKey: str
+    sourceObjectKey: str
+    proxyKey: Optional[str] = None
     status: str
+    progress: float
+    checksumSha256: Optional[str] = None
+    integrityStatus: Literal["pending", "verified", "mismatch", "unavailable"] = "pending"
+    retryCount: int = 0
+    retryable: bool = True
+    lastErrorCode: Optional[str] = None
     artifacts: AssetArtifactsResponse
     pollAfterSeconds: int
+
+
+class UploadCancelRequest(APIModel):
+    installId: str = Field(min_length=8, max_length=128)
+    reason: Optional[str] = Field(default=None, max_length=120)
 
 
 class CreateAssetAnalysisJobRequest(APIModel):
@@ -394,9 +429,29 @@ class CreateAssetAnalysisJobResponse(APIModel):
     jobId: str
     assetId: str
     storageKey: str
+    sourceObjectKey: str
     status: str
     pollAfterSeconds: int
     quotaRemainingToday: int
+    analysisMode: str = "cloud"
+
+
+class UploadCapabilitiesResponse(APIModel):
+    maxFileSizeBytes: int
+    maxDurationSeconds: float
+    supportsMultipartUpload: bool
+    supportsResumableUpload: bool
+    multipartThresholdBytes: int
+    resumableUploadThresholdBytes: int
+    recommendedPartSizeBytes: int
+    minPartSizeBytes: int
+    maxPartSizeBytes: int
+    maxConcurrentPartUploads: int
+    signedUploadTtlSeconds: int
+    defaultPollAfterSeconds: int
+    supportsChecksumSha256: bool
+    supportsCancellation: bool
+    supportsIdempotentComplete: bool
     analysisMode: str = "cloud"
 
 
@@ -509,66 +564,23 @@ class StoredAsset:
     expires_at: datetime
     upload_mode: UploadMode = UploadMode.SINGLE
     status: AssetStatus = AssetStatus.INITIALIZED
-    uploaded_bytes: int = 0
-    proxy_storage_key: Optional[str] = None
-    thumbnail_storage_keys: List[str] = field(default_factory=list)
-    waveform_storage_key: Optional[str] = None
-    failure_reason: Optional[str] = None
-
-    @property
-    def analysis_storage_key(self) -> str:
-        return self.proxy_storage_key or self.storage_key
-
-    def artifacts_response(self) -> AssetArtifactsResponse:
-        return AssetArtifactsResponse(
-            proxyStorageKey=self.proxy_storage_key,
-            thumbnailStorageKeys=self.thumbnail_storage_keys,
-            waveformStorageKey=self.waveform_storage_key,
-        )
-
-    def to_response(self) -> AssetResponse:
-        return AssetResponse(
-            assetId=self.asset_id,
-            installId=self.install_id,
-            filename=self.filename,
-            contentType=self.content_type,
-            fileSizeBytes=self.file_size_bytes,
-            durationSeconds=self.duration_seconds,
-            storageKey=self.storage_key,
-            status=self.status.value,
-            uploadMode=self.upload_mode.value,
-            uploadedBytes=self.uploaded_bytes,
-            artifacts=self.artifacts_response(),
-            createdAt=self.created_at,
-            updatedAt=self.updated_at,
-            failureReason=self.failure_reason,
-        )
-
-
-@dataclass
-class StoredAsset:
-    asset_id: str
-    install_id: str
-    filename: str
-    content_type: str
-    file_size_bytes: int
-    duration_seconds: float
-    app_version: str
-    analysis_version: str
-    storage_key: str
-    created_at: datetime
-    updated_at: datetime
-    expires_at: datetime
-    upload_mode: UploadMode = UploadMode.SINGLE
-    status: AssetStatus = AssetStatus.INITIALIZED
     upload_id: Optional[str] = None
     part_size_bytes: Optional[int] = None
     part_count: Optional[int] = None
     uploaded_bytes: int = 0
     parts: Dict[int, str] = field(default_factory=dict)
+    part_sizes: Dict[int, int] = field(default_factory=dict)
     proxy_storage_key: Optional[str] = None
     thumbnail_storage_keys: List[str] = field(default_factory=list)
     waveform_storage_key: Optional[str] = None
+    checksum_sha256: Optional[str] = None
+    integrity_status: str = "pending"
+    analysis_job_id: Optional[str] = None
+    render_attachments: List[Dict[str, object]] = field(default_factory=list)
+    retry_count: int = 0
+    last_error_code: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
     failure_reason: Optional[str] = None
 
     @property
@@ -582,6 +594,28 @@ class StoredAsset:
             waveformStorageKey=self.waveform_storage_key,
         )
 
+    @property
+    def progress(self) -> float:
+        if self.status in {AssetStatus.PROXY_READY, AssetStatus.READY}:
+            return 1.0
+        if self.status in {AssetStatus.FAILED, AssetStatus.CANCELLED}:
+            return 1.0
+        if self.status == AssetStatus.PROCESSING:
+            return 0.86
+        if self.file_size_bytes > 0:
+            return round(min(max(self.uploaded_bytes / self.file_size_bytes, 0.0), 0.8), 4)
+        return 0.0
+
+    @property
+    def retryable(self) -> bool:
+        return self.status not in {AssetStatus.PROXY_READY, AssetStatus.READY, AssetStatus.CANCELLED}
+
+    def render_attachment_responses(self) -> List[AssetRenderAttachmentResponse]:
+        return [
+            AssetRenderAttachmentResponse.model_validate(attachment)
+            for attachment in self.render_attachments
+        ]
+
     def to_response(self) -> AssetResponse:
         return AssetResponse(
             assetId=self.asset_id,
@@ -591,9 +625,21 @@ class StoredAsset:
             fileSizeBytes=self.file_size_bytes,
             durationSeconds=self.duration_seconds,
             storageKey=self.storage_key,
+            sourceObjectKey=self.storage_key,
+            proxyKey=self.proxy_storage_key,
             status=self.status.value,
             uploadMode=self.upload_mode.value,
             uploadedBytes=self.uploaded_bytes,
+            progress=self.progress,
+            checksumSha256=self.checksum_sha256,
+            integrityStatus=self.integrity_status,  # type: ignore[arg-type]
+            analysisJobId=self.analysis_job_id,
+            renderAttachments=self.render_attachment_responses(),
+            retryCount=self.retry_count,
+            retryable=self.retryable,
+            lastErrorCode=self.last_error_code,
+            cancellationReason=self.cancellation_reason,
+            cancelledAt=self.cancelled_at,
             artifacts=self.artifacts_response(),
             createdAt=self.created_at,
             updatedAt=self.updated_at,

@@ -53,6 +53,11 @@ nonisolated struct UploadQueueItem: Identifiable, Equatable, Sendable {
     let jobId: String?
     let hasSourceObjectKey: Bool
     let clipCount: Int
+    let integrityStatus: String?
+    let retryCount: Int?
+    let retryable: Bool?
+    let lastErrorCode: String?
+    let renderAttachmentCount: Int
     let contractSummary: String
 
     var progressPercent: Int {
@@ -67,8 +72,16 @@ nonisolated struct UploadAssetQueueContract: Equatable, Sendable {
     let status: String
     let uploadedBytes: Int64?
     let fileSizeBytes: Int64?
+    var progress: Double? = nil
+    var checksumSha256: String? = nil
+    var integrityStatus: String? = nil
     let analysisJobId: String?
     let clipCount: Int
+    var retryCount: Int? = nil
+    var retryable: Bool? = nil
+    var lastErrorCode: String? = nil
+    var cancellationReason: String? = nil
+    var renderAttachmentCount: Int = 0
     let failureReason: String?
 }
 
@@ -76,7 +89,7 @@ nonisolated enum UploadQueueProjection {
     static func items(assets: [UploadAssetQueueContract]) -> [UploadQueueItem] {
         assets.map { asset in
             let phase = phase(forAssetStatus: asset.status, clipCount: asset.clipCount, failureReason: asset.failureReason)
-            let progress = progress(for: phase, uploadedBytes: asset.uploadedBytes, fileSizeBytes: asset.fileSizeBytes)
+            let progress = asset.progress ?? progress(for: phase, uploadedBytes: asset.uploadedBytes, fileSizeBytes: asset.fileSizeBytes)
             return UploadQueueItem(
                 id: asset.assetId,
                 title: asset.analysisJobId.map { "Cloud job \($0)" } ?? "Asset \(asset.assetId)",
@@ -90,6 +103,11 @@ nonisolated enum UploadQueueProjection {
                 jobId: asset.analysisJobId,
                 hasSourceObjectKey: !asset.storageKey.isEmpty && asset.storageKey != "pending",
                 clipCount: asset.clipCount,
+                integrityStatus: asset.integrityStatus,
+                retryCount: asset.retryCount,
+                retryable: asset.retryable,
+                lastErrorCode: asset.lastErrorCode,
+                renderAttachmentCount: asset.renderAttachmentCount,
                 contractSummary: contractSummary(for: asset)
             )
         }
@@ -141,6 +159,11 @@ nonisolated enum UploadQueueProjection {
                 jobId: cloudAnalysisJobID,
                 hasSourceObjectKey: cloudEditSourceObjectKey != nil,
                 clipCount: clipCount,
+                integrityStatus: nil,
+                retryCount: nil,
+                retryable: nil,
+                lastErrorCode: nil,
+                renderAttachmentCount: 0,
                 contractSummary: contractSummary(
                     jobID: cloudAnalysisJobID,
                     hasSourceObjectKey: cloudEditSourceObjectKey != nil,
@@ -153,6 +176,9 @@ nonisolated enum UploadQueueProjection {
     private static func phase(forAssetStatus status: String, clipCount: Int, failureReason: String?) -> UploadQueuePhase {
         let normalized = status.lowercased()
         if failureReason != nil || normalized.contains("failed") {
+            return .failed
+        }
+        if normalized.contains("cancel") {
             return .failed
         }
         if clipCount > 0 {
@@ -199,6 +225,11 @@ nonisolated enum UploadQueueProjection {
         if let failureReason = asset.failureReason, phase == .failed {
             return "Asset failed: \(failureReason)"
         }
+        if let lastErrorCode = asset.lastErrorCode, phase != .reviewReady {
+            return asset.retryable == false
+                ? "Upload stopped: \(lastErrorCode)"
+                : "Upload needs retry: \(lastErrorCode)"
+        }
         switch phase {
         case .ready:
             if asset.status.lowercased() == "proxy_ready" || asset.proxyKey != nil {
@@ -226,7 +257,10 @@ nonisolated enum UploadQueueProjection {
 
     private static func contractSummary(for asset: UploadAssetQueueContract) -> String {
         let proxyState = asset.proxyKey == nil ? "proxy pending" : "proxy ready"
-        return "assetId=\(asset.assetId); status=\(asset.status); \(proxyState); jobId=\(asset.analysisJobId ?? "pending")"
+        let integrity = asset.integrityStatus.map { "integrity=\($0)" } ?? "integrity=pending"
+        let retry = asset.retryCount.map { "retryCount=\($0)" } ?? "retryCount=0"
+        let renders = "renderAttachments=\(max(asset.renderAttachmentCount, 0))"
+        return "assetId=\(asset.assetId); status=\(asset.status); \(proxyState); \(integrity); \(retry); \(renders); jobId=\(asset.analysisJobId ?? "pending")"
     }
 
     private static func phase(

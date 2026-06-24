@@ -66,6 +66,12 @@ class UploadStorageAdapter(Protocol):
     def complete_multipart_upload(self, asset: StoredAsset, parts: Dict[int, str]) -> str:
         ...
 
+    def checksum_sha256_for_storage_key(self, storage_key: str) -> Optional[str]:
+        ...
+
+    def size_bytes_for_storage_key(self, storage_key: str) -> Optional[int]:
+        ...
+
     async def object_exists(self, storage_key: str) -> bool:
         ...
 
@@ -164,6 +170,22 @@ class LocalDiskUploadStorageAdapter:
                 with part_path.open("rb") as input_file:
                     shutil.copyfileobj(input_file, output)
         return str(target)
+
+    def checksum_sha256_for_storage_key(self, storage_key: str) -> Optional[str]:
+        path = self._local_path(storage_key)
+        if not path.exists() or not path.is_file():
+            return None
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def size_bytes_for_storage_key(self, storage_key: str) -> Optional[int]:
+        path = self._local_path(storage_key)
+        if not path.exists() or not path.is_file():
+            return None
+        return path.stat().st_size
 
     async def object_exists(self, storage_key: str) -> bool:
         path = self._local_path(storage_key)
@@ -306,6 +328,17 @@ class ObjectStorageCompatibleUploadStorageAdapter:
             MultipartUpload={"Parts": completed_parts},
         )
         return asset.storage_key
+
+    def checksum_sha256_for_storage_key(self, storage_key: str) -> Optional[str]:
+        _ = storage_key
+        return None
+
+    def size_bytes_for_storage_key(self, storage_key: str) -> Optional[int]:
+        try:
+            response = self._client().head_object(Bucket=self._bucket(), Key=storage_key)
+        except Exception:
+            return None
+        return int(response.get("ContentLength") or 0)
 
     async def object_exists(self, storage_key: str) -> bool:
         try:
