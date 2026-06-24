@@ -165,7 +165,6 @@ struct UploadsWorkflowView: View {
 
     private var uploadAssetContracts: [UploadAssetQueueContract] {
         guard let assetId = viewModel.cloudUploadAssetID,
-              let storageKey = viewModel.cloudUploadAssetStorageKey,
               let status = viewModel.cloudUploadAssetStatus else {
             return []
         }
@@ -173,7 +172,7 @@ struct UploadsWorkflowView: View {
         return [
             UploadAssetQueueContract(
                 assetId: assetId,
-                storageKey: storageKey,
+                storageKey: viewModel.cloudUploadAssetStorageKey,
                 proxyKey: viewModel.cloudUploadAssetProxyKey,
                 status: status,
                 uploadedBytes: viewModel.cloudUploadAssetUploadedBytes,

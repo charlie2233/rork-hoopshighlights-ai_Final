@@ -67,7 +67,7 @@ nonisolated struct UploadQueueItem: Identifiable, Equatable, Sendable {
 
 nonisolated struct UploadAssetQueueContract: Equatable, Sendable {
     let assetId: String
-    let storageKey: String
+    let storageKey: String?
     let proxyKey: String?
     let status: String
     let uploadedBytes: Int64?
@@ -90,6 +90,7 @@ nonisolated enum UploadQueueProjection {
         assets.map { asset in
             let phase = phase(forAssetStatus: asset.status, clipCount: asset.clipCount, failureReason: asset.failureReason)
             let progress = asset.progress ?? progress(for: phase, uploadedBytes: asset.uploadedBytes, fileSizeBytes: asset.fileSizeBytes)
+            let storageKey = resolvedStorageKey(for: asset)
             return UploadQueueItem(
                 id: asset.assetId,
                 title: asset.analysisJobId.map { "Cloud job \($0)" } ?? "Asset \(asset.assetId)",
@@ -97,11 +98,11 @@ nonisolated enum UploadQueueProjection {
                 status: statusText(for: asset, phase: phase),
                 progress: progress,
                 assetId: asset.assetId,
-                storageKey: asset.storageKey,
+                storageKey: storageKey,
                 proxyKey: asset.proxyKey,
                 assetStatus: asset.status,
                 jobId: asset.analysisJobId,
-                hasSourceObjectKey: !asset.storageKey.isEmpty && asset.storageKey != "pending",
+                hasSourceObjectKey: storageKey != "pending",
                 clipCount: asset.clipCount,
                 integrityStatus: asset.integrityStatus,
                 retryCount: asset.retryCount,
@@ -111,6 +112,14 @@ nonisolated enum UploadQueueProjection {
                 contractSummary: contractSummary(for: asset)
             )
         }
+    }
+
+    private static func resolvedStorageKey(for asset: UploadAssetQueueContract) -> String {
+        guard let storageKey = asset.storageKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !storageKey.isEmpty else {
+            return "pending"
+        }
+        return storageKey
     }
 
     static func items(

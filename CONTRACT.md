@@ -264,6 +264,8 @@ For asset uploads, `storageKey` should be the proxy key after post-upload proces
 
 Do not persist `UploadQueueProjection` or treat it as a backend contract. If a future multi-item upload queue lands, feed its canonical DTOs through `UploadAssetQueueContract` and keep the same `UploadQueueItem` UI surface until the SwiftUI views intentionally change.
 
+When `assetId` is present but `storageKey`/`sourceObjectKey` is still pending, the Uploads row must remain asset-first with a pending storage marker. Do not fall back to a legacy job row just because storage metadata has not arrived yet.
+
 ## Clip Accuracy Review
 
 Canonical review feedback tags are:

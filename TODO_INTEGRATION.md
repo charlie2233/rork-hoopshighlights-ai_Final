@@ -25,6 +25,7 @@
 - [x] Redact `storageKey`, `sourceObjectKey`, signed URLs, and full paths in proof/status copy.
 - [x] Keep `UploadQueueProjection` as a view projection over canonical job state; do not persist it.
 - [x] Feed Uploads queue projection with real asset integrity/retry/progress metadata when available.
+- [x] Keep Uploads queue rows asset-first when `assetId` exists but storage metadata is still pending.
 - [x] Persist structured upload capability policy on iOS and apply `maxConcurrentPartUploads` as the multipart lane ceiling.
 - [x] Pair local pending asset-upload cancellation with backend `/v1/uploads/{assetId}/cancel` when a manifest has an `assetId`.
 - [x] Persist signed upload expiry in asset-first resume manifests so stale part URLs require a fresh upload plan.
@@ -57,6 +58,7 @@
 - [x] Add clip-accuracy calibration fixtures and evaluation metrics: `recallAtK`, `precisionAtK`, `boundaryErrorSeconds`, and `duplicateRate`.
 - [x] Add Swift contract decode tests once UI models land.
 - [x] Add workflow projection unit tests.
+- [x] Add workflow projection coverage for asset rows with pending storage metadata.
 - [x] Add workflow UI smoke coverage for Uploads -> Review -> AI Edit -> Exports navigation.
 - [x] Add edit request encoding coverage for `assetId`, `sourceClipIds`, `editIntent`, and `idempotencyKey`.
 - [x] Add backend/service idempotency replay coverage for edit-job creation.

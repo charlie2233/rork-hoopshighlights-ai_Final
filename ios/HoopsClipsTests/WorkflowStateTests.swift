@@ -70,6 +70,30 @@ struct WorkflowStateTests {
         #expect(items.map(\.id) == ["asset_one", "asset_two"])
     }
 
+    @Test func uploadQueueProjectionKeepsAssetIdentityWhileStorageKeyIsPending() {
+        let items = UploadQueueProjection.items(assets: [
+            UploadAssetQueueContract(
+                assetId: "asset_pending_storage",
+                storageKey: nil,
+                proxyKey: nil,
+                status: "uploading",
+                uploadedBytes: 25,
+                fileSizeBytes: 100,
+                analysisJobId: nil,
+                clipCount: 0,
+                failureReason: nil
+            )
+        ])
+
+        #expect(items.count == 1)
+        #expect(items[0].id == "asset_pending_storage")
+        #expect(items[0].assetId == "asset_pending_storage")
+        #expect(items[0].storageKey == "pending")
+        #expect(!items[0].hasSourceObjectKey)
+        #expect(items[0].phase == .uploading)
+        #expect(items[0].contractSummary.contains("assetId=asset_pending_storage"))
+    }
+
     @Test func uploadQueueProjectionShowsReviewReadyAfterClipsArrive() {
         let items = UploadQueueProjection.items(assets: [
             UploadAssetQueueContract(
