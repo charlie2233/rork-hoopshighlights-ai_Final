@@ -941,6 +941,73 @@ struct HoopsClipsTests {
         #expect(CloudAnalysisService.pendingBackgroundUploadManifestSummary() == "none")
     }
 
+    @Test @MainActor func testAssetMultipartResumeManifestPersistsUploadExpiry() async throws {
+        let manifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+        UserDefaults.standard.removeObject(forKey: manifestDefaultsKey)
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            UserDefaults.standard.removeObject(forKey: manifestDefaultsKey)
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "asset-expiry-\(UUID().uuidString).mp4")
+        try Data("fixture-video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var initPayload: [String: Any]?
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            if request.httpMethod == "POST", url.path == "/v1/uploads/init" {
+                initPayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "assetId": "asset_expiry",
+                  "storageKey": "assets/asset_expiry/source/game.mp4",
+                  "status": "initialized",
+                  "uploadMode": "multipart",
+                  "uploadUrl": null,
+                  "uploadMethod": "PUT",
+                  "uploadHeaders": {},
+                  "multipart": {
+                    "uploadId": "upload_expiry",
+                    "partSizeBytes": 6,
+                    "partCount": 2,
+                    "parts": [
+                      {"partNumber": 1, "uploadUrl": "", "uploadMethod": "PUT", "uploadHeaders": {}},
+                      {"partNumber": 2, "uploadUrl": "", "uploadMethod": "PUT", "uploadHeaders": {}}
+                    ]
+                  },
+                  "expiresAt": "2099-06-24T00:00:00Z",
+                  "pollAfterSeconds": 1,
+                  "uploadState": "waiting_for_client_upload"
+                }
+                """)
+            }
+
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        do {
+            _ = try await service.analyzeVideo(
+                url: tempURL,
+                duration: 12,
+                installID: "install-123456"
+            ) { _, _ in }
+            Issue.record("asset multipart upload should fail before network transfer")
+        } catch {
+            #expect(error is CloudAnalysisError)
+        }
+
+        #expect(initPayload?["uploadPreference"] as? String == "auto")
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        #expect(summary.contains("pending=true"))
+        #expect(summary.contains("assetUpload=true"))
+        #expect(summary.contains("expiresAt=2099-06-24T00:00:00Z"))
+        #expect(summary.contains("uploadExpired=false"))
+        #expect(summary.contains("resumeSafe=true"))
+    }
+
     @Test func testCloudAnalysisUploadSourceOptimizationPolicyIsHonest() {
         let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
             durationSeconds: 8 * 60,

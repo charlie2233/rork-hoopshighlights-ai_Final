@@ -27,6 +27,7 @@
 - [x] Feed Uploads queue projection with real asset integrity/retry/progress metadata when available.
 - [x] Persist structured upload capability policy on iOS and apply `maxConcurrentPartUploads` as the multipart lane ceiling.
 - [x] Pair local pending asset-upload cancellation with backend `/v1/uploads/{assetId}/cancel` when a manifest has an `assetId`.
+- [x] Persist signed upload expiry in asset-first resume manifests so stale part URLs require a fresh upload plan.
 - [x] Promote AI Edit into its own primary workflow tab while keeping History and Settings secondary.
 - [x] Keep Review actions wired to `Clip.isKept`: Keep, Nah, Keep Strong, Skip Weak, team filters, feedback tags, and boundary nudges.
 - [x] Keep Review shortcut routing: `K` keep, `D` discard, `N` Nah compatibility, `1`-`5` feedback tags, `[`/`]` boundary nudges.
@@ -62,6 +63,7 @@
 - [x] Re-run iOS build-for-testing after this integration branch resolves conflicts.
 - [x] Re-run focused `HoopsClipsTests` integration lanes: `WorkflowStateTests`, edit request encoding, asset upload decode, and asset queue decode.
 - [x] Add focused Swift coverage for structured capability policy persistence and pending asset-upload backend cancellation reporting.
+- [x] Add focused Swift coverage proving asset multipart resume manifests persist signed upload expiry.
 - [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [x] Re-run Worker typecheck and test suite after shared type changes.
 - [x] Run managed asset upload smoke harness against the local backend with multipart, duplicate complete, integrity, and proxy-ready proof.

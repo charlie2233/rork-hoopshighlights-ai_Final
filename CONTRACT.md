@@ -134,7 +134,7 @@ Response:
 }
 ```
 
-Multipart responses keep the same top-level fields and include `multipart.uploadId`, `partSizeBytes`, `partCount`, and signed part targets.
+Multipart responses keep the same top-level fields and include `multipart.uploadId`, `partSizeBytes`, `partCount`, and signed part targets. iOS resume manifests must persist the top-level `expiresAt`; once the signed upload window is within the expiry guard, the app should require a fresh upload plan instead of retrying stale part URLs.
 
 ## Upload Complete
 

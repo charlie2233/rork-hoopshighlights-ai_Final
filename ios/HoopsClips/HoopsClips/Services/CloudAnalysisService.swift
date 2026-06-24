@@ -1959,7 +1959,8 @@ struct CloudAnalysisService {
             totalFileSizeBytes: max(fileSizeBytes, 1),
             assetID: asset.assetId,
             storageKey: asset.storageKey,
-            assetMultipartParts: nil
+            assetMultipartParts: nil,
+            uploadExpiresAt: asset.expiresAt
         )
         await CloudUploadResumeStore.shared.recordSession(
             jobID: asset.assetId,
@@ -2106,7 +2107,8 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes,
             assetID: asset.assetId,
             storageKey: asset.storageKey,
-            assetMultipartParts: multipart.parts
+            assetMultipartParts: multipart.parts,
+            uploadExpiresAt: asset.expiresAt
         )
         var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
         let initialCompletedBytes = Self.completedUploadBytes(
