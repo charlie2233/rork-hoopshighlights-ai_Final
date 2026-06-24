@@ -50,6 +50,7 @@ from .render_storage import EditingServiceError, RenderStorage
 
 ensure_ios_backend_on_path()
 
+from app.detection_pipeline import PIPELINE_VERSION  # noqa: E402
 from app.editing import (  # noqa: E402
     AIEditFeatureFlags,
     EditPlan,
@@ -284,11 +285,41 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             analysis_version=request.analysisVersion,
             created_at=created_at,
             expires_at=created_at + timedelta(seconds=job_ttl_seconds),
-            object_key=request.sourceObjectKey,
+            object_key=request.storageKey or request.sourceObjectKey or f"assets/{request.assetId or request.jobId}/proxy/proxy.mp4",
+            asset_id=request.assetId,
+            storage_key=request.storageKey or request.sourceObjectKey,
+            request_id=request.requestId,
+            upload_trace_id=request.uploadTraceId,
+            inference_attempt_id=request.inferenceAttemptId,
+            trace_id=request.traceId,
             team_selection=request.teamSelection,
             status=JobStatus.PROCESSING,
             progress=0.62,
             stage="Analyzing in cloud",
+        )
+
+    def detection_job_from_request(request: ScanCloudAnalysisSourceRequest, job_ttl_seconds: int) -> StoredJob:
+        created_at = now_utc()
+        return StoredJob(
+            job_id=request.jobId,
+            install_id=request.installId,
+            filename=request.filename,
+            content_type=request.contentType or "video/mp4",
+            file_size_bytes=1,
+            duration_seconds=request.durationSeconds,
+            app_version=request.appVersion or "unknown",
+            analysis_version=request.analysisVersion or "detection-v2",
+            created_at=created_at,
+            expires_at=created_at + timedelta(seconds=job_ttl_seconds),
+            object_key=request.storageKey or request.sourceObjectKey or f"detection/{request.jobId}/source.mp4",
+            asset_id=request.assetId,
+            storage_key=request.storageKey or request.sourceObjectKey,
+            request_id=request.requestId,
+            upload_trace_id=request.uploadTraceId,
+            trace_id=request.traceId,
+            status=JobStatus.PROCESSING,
+            progress=0.62,
+            stage="Analyzing detection candidates",
         )
 
     def inference_callback_payload(
@@ -302,6 +333,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "jobId": request.jobId,
+            "assetId": request.assetId,
+            "storageKey": request.storageKey or request.sourceObjectKey,
             "requestId": request.requestId,
             "status": status,
             "stage": stage,
@@ -1245,6 +1278,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "ffmpeg": ffmpeg_diagnostics(),
             "featureFlags": feature_flags.model_dump(),
             "gptHighlightReranker": gpt_reranker_settings.public_status(),
+            "detectionPipeline": {
+                "pipelineVersion": PIPELINE_VERSION,
+                "supportsCandidateClips": True,
+                "stages": ["proposal", "embedding_rerank", "classifier", "merge"],
+            },
         }
 
     @app.post("/v1/analyze", status_code=202, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
@@ -1261,6 +1299,45 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             return {"jobId": request.jobId, "status": "accepted"}
         except EditingServiceError as error:
             return error_response(error)
+
+    @app.post("/v2/detection/analyze", response_model=CloudAnalysisResult, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+    async def analyze_detection_candidates(
+        request: ScanCloudAnalysisSourceRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        source: Optional[MaterializedSource] = None
+        try:
+            require_secret(x_hoops_inference_secret or x_hoops_internal_secret or x_hoops_editing_secret)
+            try:
+                analysis_settings = get_analysis_settings()
+            except ValueError as error:
+                raise EditingServiceError(503, "analysis_unconfigured", "Cloud analysis is not configured.") from error
+            source = await run_in_threadpool(
+                materialize_dispatch_source,
+                request.storageKey or request.sourceObjectKey,
+                request.sourceUrl,
+                request.filename,
+                analysis_settings.max_file_size_bytes,
+            )
+            job = detection_job_from_request(request, analysis_settings.job_ttl_seconds)
+            return await run_in_threadpool(run_analysis, job, analysis_settings, source.local_path)
+        except EditingServiceError as error:
+            return error_response(error)
+        except APIError as error:
+            return JSONResponse(
+                status_code=error.status_code,
+                content=ErrorResponse(errorCode=error.error_code, errorMessage=error.error_message, failureReason=error.error_message).model_dump(exclude_none=True),
+            )
+        except PipelineError as error:
+            return JSONResponse(
+                status_code=400,
+                content=ErrorResponse(errorCode=error.error_code, errorMessage=error.error_message, failureReason=error.error_message).model_dump(exclude_none=True),
+            )
+        finally:
+            if source is not None:
+                source.cleanup()
 
     @app.post("/v1/team-scan", response_model=ScanCloudAnalysisTeamsResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
     async def scan_source_teams(

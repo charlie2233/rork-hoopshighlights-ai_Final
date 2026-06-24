@@ -1,0 +1,157 @@
+{
+  "schemaVersion": "basketball-detection-taxonomy-v1",
+  "default": {
+    "productLabel": "Highlight",
+    "canonicalLabel": "highlight",
+    "eventFamily": "highlight",
+    "eventSubtype": "generic_highlight",
+    "shotSubtype": null,
+    "outcome": "uncertain"
+  },
+  "promptGroups": {
+    "eventType": [
+      "basketball dunk",
+      "made three pointer",
+      "layup finish",
+      "fast break",
+      "steal",
+      "blocked shot",
+      "defensive stop",
+      "shot attempt"
+    ],
+    "outcome": [
+      "made basket",
+      "missed shot",
+      "blocked shot",
+      "uncertain outcome"
+    ],
+    "crowdReaction": [
+      "crowd reaction after basketball play",
+      "bench reaction",
+      "audio pop with visible basketball action"
+    ],
+    "teamIdentity": [
+      "selected team highlight",
+      "wrong team highlight",
+      "uncertain jersey team"
+    ],
+    "reviewQuality": [
+      "bad window missing setup or outcome",
+      "duplicate highlight window",
+      "wrong label basketball event",
+      "low quality unclear play"
+    ]
+  },
+  "labels": [
+    {
+      "researchLabel": "dunk",
+      "aliases": ["slam dunk", "posterize", "basketball dunk"],
+      "productLabel": "Dunk",
+      "canonicalLabel": "dunk",
+      "eventFamily": "shot",
+      "eventSubtype": "finish",
+      "shotSubtype": "dunk",
+      "outcome": "made"
+    },
+    {
+      "researchLabel": "three pointer",
+      "aliases": ["3pt", "three point shot", "made three", "corner three"],
+      "productLabel": "Three Pointer",
+      "canonicalLabel": "three_pointer",
+      "eventFamily": "shot",
+      "eventSubtype": "jump_shot",
+      "shotSubtype": "three_pointer",
+      "outcome": "made"
+    },
+    {
+      "researchLabel": "made shot",
+      "aliases": ["field goal", "bucket", "make", "score"],
+      "productLabel": "Made Shot",
+      "canonicalLabel": "made_shot",
+      "eventFamily": "shot",
+      "eventSubtype": "scoring_play",
+      "shotSubtype": "field_goal",
+      "outcome": "made"
+    },
+    {
+      "researchLabel": "missed shot",
+      "aliases": ["miss", "missed field goal", "missed jumper"],
+      "productLabel": "Missed Shot",
+      "canonicalLabel": "missed_shot",
+      "eventFamily": "shot",
+      "eventSubtype": "shot_attempt",
+      "shotSubtype": "field_goal",
+      "outcome": "missed"
+    },
+    {
+      "researchLabel": "shot attempt",
+      "aliases": ["jump shot", "jumper", "pull up", "shot"],
+      "productLabel": "Shot Attempt",
+      "canonicalLabel": "shot_attempt",
+      "eventFamily": "shot",
+      "eventSubtype": "shot_attempt",
+      "shotSubtype": "field_goal",
+      "outcome": "uncertain"
+    },
+    {
+      "researchLabel": "layup attempt",
+      "aliases": ["layup", "drive finish", "rim finish"],
+      "productLabel": "Layup",
+      "canonicalLabel": "layup",
+      "eventFamily": "shot",
+      "eventSubtype": "finish",
+      "shotSubtype": "layup",
+      "outcome": "uncertain"
+    },
+    {
+      "researchLabel": "fast break",
+      "aliases": ["transition", "transition attack", "runout"],
+      "productLabel": "Fast Break",
+      "canonicalLabel": "fast_break",
+      "eventFamily": "transition",
+      "eventSubtype": "fast_break",
+      "shotSubtype": null,
+      "outcome": "uncertain"
+    },
+    {
+      "researchLabel": "steal",
+      "aliases": ["takeaway", "forced steal"],
+      "productLabel": "Steal",
+      "canonicalLabel": "steal",
+      "eventFamily": "defense",
+      "eventSubtype": "steal",
+      "shotSubtype": null,
+      "outcome": "uncertain"
+    },
+    {
+      "researchLabel": "block",
+      "aliases": ["blocked shot", "shot block"],
+      "productLabel": "Block",
+      "canonicalLabel": "block",
+      "eventFamily": "defense",
+      "eventSubtype": "block",
+      "shotSubtype": null,
+      "outcome": "blocked"
+    },
+    {
+      "researchLabel": "defensive stop",
+      "aliases": ["stop", "forced turnover", "turnover"],
+      "productLabel": "Defensive Stop",
+      "canonicalLabel": "defensive_stop",
+      "eventFamily": "defense",
+      "eventSubtype": "defensive_stop",
+      "shotSubtype": null,
+      "outcome": "uncertain"
+    },
+    {
+      "researchLabel": "crowd reaction",
+      "aliases": ["bench reaction", "audio reaction", "crowd pop"],
+      "productLabel": "Crowd Reaction",
+      "canonicalLabel": "crowd_reaction",
+      "eventFamily": "reaction",
+      "eventSubtype": "crowd_reaction",
+      "shotSubtype": null,
+      "outcome": "uncertain"
+    }
+  ]
+}

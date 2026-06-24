@@ -997,6 +997,7 @@ struct HoopsClipsTests {
                     audioCueConfidence: nil,
                     audioCueTime: nil,
 	                    combinedScore: 0.9,
+	                    rankScore: nil,
 	                    duplicateGroup: nil,
 	                    userReviewDecision: "kept",
 	                    reviewFeedbackTags: ["duplicate", "bad_window"],
@@ -3736,6 +3737,8 @@ struct HoopsClipsTests {
             evidenceRoleGroups: ["action", "outcome"]
         )
         let cloudClip = CloudClip(
+            id: "clip_backend_1",
+            clipId: "clip_backend_alias",
             startTime: 12.5,
             endTime: 17.0,
             eventCenter: 15.2,
@@ -3746,6 +3749,14 @@ struct HoopsClipsTests {
             visualScore: 0.7,
             motionScore: 0.9,
             combinedScore: 0.86,
+            rankScore: 0.94,
+            scores: CloudClipScores(
+                proposalScore: 0.82,
+                embeddingScore: 0.93,
+                classifierScore: 0.91,
+                mergeScore: 0.94,
+                finalScore: 0.94
+            ),
             audioCueType: nil,
             audioCueConfidence: nil,
             audioCueTime: nil,
@@ -3767,6 +3778,8 @@ struct HoopsClipsTests {
         #expect(mapped.eventCenter == 15.2)
         #expect(mapped.nativeShotSignals == nativeSignals)
         #expect(mapped.teamAttribution == teamAttribution)
+        #expect(mapped.analysisClipID == "clip_backend_1")
+        #expect(mapped.rankScore == 0.94)
         #expect(mapped.teamAttribution?.evidenceFrameRefs == ["clip_0_release", "clip_0_result"])
         #expect(mapped.teamAttribution?.evidenceRoleGroups == ["action", "outcome"])
         #expect(mapped.teamAttributionStatus == "matched")

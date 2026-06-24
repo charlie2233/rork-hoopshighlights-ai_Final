@@ -170,6 +170,7 @@ struct WorkflowStateTests {
             audioCueConfidence: nil,
             audioCueTime: nil,
             combinedScore: 0.86,
+            rankScore: nil,
             duplicateGroup: nil,
             userReviewDecision: "keep",
             reviewFeedbackTags: nil

@@ -19,6 +19,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     var visualScore: Double
     var motionScore: Double
     var combinedScore: Double
+    var analysisClipID: String?
+    var rankScore: Double?
     var audioCueType: String?
     var audioCueConfidence: Double?
     var audioCueTime: Double?
@@ -115,6 +117,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         visualScore: Double = 0.0,
         motionScore: Double = 0.0,
         combinedScore: Double = 0.0,
+        analysisClipID: String? = nil,
+        rankScore: Double? = nil,
         audioCueType: String? = nil,
         audioCueConfidence: Double? = nil,
         audioCueTime: Double? = nil,
@@ -138,6 +142,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         self.visualScore = visualScore
         self.motionScore = motionScore
         self.combinedScore = combinedScore
+        self.analysisClipID = analysisClipID
+        self.rankScore = rankScore
         self.audioCueType = audioCueType
         self.audioCueConfidence = audioCueConfidence
         self.audioCueTime = audioCueTime
@@ -163,6 +169,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         case visualScore
         case motionScore
         case combinedScore
+        case analysisClipID
+        case rankScore
         case audioCueType
         case audioCueConfidence
         case audioCueTime
@@ -190,6 +198,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         visualScore = try container.decodeIfPresent(Double.self, forKey: .visualScore) ?? 0.0
         motionScore = try container.decodeIfPresent(Double.self, forKey: .motionScore) ?? 0.0
         combinedScore = try container.decodeIfPresent(Double.self, forKey: .combinedScore) ?? 0.0
+        analysisClipID = try container.decodeIfPresent(String.self, forKey: .analysisClipID)
+        rankScore = try container.decodeIfPresent(Double.self, forKey: .rankScore)
         audioCueType = try container.decodeIfPresent(String.self, forKey: .audioCueType)
         audioCueConfidence = try container.decodeIfPresent(Double.self, forKey: .audioCueConfidence)
         audioCueTime = try container.decodeIfPresent(Double.self, forKey: .audioCueTime)
@@ -223,6 +233,10 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
             return "Suggested keep: high confidence and strong highlight signals. Confirm before the final edit."
         }
         return "Suggested keep: possible highlight. Review it before making the final edit."
+    }
+
+    var editPlanningScore: Double {
+        rankScore ?? combinedScore
     }
 
     private var keyframeEvidenceText: String {

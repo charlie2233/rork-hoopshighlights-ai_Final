@@ -564,6 +564,8 @@ nonisolated struct NativeShotSignals: Codable, Sendable, Equatable {
 }
 
 nonisolated struct CloudClip: Codable, Sendable {
+    var id: String? = nil
+    var clipId: String? = nil
     let startTime: Double
     let endTime: Double
     let eventCenter: Double?
@@ -574,6 +576,8 @@ nonisolated struct CloudClip: Codable, Sendable {
     let visualScore: Double
     let motionScore: Double
     let combinedScore: Double
+    var rankScore: Double? = nil
+    var scores: CloudClipScores? = nil
     let audioCueType: String?
     let audioCueConfidence: Double?
     let audioCueTime: Double?
@@ -601,6 +605,8 @@ nonisolated struct CloudClip: Codable, Sendable {
             visualScore: visualScore,
             motionScore: motionScore,
             combinedScore: combinedScore,
+            analysisClipID: id ?? clipId,
+            rankScore: rankScore ?? scores?.finalScore,
             audioCueType: audioCueType,
             audioCueConfidence: audioCueConfidence,
             audioCueTime: audioCueTime,
@@ -611,6 +617,14 @@ nonisolated struct CloudClip: Codable, Sendable {
             teamAttributionStatus: teamAttributionStatus
         )
     }
+}
+
+nonisolated struct CloudClipScores: Codable, Sendable {
+    let proposalScore: Double?
+    let embeddingScore: Double?
+    let classifierScore: Double?
+    let mergeScore: Double?
+    let finalScore: Double
 }
 
 nonisolated struct CloudDiagnostics: Codable, Sendable {

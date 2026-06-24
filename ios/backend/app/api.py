@@ -414,10 +414,38 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             object_key=request.storageKey or request.sourceObjectKey or f"assets/{request.assetId or request.jobId}/proxy/proxy.mp4",
             asset_id=request.assetId,
             storage_key=request.storageKey or request.sourceObjectKey,
+            request_id=request.requestId,
+            upload_trace_id=request.uploadTraceId,
+            inference_attempt_id=request.inferenceAttemptId,
+            trace_id=request.traceId,
             team_selection=request.teamSelection,
             status=JobStatus.PROCESSING,
             progress=0.62,
             stage="Analyzing in cloud",
+        )
+
+    def _detection_job_from_request(request: ScanCloudAnalysisSourceRequest) -> StoredJob:
+        created_at = _now()
+        return StoredJob(
+            job_id=request.jobId,
+            install_id=request.installId,
+            filename=request.filename,
+            content_type=request.contentType or "video/mp4",
+            file_size_bytes=1,
+            duration_seconds=request.durationSeconds,
+            app_version=request.appVersion or "unknown",
+            analysis_version=request.analysisVersion or "detection-v2",
+            created_at=created_at,
+            expires_at=created_at + timedelta(seconds=resolved_settings.job_ttl_seconds),
+            object_key=request.storageKey or request.sourceObjectKey or f"detection/{request.jobId}/source.mp4",
+            asset_id=request.assetId,
+            storage_key=request.storageKey or request.sourceObjectKey,
+            request_id=request.requestId,
+            upload_trace_id=request.uploadTraceId,
+            trace_id=request.traceId,
+            status=JobStatus.PROCESSING,
+            progress=0.62,
+            stage="Analyzing detection candidates",
         )
 
     def _inference_callback_payload(
@@ -1098,6 +1126,37 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             return {"jobId": request.jobId, "status": "accepted"}
         except APIError as error:
             return _error_response(error)
+
+    @router.post(
+        "/v2/detection/analyze",
+        response_model=CloudAnalysisResult,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
+    )
+    async def analyze_detection_candidates(
+        request: ScanCloudAnalysisSourceRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+    ):
+        source = None
+        try:
+            _require_internal_process_secret(x_hoops_inference_secret or x_hoops_internal_secret)
+            source = await _materialize_asset_or_remote_source(
+                asset_id=request.assetId,
+                storage_key=request.storageKey,
+                source_object_key=request.sourceObjectKey,
+                source_url=request.sourceUrl,
+                filename=request.filename,
+                install_id=request.installId,
+            )
+            job = _detection_job_from_request(request)
+            return await run_in_threadpool(run_analysis, job, resolved_settings, source.local_path)
+        except APIError as error:
+            return _error_response(error)
+        except PipelineError as error:
+            return _error_response(APIError(400, error.error_code, error.error_message))
+        finally:
+            if source is not None:
+                source.cleanup()
 
     @router.post(
         "/v1/analysis/jobs/{job_id}/start",

@@ -61,6 +61,11 @@ class Settings:
     firestore_assets_collection: str = "assets"
     upload_storage_provider: str = "local"
     upload_multipart_part_size_bytes: int = 8 * 1024 * 1024
+    semantic_rerank_enabled: bool = True
+    semantic_rerank_provider: str = "openclip"
+    semantic_rerank_model_id: str = "openclip"
+    semantic_rerank_batch_size: int = 32
+    semantic_rerank_cache_size: int = 4096
 
     @property
     def is_local(self) -> bool:
@@ -173,6 +178,9 @@ def get_settings() -> Settings:
 
     detection_provider = os.getenv("HOOPS_DETECTION_PROVIDER", "hybrid").strip().lower() or "hybrid"
     post_ranking_provider = os.getenv("HOOPS_POST_RANKING_PROVIDER", "native").strip().lower() or "native"
+    semantic_rerank_enabled = _env_flag("HOOPS_SEMANTIC_RERANK_ENABLED", True)
+    semantic_rerank_provider = os.getenv("HOOPS_SEMANTIC_RERANK_PROVIDER", "openclip").strip().lower() or "openclip"
+    semantic_rerank_model_id = os.getenv("HOOPS_SEMANTIC_RERANK_MODEL_ID", semantic_rerank_provider).strip() or semantic_rerank_provider
     explicit_team_scan = _env_flag_optional("HOOPS_TEAM_QUICK_SCAN_ENABLED")
     team_quick_scan_enabled = (
         explicit_team_scan
@@ -225,6 +233,11 @@ def get_settings() -> Settings:
         enable_local_upload_emulation=enable_local_upload_emulation,
         detection_provider=detection_provider,
         post_ranking_provider=post_ranking_provider,
+        semantic_rerank_enabled=semantic_rerank_enabled,
+        semantic_rerank_provider=semantic_rerank_provider,
+        semantic_rerank_model_id=semantic_rerank_model_id,
+        semantic_rerank_batch_size=_env_int("HOOPS_SEMANTIC_RERANK_BATCH_SIZE", 32, 1, 256),
+        semantic_rerank_cache_size=_env_int("HOOPS_SEMANTIC_RERANK_CACHE_SIZE", 4096, 0, 100_000),
         hoopcut_repo_path=hoopcut_repo_path,
         hoopcut_python_bin=hoopcut_python_bin,
         autohighlight_repo_path=autohighlight_repo_path,

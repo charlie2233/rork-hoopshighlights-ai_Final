@@ -188,20 +188,15 @@ def apply_autohighlight_boosts(clips: Sequence[CloudClip], boosts: Sequence[floa
         combined = round(clamp((clip.combinedScore * 0.78) + (boost * 0.22), 0.0, 1.0), 4)
         confidence = round(clamp(clip.confidence + (boost * 0.08), 0.35, 0.99), 4)
         should_auto_keep = clip.shouldAutoKeep or confidence >= 0.62 or boost >= 0.52
-        updated = CloudClip(
-            startTime=clip.startTime,
-            endTime=clip.endTime,
-            eventCenter=clip.eventCenter,
-            confidence=confidence,
-            label=clip.label,
-            action=clip.action,
-            audioScore=clip.audioScore,
-            visualScore=clip.visualScore,
-            motionScore=clip.motionScore,
-            combinedScore=combined,
-            detectionMethod=clip.detectionMethod,
-            shouldAutoKeep=should_auto_keep,
-            shouldEnableSlowMotion=clip.shouldEnableSlowMotion,
+        scores = clip.scores.model_copy(update={"mergeScore": combined, "finalScore": combined}) if clip.scores else None
+        updated = clip.model_copy(
+            update={
+                "confidence": confidence,
+                "combinedScore": combined,
+                "rankScore": combined,
+                "scores": scores,
+                "shouldAutoKeep": should_auto_keep,
+            }
         )
         boosted.append(
             updated.model_copy(

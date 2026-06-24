@@ -1,0 +1,14 @@
+{
+  "groundTruth": [
+    {"videoId": "game-1", "startTime": 1.0, "endTime": 5.0, "label": "dunk", "teamId": "home"},
+    {"videoId": "game-1", "startTime": 10.0, "endTime": 14.0, "label": "steal", "teamId": "home"},
+    {"videoId": "game-1", "startTime": 18.0, "endTime": 23.0, "label": "three_pointer", "teamId": "home"}
+  ],
+  "predictions": [
+    {"videoId": "game-1", "startTime": 0.9, "endTime": 5.2, "label": "dunk", "rankScore": 0.94, "teamId": "home"},
+    {"videoId": "game-1", "startTime": 18.2, "endTime": 22.8, "label": "three_pointer", "rankScore": 0.88, "teamId": "home"},
+    {"videoId": "game-1", "startTime": 10.2, "endTime": 13.8, "label": "steal", "rankScore": 0.76, "teamId": "home"},
+    {"videoId": "game-1", "startTime": 30.0, "endTime": 34.0, "label": "dunk", "rankScore": 0.42, "reviewFeedbackTags": ["duplicate"]},
+    {"videoId": "game-1", "startTime": 40.0, "endTime": 41.0, "label": "made_shot", "rankScore": 0.25, "reviewFeedbackTags": ["bad_window"]}
+  ]
+}

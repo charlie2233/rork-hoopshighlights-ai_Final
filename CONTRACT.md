@@ -1,6 +1,10 @@
-# HoopClips Workflow And Upload Contract
+# HoopClips Workflow, Upload, And Detection Contract
 
-This integration branch combines the asset-first upload pipeline, Agent A's accuracy foundations, Agent B's AI Edit engine contracts, and the workflow-first iOS shell. It keeps the backend/client contracts canonical and treats new UI state as projections over those contracts, not as forked payloads.
+This integration branch combines the asset-first upload pipeline, Agent A's accuracy foundations, Agent B's AI Edit engine contracts, the workflow-first iOS shell, and Detection V2. It keeps backend/client contracts canonical and treats UI state as projections over those contracts, not as forked payloads.
+
+## Cloud Ownership
+
+HoopClips analysis, multimodal reranking, edit planning, and rendering remain cloud-backend owned. The iOS app is the control surface for upload, review, AI Edit requests, job status, previews, downloads, share sheets, and external editor handoff.
 
 ## Primary Workflow Sections
 
@@ -21,9 +25,9 @@ The UI consumes existing contracts instead of inventing local payloads:
 - Asset upload client flow: `ios/HoopsClips/HoopsClips/Services/CloudAnalysisService.swift`
 - Clip review state: `ios/HoopsClips/HoopsClips/Models/Clip.swift`
 - AI Edit request, plan, render, history, and download state: `ios/HoopsClips/HoopsClips/Models/CloudEditTypes.swift`
-- Local backend asset routes: `ios/backend/app/api.py`
+- Local backend asset and detection routes: `ios/backend/app/api.py`
 - Editing backend plan and render ownership: `ios/backend/app/editing.py`
-- Worker additive asset fields: `services/control-plane/src/types.ts`
+- Worker additive asset and candidate fields: `services/control-plane/src/types.ts`
 - Durable render job status: `services/editing/editing_app/models.py`
 
 ## Asset Upload Lifecycle
@@ -60,128 +64,133 @@ Canonical asset state is represented by `AssetRecord`/`CloudAssetStatusResponse`
 - `updatedAt`
 - `failureReason`
 
-## Upload Init
+## Asset Routes
 
-`POST /v1/uploads/init`
+`POST /v1/uploads/init` creates a single-part or multipart upload target and returns `assetId`, `storageKey`, upload target details, expiration, polling hints, and `uploadState`.
 
-Request:
+`POST /v1/uploads/{assetId}/complete` records completion and moves the asset into `processing`, `proxy_ready`, or `failed` depending on local or managed post-upload processing.
 
-```json
-{
-  "filename": "game.mp4",
-  "contentType": "video/mp4",
-  "fileSizeBytes": 12345678,
-  "durationSeconds": 120.5,
-  "installId": "install-123456",
-  "appVersion": "1.0",
-  "analysisVersion": "cloud-v1",
-  "uploadPreference": "auto",
-  "partSizeBytes": 8388608
-}
-```
+`GET /v1/assets/{assetId}?installId=...` is the Uploads workflow and resume endpoint for upload state, proxy readiness, and post-upload artifact availability.
 
-Response:
-
-```json
-{
-  "assetId": "asset_...",
-  "storageKey": "assets/asset_.../source/game.mp4",
-  "status": "initialized",
-  "uploadMode": "single",
-  "uploadUrl": "http://127.0.0.1:8080/v1/internal/assets/asset_.../upload",
-  "uploadMethod": "PUT",
-  "uploadHeaders": {"Content-Type": "video/mp4"},
-  "multipart": null,
-  "expiresAt": "2026-06-23T08:00:00Z",
-  "pollAfterSeconds": 1,
-  "uploadState": "waiting_for_client_upload"
-}
-```
-
-Multipart responses keep the same top-level fields and include `multipart.uploadId`, `partSizeBytes`, `partCount`, and signed part targets.
-
-## Upload Complete
-
-`POST /v1/uploads/{assetId}/complete`
-
-Single-part request:
-
-```json
-{"installId": "install-123456"}
-```
-
-Multipart request:
-
-```json
-{
-  "installId": "install-123456",
-  "uploadId": "local-asset_...",
-  "parts": [
-    {"partNumber": 1, "etag": "etag-1", "sizeBytes": 8388608}
-  ]
-}
-```
-
-Response:
-
-```json
-{
-  "assetId": "asset_...",
-  "storageKey": "assets/asset_.../source/game.mp4",
-  "status": "processing",
-  "artifacts": {
-    "proxyStorageKey": null,
-    "thumbnailStorageKeys": [],
-    "waveformStorageKey": null
-  },
-  "pollAfterSeconds": 1
-}
-```
-
-Managed runtimes enqueue post-upload proxy/thumbnail/waveform generation through Cloud Tasks at `POST /v1/internal/assets/{assetId}/process`, so `/complete` can return `processing` while the client polls `GET /v1/assets/{assetId}`. Local runtimes use the same dispatcher interface with an inline emulator, so local tests may still observe `proxy_ready` directly from `/complete`.
-
-## Asset Poll
-
-`GET /v1/assets/{assetId}?installId=install-123456`
-
-The Uploads workflow and upload resume path use this endpoint for upload state, proxy readiness, and post-upload artifact availability.
-
-## Team Scan From Asset
-
-`POST /v1/assets/{assetId}/team-scan`
-
-Request:
-
-```json
-{
-  "installId": "install-123456"
-}
-```
-
-If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response keeps the existing team-scan shape so current team-selection UI can continue to route through detected jersey options.
-
-## Start AI From Asset
-
-`POST /v1/assets/{assetId}/analysis-jobs`
-
-Request:
-
-```json
-{
-  "installId": "install-123456",
-  "appVersion": "1.0",
-  "analysisVersion": "cloud-v1",
-  "teamSelection": {"mode": "all"}
-}
-```
-
-If the asset is not `proxy_ready`, the API returns `409 asset_not_ready`. When accepted, the response includes `jobId`, `assetId`, proxy `storageKey`, `status`, `pollAfterSeconds`, quota fields, and `analysisMode`.
+`POST /v1/assets/{assetId}/team-scan` and `POST /v1/assets/{assetId}/analysis-jobs` require `proxy_ready` or `ready`; otherwise they return `409 asset_not_ready`.
 
 ## Provider Dispatch Inputs
 
-Inference, team-scan, and edit-planning payloads prefer `assetId` plus `storageKey`/`sourceObjectKey` when available. `sourceUrl` remains accepted only as a migration fallback and signed-read compatibility path for providers that do not yet share object storage credentials. The local backend and editing service materialize object keys first, then fall back to signed URLs.
+Inference, team-scan, detection, and edit-planning payloads prefer `assetId` plus `storageKey`/`sourceObjectKey` when available. `sourceUrl` remains accepted only as a migration fallback and signed-read compatibility path for providers that do not yet share object storage credentials.
 
 For asset uploads, `storageKey` should be the proxy key after post-upload processing when `artifacts.proxyStorageKey` is available. The iOS client maps this as `analysisStorageKey` and does not start team scan, analysis, or edit handoff before the asset reports `proxy_ready` or `ready`.
+
+## Detection V2 Pipeline
+
+Detection is staged and cloud-backend owned:
+
+1. `proposal`: audio/visual windows or provider candidates identify likely event windows.
+2. `embedding_rerank`: CLIP/SigLIP-style semantic adapters rerank proposals against basketball product labels.
+3. `classifier`: baseline video classifier emits raw event labels and top-label scores.
+4. `merge`: overlapping candidates are merged into final reviewable clip candidates.
+5. `taxonomy`: raw labels map to product labels and canonical metadata.
+
+The public mobile upload path can continue through `/v1/analysis/*`; `POST /v2/detection/analyze` is the first-class backend detection route and internal validation path. Legacy aliases such as `/api/ai/analyze` and `/api/ai/result/{jobId}` remain compatibility routes.
+
+## Detection Request Identity
+
+Detection and rerank requests preserve source identity and trace fields when present:
+
+- `jobId`
+- `requestId`
+- `traceId`
+- `uploadTraceId`
+- `inferenceAttemptId`
+- `installId`
+- `assetId`
+- `storageKey`
+- `sourceObjectKey`
+- `sourceUrl`
+- `filename`
+- `contentType`
+- `durationSeconds`
+- `appVersion`
+- `analysisVersion`
+- `schemaVersion`
+- `modelVersion`
+
+## Candidate Clip Schema
+
+Analysis responses preserve `clips` for legacy clients and may add `candidateClips` for Detection V2. New clients should read `results.candidateClips ?? results.clips`.
+
+Candidate fields are additive and must remain safe for iOS, Worker, and edit-engine consumers:
+
+- `id` / `clipId`
+- `startTime`
+- `endTime`
+- `duration`
+- `label`
+- `canonicalLabel`
+- `eventFamily`
+- `outcome`
+- `crowdReaction`
+- `teamIdentity`
+- `teamAttributionStatus`
+- `nativeShotSignals`
+- `shouldAutoKeep`
+- `rankScore`
+- `confidence`
+- `sourceObjectKey` or redacted source identity for backend/internal use
+- `scores.proposalScore`
+- `scores.embeddingScore`
+- `scores.classifierScore`
+- `scores.mergeScore`
+- `scores.finalScore`
+- `rerankEvidence`
+- `provenance`
+- `reviewTags`
+
+Candidate clips may contain diagnostic provenance in backend responses. UI surfaces must not display raw signed URLs, provider secrets, object keys, or full filesystem paths. Review/product copy should prefer `label`, then `canonicalLabel`, `eventFamily`, and `outcome`.
+
+## Rerank Evidence
+
+Rerank evidence is diagnostic and additive. It should be useful to Review, AI Edit, and eval tooling without becoming a launch gate by itself.
+
+Recommended shape:
+
+```json
+{
+  "provider": "heuristic-embedding",
+  "model": "clip-like-v0",
+  "promptVersion": "basketball-taxonomy-v1",
+  "killSwitch": false,
+  "embeddingScore": 0.76,
+  "textMatches": [
+    {"label": "made three", "score": 0.76},
+    {"label": "crowd reaction", "score": 0.62}
+  ],
+  "errorBuckets": ["boundary_ok"]
+}
+```
+
+When the embedding provider is disabled, unavailable, or too slow, the pipeline falls back to heuristic + HoopCut/autohighlight behavior and records fallback provenance instead of changing response shape.
+
+## Basketball Taxonomy
+
+The backend taxonomy supports review and evaluation labels for:
+
+- event type
+- outcome
+- crowd reaction
+- team identity
+- bad-window
+- duplicate
+- wrong-team
+
+Canonical review feedback tags are:
+
+- `duplicate`
+- `wrong_team`
+- `bad_window`
+- `wrong_label`
+- `low_quality`
+
+These tags must persist from iOS review edits through backend edit DTOs, Worker admin clip review updates, and evaluation fixtures.
 
 ## Upload Queue Projection
 
@@ -201,73 +210,24 @@ For asset uploads, `storageKey` should be the proxy key after post-upload proces
 
 Do not persist `UploadQueueProjection` or treat it as a backend contract. If a future multi-item upload queue lands, feed its canonical DTOs through `UploadAssetQueueContract` and keep the same `UploadQueueItem` UI surface until the SwiftUI views intentionally change.
 
-## Clip Accuracy Review
+## AI Edit Ordering
 
-Canonical review feedback tags are:
+AI Edit should use candidates that pass existing quality gates. Prefer `rankScore` and `scores.finalScore` when present, while preserving existing `teamAttributionStatus`, `nativeShotSignals`, `shouldAutoKeep`, source object, full `clips`, `assetId`, `sourceClipIds`, `editIntent`, and idempotency compatibility paths.
 
-- `duplicate`
-- `wrong_team`
-- `bad_window`
-- `wrong_label`
-- `low_quality`
+Boundary nudges remain metadata-only and are reflected in cloud edit candidate clips through `CreateCloudEditJobRequest.clips`; they do not create local renders or local edit plans.
 
-These tags must persist from iOS review edits through backend edit DTOs, Worker admin clip review updates, and evaluation fixtures.
+## Accuracy Evaluation Metrics
 
 Benchmark metrics use stable camel-case names:
 
+- `precision`
+- `recall`
+- `f1`
+- `ndcg`
+- `mrr`
 - `recallAtK`
 - `precisionAtK`
 - `boundaryErrorSeconds`
 - `duplicateRate`
 
-## AI Edit Handoff
-
-AI Edit is a primary workflow section, but cloud ownership is unchanged. `CreateCloudEditJobRequest` sends additive `assetId` and `sourceClipIds` fields when available while preserving the backend-compatible `sourceObjectKey` plus full `clips` payload. `CreateCloudEditJobRequest.assetJobContract(assetId:)` exposes that asset-first shape for integration checks.
-
-Review boundary nudges and feedback tags only mutate clip metadata that is already sent through existing clip/review payloads. They do not create local edit plans, local renders, or a new backend payload family.
-
-`CreateCloudEditJobRequest` also sends additive `editIntent` and `idempotencyKey` fields. `sourceClipIds`, when present, must reference IDs included in the full `clips` compatibility payload.
-
-## Structured Edit Intent
-
-`editIntent.schemaVersion` is `edit-intent-v1`.
-
-Required intent fields:
-
-- `style`: `personal_highlight`, `full_game_highlight`, `coach_review`, `recruiting_reel`, `cinematic_mixtape`, `nba_recap`, `team_highlight`, `defense_focus`, or `custom`
-- `pace`: `fast`, `balanced`, `cinematic`, `coach_review`, or `deliberate`
-- `audioPreference`: `music_forward`, `game_audio`, `balanced`, or `muted`
-- `chronology`: `best_first`, `chronological`, `story_arc`, or `coach_review`
-- `captionDensity`: `minimal`, `clean`, `medium`, or `high`
-- `hardConstraints`: `requireVisibleOutcome`, `requireFullPlayContext`, `rejectDuplicates`, `rejectDeadBall`, `defenseOnly`, `selectedTeamOnly`, and `maxCaptionCharacters`
-
-Existing prompt UI maps into this schema on iOS. Backend clients that omit `editIntent` still get a server-derived schema from legacy prompt/template defaults, preserving the validated `EditPlan` flow.
-
-## Edit Job Durability
-
-Edit job payloads and plans persist to render storage under the existing durable editing namespace. Edit creation idempotency keys are indexed in the durable store, so retrying a create request after service reload returns the original edit job when the install owner matches.
-
-Render jobs continue to use the existing durable render state store, leases, indexes, and render idempotency flow.
-
-## Worker Compatibility
-
-The Cloudflare Worker includes additive `assetId` fields in create/poll responses and additive `assetId/storageKey` fields in internal team-scan and inference dispatch payloads. For the existing R2 flow, `assetId` maps to `jobId` and internal `storageKey` maps to `sourceObjectKey`.
-
-Public Worker responses keep `storageKey` null/redacted to preserve object-key redaction guarantees. Providers may continue reading `sourceUrl` during migration, but new inference/editing code should prefer `assetId` plus internal `storageKey` when present.
-
-## Legacy Manual URL Compatibility
-
-Internal inference endpoints still accept `sourceUrl` when `assetId`, `storageKey`, and `sourceObjectKey` are absent. This is compatibility-only and should not be the normal app path.
-
-## Cloud-First Boundary
-
-iOS remains the control surface:
-
-- import/upload
-- queue and job status
-- review decisions and clip boundary metadata
-- style, duration, aspect ratio, and prompt selection
-- cloud edit-plan/render job requests
-- downloaded MP4 preview/save/share/open-in
-
-iOS must not add local production analysis, AI edit planning, final rendering, renderer command generation, or fake cloud job state.
+Error buckets should include at least `bad_window`, `duplicate`, `wrong_team`, `wrong_label`, `low_quality`, `missing_clip`, and `false_positive`.

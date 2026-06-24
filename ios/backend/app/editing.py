@@ -408,6 +408,7 @@ class EditCandidateClip(APIModel):
     audioCueConfidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     audioCueTime: Optional[float] = Field(default=None, ge=0.0)
     combinedScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    rankScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
     nativeShotSignals: Optional[NativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
@@ -447,6 +448,8 @@ class EditCandidateClip(APIModel):
 
     @property
     def planning_score(self) -> float:
+        if self.rankScore is not None:
+            return self.rankScore
         if self.gptHighlightScore is not None:
             base = self.combinedScore if self.combinedScore is not None else (
                 (self.confidence * 0.25)

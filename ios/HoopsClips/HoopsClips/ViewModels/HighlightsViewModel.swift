@@ -1222,7 +1222,7 @@ final class HighlightsViewModel {
 
     nonisolated private static func priorityReviewSortScore(_ clip: Clip) -> Double {
         let watchability = max(clip.visualScore, clip.motionScore)
-        return (clip.combinedScore * 0.50)
+        return (clip.editPlanningScore * 0.50)
             + (clip.confidence * 0.24)
             + (watchability * 0.20)
             + (clip.audioScore * 0.06)
@@ -1453,13 +1453,13 @@ final class HighlightsViewModel {
             let inferredCenter = clip.startTime + (clip.duration / 2.0)
             let center = max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
             return CloudEditCandidateClip(
-                id: clip.id.uuidString,
+                id: clip.analysisClipID ?? clip.id.uuidString,
                 start: clip.startTime,
                 end: clip.endTime,
                 eventCenter: center,
                 label: Self.cloudEditCandidateLabel(for: clip),
                 confidence: clip.confidence,
-                excitement: clip.combinedScore,
+                excitement: clip.editPlanningScore,
                 watchability: max(clip.visualScore, clip.motionScore),
                 motionScore: clip.motionScore,
                 audioPeak: clip.audioScore,
@@ -1467,6 +1467,7 @@ final class HighlightsViewModel {
                 audioCueConfidence: clip.audioCueConfidence,
                 audioCueTime: clip.audioCueTime,
                 combinedScore: clip.combinedScore,
+                rankScore: clip.rankScore,
                 duplicateGroup: duplicateGroups[clip.id],
                 userReviewDecision: Self.cloudEditUserReviewDecision(
                     for: clip,
@@ -1889,7 +1890,7 @@ final class HighlightsViewModel {
     nonisolated private static func cloudEditCandidateScore(_ clip: Clip) -> Double {
         let watchability = max(clip.visualScore, clip.motionScore)
         let durationScore = min(max(clip.duration / 8.0, 0.0), 1.0)
-        var score = (clip.combinedScore * 0.45)
+        var score = (clip.editPlanningScore * 0.45)
             + (clip.confidence * 0.25)
             + (watchability * 0.20)
             + (clip.audioScore * 0.06)

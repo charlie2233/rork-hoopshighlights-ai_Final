@@ -1005,6 +1005,7 @@ struct CloudEditCandidateClip: Codable, Sendable {
     let audioCueConfidence: Double?
     let audioCueTime: Double?
     let combinedScore: Double?
+    let rankScore: Double?
     let duplicateGroup: String?
     let userReviewDecision: String?
     let reviewFeedbackTags: [String]?
