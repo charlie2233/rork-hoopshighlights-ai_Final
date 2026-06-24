@@ -2212,6 +2212,44 @@ struct HoopsClipsTests {
         #expect(candidateStarts.contains(2_000.0))
     }
 
+    @Test @MainActor func testCloudEditInputSignatureTracksSourceAssetAndCandidateChanges() {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source-a.mp4"
+        viewModel.cloudUploadAssetID = "asset_a"
+        let clip = Clip(
+            startTime: 10,
+            endTime: 16,
+            eventCenter: 13,
+            action: .madeShot,
+            confidence: 0.9,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.5,
+            visualScore: 0.8,
+            motionScore: 0.75,
+            combinedScore: 0.86,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [clip]
+
+        let initial = viewModel.cloudEditInputSignature
+        viewModel.cloudUploadAssetID = "asset_b"
+        let changedAsset = viewModel.cloudEditInputSignature
+
+        var adjustedClip = clip
+        adjustedClip.endTime = 17
+        viewModel.cloudUploadAssetID = "asset_a"
+        viewModel.analysisService.clips = [adjustedClip]
+        let changedCandidate = viewModel.cloudEditInputSignature
+
+        viewModel.cloudEditSourceObjectKey = "uploads/source-b.mp4"
+        let changedSource = viewModel.cloudEditInputSignature
+
+        #expect(changedAsset != initial)
+        #expect(changedCandidate != initial)
+        #expect(changedSource != changedCandidate)
+    }
+
     @Test @MainActor func testCloudEditRequestReservesHalfCandidatePoolForReviewUnderPressure() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

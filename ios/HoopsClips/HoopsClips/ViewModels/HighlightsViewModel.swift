@@ -108,6 +108,36 @@ final class HighlightsViewModel {
         cloudEditCandidatePoolCount > 0
     }
 
+    var cloudEditInputSignature: String {
+        let candidates = Self.cloudEditRequestCandidateClips(
+            from: clips,
+            teamSelection: settings.highlightTeamSelection
+        )
+        let candidateFingerprint = candidates.map { clip in
+            [
+                clip.id.uuidString,
+                Self.cloudEditSignatureNumber(clip.startTime),
+                Self.cloudEditSignatureNumber(clip.endTime),
+                Self.cloudEditSignatureNumber(clip.eventCenter ?? clip.startTime + (clip.duration / 2.0)),
+                clip.isKept ? "kept" : "discarded",
+                clip.reviewFeedbackTags.map(\.rawValue).joined(separator: ","),
+                clip.teamAttributionStatus ?? "no_team_status"
+            ].joined(separator: ":")
+        }.joined(separator: "|")
+
+        return [
+            installID,
+            cloudUploadAssetID ?? "no_asset",
+            cloudUploadAssetStorageKey ?? "no_asset_storage",
+            cloudUploadAssetProxyKey ?? "no_asset_proxy",
+            cloudEditSourceObjectKey ?? "no_source_object",
+            cloudAnalysisJobID ?? "no_analysis_job",
+            settings.highlightTeamSelection.selectionKey,
+            String(candidates.count),
+            candidateFingerprint
+        ].joined(separator: "||")
+    }
+
     var showingVideoPicker = false
     var showingSaveSuccess = false
     var analysisMode: AnalysisExecutionMode = AppRuntimeConfig.shared.launchAnalysisMode
@@ -1559,6 +1589,10 @@ final class HighlightsViewModel {
     ]
     nonisolated private static let cloudEditMinTeamEvidenceFrameRefs = 2
     nonisolated private static let cloudEditMinTeamEvidenceRoleGroups = 2
+
+    nonisolated private static func cloudEditSignatureNumber(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
 
     nonisolated private static func cloudEditIdempotencyKey(
         analysisJobId: String,

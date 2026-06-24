@@ -69,7 +69,7 @@ struct AIEditView: View {
     @State private var showAdvancedAIEditDetails = false
     @State private var showAllDurationOptions = false
     @State private var showMoreQuickPrompts = false
-    @State private var activeInstallID: String?
+    @State private var activeCloudEditInputSignature: String?
     @State private var foregroundRefreshTask: Task<Void, Never>?
 
     private let cloudEditService: any CloudEditServicing
@@ -126,8 +126,8 @@ struct AIEditView: View {
         } message: {
             Text("Your HoopClips video is in your photo library.")
         }
-        .task(id: viewModel.installID) {
-            resetCloudEditSessionIfIdentityChanged(to: viewModel.installID)
+        .task(id: viewModel.cloudEditInputSignature) {
+            resetCloudEditSessionIfInputChanged(to: viewModel.cloudEditInputSignature)
             await refreshCloudEditVersion()
             await refreshRenderHistory()
         }
@@ -146,10 +146,10 @@ struct AIEditView: View {
         }
     }
 
-    private func resetCloudEditSessionIfIdentityChanged(to installID: String) {
-        let previousInstallID = activeInstallID
-        activeInstallID = installID
-        guard let previousInstallID, previousInstallID != installID else { return }
+    private func resetCloudEditSessionIfInputChanged(to signature: String) {
+        let previousSignature = activeCloudEditInputSignature
+        activeCloudEditInputSignature = signature
+        guard let previousSignature, previousSignature != signature else { return }
 
         foregroundRefreshTask?.cancel()
         foregroundRefreshTask = nil
@@ -180,6 +180,7 @@ struct AIEditView: View {
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
+        viewModel.latestCloudEditRenderStatus = nil
     }
 
     private func refreshCloudEditAfterForegroundIfNeeded() {
