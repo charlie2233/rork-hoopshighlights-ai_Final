@@ -47,6 +47,29 @@ python scripts/upload_benchmark.py \
 
 This re-uploads the first part before completion and reports `retryResumeSuccess`.
 
+## Asset-First Managed Smoke Harness
+
+The managed smoke harness uses the same public asset endpoints as provider deployments but keeps output shareable:
+
+```bash
+python3 scripts/managed_asset_upload_smoke.py \
+  --base-url http://127.0.0.1:8080 \
+  --generated-size-bytes 8388608 \
+  --upload-preference multipart \
+  --part-size-bytes 4194304 \
+  --expect-multipart \
+  --evidence-path /tmp/managed_asset_upload_smoke_evidence.json
+```
+
+Expected JSON fields:
+
+- `status: pass`
+- `uploadMode: multipart`
+- `duplicateCompleteProven: true`
+- `proxyReadyProven: true`
+- `integrityStatus: verified` for local emulation
+- hashed `assetId`, `storageKey`, `sourceObjectKey`, `proxyKey`, and base URL values only
+
 ## Test
 
 ```bash

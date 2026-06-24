@@ -45,6 +45,8 @@ The Swift client now attempts the asset upload path first:
 
 If `/v1/uploads/init` is not available, the client falls back to the legacy `analysis/jobs -> uploadUrl -> start` path for current Worker compatibility. New resume manifests persist optional `assetId`, `storageKey`, and asset multipart targets so foreground-interrupted asset uploads complete through the asset API instead of the legacy job-start route.
 
+The client also persists structured upload capabilities from `/v1/analysis/capabilities`. `maxConcurrentPartUploads` caps multipart lanes, while iOS network policy can still reduce lanes for constrained or expensive networks. Pending asset-upload cancellation calls `/v1/uploads/{assetId}/cancel` best-effort before local resume state is cleared.
+
 ## Status Semantics
 
 - `initialized`: upload target exists, client has not uploaded yet.
@@ -54,6 +56,22 @@ If `/v1/uploads/init` is not available, the client falls back to the legacy `ana
 - `proxy_ready`: AI and first preview may start.
 - `ready`: reserved for final asset readiness after richer artifact generation.
 - `failed`: upload or post-upload processing failed.
+- `cancelled`: user or client cancellation was recorded; complete/start calls must not proceed.
+
+## Managed Smoke
+
+Use the privacy-safe managed smoke harness for provider or Worker deployments:
+
+```bash
+python3 scripts/managed_asset_upload_smoke.py \
+  --base-url "$HOOPS_MANAGED_ASSET_UPLOAD_BASE_URL" \
+  --upload-preference multipart \
+  --part-size-bytes 4194304 \
+  --expect-multipart \
+  --evidence-path artifacts/managed_asset_upload_smoke.json
+```
+
+The JSON output hashes `assetId`, object keys, URLs, and local paths. A passing run proves multipart upload, duplicate-safe completion, checksum/integrity reporting when available, and `proxy_ready` polling. Use `--allow-processing` only when debugging queue handoff; release proof should keep the default proxy-ready requirement.
 
 ## Cloud-First Rule
 

@@ -52,6 +52,7 @@
 - [x] Add backend unit tests for init contract, multipart completion, status transitions, and proxy-ready gating.
 - [x] Add backend upload integration tests for resume from stored parts, duplicate completion, missing-part partial failure, cancellation, and legacy asset-field migration compatibility.
 - [x] Add upload benchmark script reporting time-to-first-preview, full upload time, and retry/resume success.
+- [x] Add privacy-safe managed asset upload smoke harness for provider/Worker deployments.
 - [x] Add clip-accuracy calibration fixtures and evaluation metrics: `recallAtK`, `precisionAtK`, `boundaryErrorSeconds`, and `duplicateRate`.
 - [x] Add Swift contract decode tests once UI models land.
 - [x] Add workflow projection unit tests.
@@ -63,8 +64,9 @@
 - [x] Add focused Swift coverage for structured capability policy persistence and pending asset-upload backend cancellation reporting.
 - [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [x] Re-run Worker typecheck and test suite after shared type changes.
+- [x] Run managed asset upload smoke harness against the local backend with multipart, duplicate complete, integrity, and proxy-ready proof.
 - [ ] Re-run the full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
-- [ ] Add managed object-storage smoke after Worker/provider deployment is available.
+- [ ] Run managed object-storage smoke against the deployed Worker/provider once deployment credentials and endpoint are available.
 
 ## Merge Points For Coworking Agents
 
