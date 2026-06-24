@@ -1154,6 +1154,62 @@ struct HoopsClipsTests {
         #expect(CloudAnalysisService.pendingBackgroundUploadManifestSummary() == "none")
     }
 
+    @Test @MainActor func testExpiredAssetMultipartResumeRequiresFreshUploadPlan() async throws {
+        let manifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+        let expiredAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-120))
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        UserDefaults.standard.set(Data("""
+        {
+          "jobID": "asset_expired_resume",
+          "installID": "install-123456",
+          "sourceFilePath": "/tmp/asset-expired-source.mp4",
+          "uploadID": "upload_expired_resume",
+          "sourceObjectKey": "assets/asset_expired_resume/source/game.mp4",
+          "resultObjectKey": null,
+          "assetID": "asset_expired_resume",
+          "storageKey": "assets/asset_expired_resume/source/game.mp4",
+          "assetMultipartParts": [
+            {"partNumber": 1, "uploadUrl": "https://analysis.hoopsclips.test/stale/1", "uploadMethod": "PUT", "uploadHeaders": {}}
+          ],
+          "pollAfterSeconds": 1,
+          "purpose": "analysis",
+          "chunkSizeBytes": 5242880,
+          "partCount": 2,
+          "totalFileSizeBytes": 10485760,
+          "completedParts": [
+            {"partNumber": 1, "etag": "etag-part-1"}
+          ],
+          "activeSessionIdentifiers": [],
+          "uploadExpiresAt": "\(expiredAt)",
+          "createdAt": "2026-06-24T00:00:00Z",
+          "updatedAt": "2026-06-24T00:00:00Z"
+        }
+        """.utf8), forKey: manifestDefaultsKey)
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            UserDefaults.standard.removeObject(forKey: manifestDefaultsKey)
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
+        #expect(summary.contains("pending=true"))
+        #expect(summary.contains("uploadExpired=true"))
+        #expect(summary.contains("resumeSafe=false"))
+        #expect(summary.contains("nextAction=fresh_upload_required"))
+
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { _ in
+            Issue.record("Expired asset resume should clear locally without using stale upload URLs.")
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        let result = try await service.resumePendingBackgroundUploadIfNeeded(
+            installID: "install-123456"
+        ) { _, _ in }
+
+        #expect(result == nil)
+        #expect(CloudAnalysisService.pendingBackgroundUploadManifestSummary() == "none")
+    }
+
     @Test func testCloudAnalysisUploadSourceOptimizationPolicyIsHonest() {
         let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
             durationSeconds: 8 * 60,

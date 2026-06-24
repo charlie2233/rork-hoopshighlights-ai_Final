@@ -68,6 +68,7 @@
 - [x] Add focused Swift coverage proving asset multipart resume manifests persist signed upload expiry.
 - [x] Allow completed/status asset DTOs to decode pending or redacted `storageKey` while preserving source/proxy fallbacks for ready assets.
 - [x] Add focused Swift coverage for relaunch resume from a completed asset multipart manifest when the original source file is gone.
+- [x] Add focused Swift coverage that expired asset multipart resume manifests require a fresh upload plan before stale signed URLs are reused.
 - [x] Re-run the workflow UI smoke after this integration branch resolves conflicts.
 - [x] Re-run Worker typecheck and test suite after shared type changes.
 - [x] Run managed asset upload smoke harness against the local backend with multipart, duplicate complete, integrity, and proxy-ready proof.
