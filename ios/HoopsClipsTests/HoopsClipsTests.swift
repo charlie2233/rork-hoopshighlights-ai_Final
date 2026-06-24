@@ -1008,6 +1008,152 @@ struct HoopsClipsTests {
         #expect(summary.contains("resumeSafe=true"))
     }
 
+    @Test @MainActor func testCompletedAssetMultipartResumeCompletesWithoutSourceFile() async throws {
+        let manifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+        let missingSourcePath = FileManager.default.temporaryDirectory
+            .appending(path: "asset-resume-missing-\(UUID().uuidString).mp4")
+            .path
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        UserDefaults.standard.set(Data("""
+        {
+          "jobID": "asset_resume",
+          "installID": "install-123456",
+          "sourceFilePath": "\(missingSourcePath)",
+          "uploadID": "upload_resume",
+          "sourceObjectKey": "assets/asset_resume/source/game.mp4",
+          "resultObjectKey": null,
+          "assetID": "asset_resume",
+          "storageKey": "assets/asset_resume/source/game.mp4",
+          "assetMultipartParts": [],
+          "pollAfterSeconds": 1,
+          "purpose": "analysis",
+          "chunkSizeBytes": 6,
+          "partCount": 2,
+          "totalFileSizeBytes": 12,
+          "completedParts": [
+            {"partNumber": 1, "etag": "etag-part-1"},
+            {"partNumber": 2, "etag": "etag-part-2"}
+          ],
+          "activeSessionIdentifiers": [],
+          "uploadExpiresAt": "2099-06-24T00:00:00Z",
+          "createdAt": "2026-06-24T00:00:00Z",
+          "updatedAt": "2026-06-24T00:00:00Z"
+        }
+        """.utf8), forKey: manifestDefaultsKey)
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            UserDefaults.standard.removeObject(forKey: manifestDefaultsKey)
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        var requestedPaths: [String] = []
+        var completePayload: [String: Any]?
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/uploads/asset_resume/complete" {
+                completePayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "assetId": "asset_resume",
+                  "storageKey": null,
+                  "sourceObjectKey": "assets/asset_resume/source/game.mp4",
+                  "proxyKey": "assets/asset_resume/proxy/proxy.mp4",
+                  "status": "proxy_ready",
+                  "progress": 1.0,
+                  "checksumSha256": null,
+                  "integrityStatus": "unavailable",
+                  "retryCount": 0,
+                  "retryable": false,
+                  "lastErrorCode": null,
+                  "artifacts": {
+                    "proxyStorageKey": "assets/asset_resume/proxy/proxy.mp4",
+                    "thumbnailStorageKeys": [],
+                    "waveformStorageKey": null
+                  },
+                  "pollAfterSeconds": 1
+                }
+                """)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/assets/asset_resume/analysis-jobs" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_asset_resume",
+                  "assetId": "asset_resume",
+                  "storageKey": "assets/asset_resume/proxy/proxy.mp4",
+                  "sourceObjectKey": "assets/asset_resume/proxy/proxy.mp4",
+                  "status": "queued",
+                  "pollAfterSeconds": 1,
+                  "quotaRemainingToday": 2,
+                  "analysisMode": "cloud"
+                }
+                """)
+            }
+
+            if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_asset_resume" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_asset_resume",
+                  "assetId": "asset_resume",
+                  "storageKey": null,
+                  "status": "succeeded",
+                  "progress": 1.0,
+                  "stage": "Finalizing clips",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "analysisVersion": "v1",
+                  "sourceObjectKey": "assets/asset_resume/proxy/proxy.mp4",
+                  "resultObjectKey": null,
+                  "results": {
+                    "analysisJobId": "job_asset_resume",
+                    "assetId": "asset_resume",
+                    "assetStorageKey": "assets/asset_resume/proxy/proxy.mp4",
+                    "proxyStorageKey": "assets/asset_resume/proxy/proxy.mp4",
+                    "assetStatus": "ready",
+                    "sourceObjectKey": "assets/asset_resume/proxy/proxy.mp4",
+                    "clipCount": 0,
+                    "clips": [],
+                    "diagnostics": {
+                      "processingMs": 1,
+                      "backendModelVersion": "cloud-v1+asset-resume",
+                      "usedVideoIntelligence": false,
+                      "usedGeminiRelabeling": false,
+                      "candidateSegments": 0,
+                      "finalSegments": 0
+                    }
+                  }
+                }
+                """)
+            }
+
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        let result = try await service.resumePendingBackgroundUploadIfNeeded(
+            installID: "install-123456"
+        ) { _, _ in }
+
+        guard case .analysis(let analysis)? = result else {
+            Issue.record("Expected completed asset resume to start analysis.")
+            return
+        }
+
+        let completedParts = try #require(completePayload?["parts"] as? [[String: Any]])
+        #expect(completePayload?["uploadId"] as? String == "upload_resume")
+        #expect(completedParts.map { $0["partNumber"] as? Int } == [1, 2])
+        #expect(completedParts.map { $0["etag"] as? String } == ["etag-part-1", "etag-part-2"])
+        #expect(requestedPaths == [
+            "POST /v1/uploads/asset_resume/complete",
+            "POST /v1/assets/asset_resume/analysis-jobs",
+            "GET /v1/analysis/jobs/job_asset_resume"
+        ])
+        #expect(analysis.assetId == "asset_resume")
+        #expect(analysis.assetStorageKey == "assets/asset_resume/proxy/proxy.mp4")
+        #expect(CloudAnalysisService.pendingBackgroundUploadManifestSummary() == "none")
+    }
+
     @Test func testCloudAnalysisUploadSourceOptimizationPolicyIsHonest() {
         let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
             durationSeconds: 8 * 60,
