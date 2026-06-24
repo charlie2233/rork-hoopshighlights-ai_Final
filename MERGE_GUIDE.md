@@ -86,4 +86,10 @@ xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -derivedDataPath ios/build/DerivedData \
   -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudEditInputSignatureTracksSourceAssetAndCandidateChanges
+
+xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClipsUITests \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -derivedDataPath ios/build/DerivedData \
+  -only-testing:HoopsClipsUITests/HoopsClipsUITests/testWorkflowSectionsNavigateEndToEndWithSmokeFixture \
+  OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE'
 ```

@@ -74,5 +74,6 @@
 - [x] Re-run detection benchmark CLI after detection merge.
 - [x] Re-run Worker typecheck and tests after detection merge.
 - [x] Re-run focused iOS AI Edit state reset test after detection merge.
+- [x] Re-run workflow UI smoke after final workflow/upload/detection/edit integration.
 - [ ] Re-run full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
 - [ ] Add managed object-storage smoke after Worker/provider deployment is available.
