@@ -56,7 +56,7 @@ This branch integrates Agent A's asset-first upload pipeline, the detection v2 a
 
 - `CloudAnalysisTypes.swift` is shared by upload models and workflow projections; keep field additions additive.
 - Local post-upload processing attempts FFmpeg/ffprobe proxy and thumbnail generation, then falls back safely for invalid local test bytes.
-- Managed mode still needs provider-side object-storage smoke proof with operator-held credentials.
+- Managed mode still needs the local Python object-storage smoke proof with operator-held S3 credentials. Cloudflare connector verification confirmed the staging R2 bucket exists and accepts REST upload/list/delete operations, but old R2 secret access keys are not recoverable after creation.
 - Detection v2 has optional real OpenCLIP/SigLIP and R2Plus1D runtime adapters behind the existing interfaces. They are not default-enabled and require runtime dependencies plus model config.
 - UI tests need the existing smoke flag for the full fixture path.
 - Do not reintroduce a second AI editor in Exports.
