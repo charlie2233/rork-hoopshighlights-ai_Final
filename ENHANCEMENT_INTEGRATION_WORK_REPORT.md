@@ -59,6 +59,7 @@ Passed:
 - `PYTHONPATH=ios/backend uv run ... python -m unittest ios.backend.tests.test_detection_pipeline -v`
 - `PYTHONPATH=ios/backend uv run ... ios/backend/scripts/object_storage_upload_smoke.py --json --allow-missing`
 - Cloudflare connector R2 REST check on account `78fb4442e6e37b2c46d7e539c6e79172`: listed buckets, confirmed `hoopsclips-uploads-staging`, `hoopsclips-results-staging`, and `hoopclip`, then uploaded/listed/deleted a tiny object in `hoopsclips-uploads-staging` without exposing object keys or secrets.
+- `PYTHONPATH=ios/backend uv run --with-requirements ios/backend/requirements.txt --python 3.11 ios/backend/scripts/object_storage_upload_smoke.py --json` with scoped R2 S3 credentials for `hoopsclips-uploads-staging` (4 adapter objects passed and cleaned up).
 - `xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/WorkflowStateTests -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudEditRequestEncodesOptionalUserPrompt -quiet`
@@ -74,4 +75,4 @@ Notes:
 
 ## Remaining Launch Gates
 
-- Run managed object-storage smoke against deployed Worker/provider S3 credentials. The smoke harness is present and the Cloudflare connector proved the staging R2 bucket exists and is writable through Cloudflare REST, but this local shell still does not have the required object-storage/R2 S3 env configured. Existing R2 secret access keys cannot be recovered after creation; use a saved key or mint/rotate a new scoped R2 API token before running the Python adapter smoke.
+- No remaining implementation gates from the three reviewed Codex threads. Public launch/cutover still depends on the broader production gate decisions outside this integration pass.

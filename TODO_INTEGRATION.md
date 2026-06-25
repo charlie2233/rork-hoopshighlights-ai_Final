@@ -77,4 +77,4 @@
 - [x] Re-run workflow UI smoke after final workflow/upload/detection/edit integration.
 - [x] Re-run full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
 - [x] Add managed object-storage smoke script for provider-backed upload adapter proof.
-- [ ] Run managed object-storage smoke after Worker/provider S3 credentials are available. Cloudflare connector verified staging R2 buckets and REST write/delete access, but the local Python adapter still needs `HOOPS_R2_BUCKET`, `HOOPS_R2_ENDPOINT_URL`, `HOOPS_R2_ACCESS_KEY_ID`, and `HOOPS_R2_SECRET_ACCESS_KEY`.
+- [x] Run managed object-storage smoke after Worker/provider S3 credentials are available.
