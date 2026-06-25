@@ -4,13 +4,14 @@ Branch: `codex/hc-enhancement-integration-20260623`
 
 ## Summary
 
-This integration branch finishes the report-driven merge pass across the upload/UI, Agent A, and Agent B worktrees. It preserves the cloud-first boundary: iOS remains the control surface, while backend services own analysis, AI edit planning, and production rendering.
+This integration branch finishes the report-driven merge pass across the upload/UI, Agent A, Agent B, workflow UI, and Detection V2 worktrees. It preserves the cloud-first boundary: iOS remains the control surface, while backend services own analysis, AI edit planning, and production rendering.
 
 ## Integrated Branches
 
 - `codex/workflow-first-ui-20260623`
 - `codex/agent-a-asset-accuracy-20260623`
 - `codex/ai-edit-engine-contracts`
+- `feat/detection-v2`
 
 ## Implemented Integration
 
@@ -23,6 +24,8 @@ This integration branch finishes the report-driven merge pass across the upload/
 - Preserved full candidate `clips` and `sourceObjectKey` compatibility payloads.
 - Integrated durable edit-job idempotency/replay support from the editing service branch.
 - Added managed post-upload Cloud Tasks dispatch for proxy/thumbnail/waveform generation through `/v1/internal/assets/{assetId}/process`; local mode uses the same dispatcher with an inline emulator.
+- Integrated Detection V2 foundations: staged proposal, embedding-rerank, classifier, merge, taxonomy contracts, `/v2/detection/analyze`, `candidateClips`, `rankScore`, stage scores, top/raw labels, canonical label fields, and provenance metadata.
+- Preserved legacy `/v1/analysis/jobs`, `/v1/analysis/jobs/{jobId}/start`, `/v1/analysis/jobs/{jobId}`, `/api/ai/analyze`, and `/api/ai/result/{jobId}` compatibility paths.
 - Updated editing-service team-scan and analysis materialization to prefer `storageKey`/`sourceObjectKey` before falling back to signed `sourceUrl`.
 - Confirmed iOS consumes `proxyStorageKey` through `analysisStorageKey` and gates team scan/analysis/edit handoff until `proxy_ready` or `ready`.
 - Confirmed no production manual source-URL text input remains; URL overrides are limited to debug/smoke configuration paths.
@@ -47,6 +50,8 @@ Passed:
 - `PYTHONPATH=ios/backend uv run ... pytest ios/backend/tests/test_asset_upload_foundations.py`
 - `PYTHONPATH=ios/backend uv run ... pytest ios/backend/tests/test_upload_pipeline.py ios/backend/tests/test_task_dispatcher.py`
 - `PYTHONPATH=services/editing uv run ... pytest services/editing/tests/test_editing_service.py`
+- `uv run ... python -m unittest ios.backend.tests.test_upload_pipeline ios.backend.tests.test_detection_pipeline -v`
+- `uv run ... python scripts/benchmark_detection_pipeline.py --json`
 - `xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/WorkflowStateTests -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudEditRequestEncodesOptionalUserPrompt -quiet`
@@ -61,5 +66,7 @@ Notes:
 
 ## Remaining Launch Gates
 
+- Add real OpenCLIP/SigLIP runtime adapters behind `EmbeddingAdapter` without changing response shapes.
+- Add real R2Plus1D model loading behind `VideoClassifierAdapter` without changing response shapes.
 - Re-run the full `HoopsClipsTests` suite if the PR requires full-suite Xcode coverage beyond the focused lanes listed above.
 - Add managed object-storage smoke after Worker/provider deployment is available.
