@@ -77,11 +77,16 @@ struct CloudAnalysisService {
     private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
     private static let maxConcurrentMultipartUploads = 3
     private let session: URLSession
+    private let uploadSessionFactory: @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = .shared,
+        uploadSessionFactory: @escaping @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession = CloudAnalysisService.makeUploadSession
+    ) {
         self.session = session
+        self.uploadSessionFactory = uploadSessionFactory
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
         self.encoder = JSONEncoder()
@@ -126,9 +131,7 @@ struct CloudAnalysisService {
 
         let sessionIdentifiers = manifest.activeSessionIdentifiers
         for identifier in sessionIdentifiers {
-            let session = URLSession(
-                configuration: Self.uploadSessionConfiguration(backgroundIdentifier: identifier)
-            )
+            let session = uploadSessionFactory(identifier, nil)
             session.getAllTasks { tasks in
                 tasks.forEach { $0.cancel() }
                 session.invalidateAndCancel()
@@ -1905,13 +1908,7 @@ struct CloudAnalysisService {
             transferContext: "asset source upload starting",
             stalled: false
         )
-        let uploadSession = URLSession(
-            configuration: Self.uploadSessionConfiguration(
-                backgroundIdentifier: sourceSessionIdentifier
-            ),
-            delegate: delegate,
-            delegateQueue: nil
-        )
+        let uploadSession = uploadSessionFactory(sourceSessionIdentifier, delegate)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "asset_source_session_started",
             metadata: "kind=asset_source chunked=false partCount=\(uploadPartCount)"
@@ -2100,6 +2097,7 @@ struct CloudAnalysisService {
                             partCount: multipart.partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
+                            uploadSessionFactory: uploadSessionFactory,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2388,13 +2386,7 @@ struct CloudAnalysisService {
             transferContext: "source upload starting",
             stalled: false
         )
-        let uploadSession = URLSession(
-            configuration: Self.uploadSessionConfiguration(
-                backgroundIdentifier: sourceSessionIdentifier
-            ),
-            delegate: delegate,
-            delegateQueue: nil
-        )
+        let uploadSession = uploadSessionFactory(sourceSessionIdentifier, delegate)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "source_session_started",
             metadata: "kind=source chunked=false partCount=\(uploadPartCount)"
@@ -2605,6 +2597,7 @@ struct CloudAnalysisService {
                             partCount: resumableUpload.partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
+                            uploadSessionFactory: uploadSessionFactory,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2765,6 +2758,7 @@ struct CloudAnalysisService {
                             partCount: partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
+                            uploadSessionFactory: uploadSessionFactory,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2902,6 +2896,7 @@ struct CloudAnalysisService {
                             partCount: partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
+                            uploadSessionFactory: uploadSessionFactory,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2951,6 +2946,7 @@ struct CloudAnalysisService {
         partCount: Int,
         tracker: CloudUploadProgressTracker,
         progressAggregator: CloudMultipartUploadProgressAggregator? = nil,
+        uploadSessionFactory: @escaping @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession = CloudAnalysisService.makeUploadSession,
         reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws -> String {
         guard let uploadURL = URL(string: partTarget.uploadUrl) else {
@@ -3018,13 +3014,7 @@ struct CloudAnalysisService {
                     sessionIdentifier: backgroundIdentifier
                 )
 
-                let uploadSession = URLSession(
-                    configuration: Self.uploadSessionConfiguration(
-                        backgroundIdentifier: backgroundIdentifier
-                    ),
-                    delegate: delegate,
-                    delegateQueue: nil
-                )
+                let uploadSession = uploadSessionFactory(backgroundIdentifier, delegate)
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "chunk_session_started",
                     metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attemptNumber)"
@@ -3259,7 +3249,7 @@ struct CloudAnalysisService {
         return result.isEmpty ? UUID().uuidString : result
     }
 
-    private static func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
+    nonisolated private static func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
         let configuration: URLSessionConfiguration
         if let backgroundIdentifier {
             configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
@@ -3269,6 +3259,17 @@ struct CloudAnalysisService {
             configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: false)
         }
         return configuration
+    }
+
+    nonisolated private static func makeUploadSession(
+        backgroundIdentifier: String?,
+        delegate: URLSessionDelegate?
+    ) -> URLSession {
+        URLSession(
+            configuration: uploadSessionConfiguration(backgroundIdentifier: backgroundIdentifier),
+            delegate: delegate,
+            delegateQueue: nil
+        )
     }
 
     private func createAssetAnalysisJob(
@@ -3713,7 +3714,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
 }
 
 private extension URLSessionConfiguration {
-    func applyHoopsCloudUploadPolicy(isBackgroundTransfer: Bool) {
+    nonisolated func applyHoopsCloudUploadPolicy(isBackgroundTransfer: Bool) {
         waitsForConnectivity = true
         allowsCellularAccess = true
         allowsExpensiveNetworkAccess = true
@@ -3722,11 +3723,11 @@ private extension URLSessionConfiguration {
         if isBackgroundTransfer {
             sessionSendsLaunchEvents = true
             isDiscretionary = false
-            timeoutIntervalForRequest = cloudUploadBackgroundRequestTimeoutSeconds
-            timeoutIntervalForResource = cloudUploadBackgroundResourceTimeoutSeconds
+            timeoutIntervalForRequest = 10 * 60
+            timeoutIntervalForResource = 24 * 60 * 60
         } else {
-            timeoutIntervalForRequest = cloudUploadForegroundRequestTimeoutSeconds
-            timeoutIntervalForResource = cloudUploadForegroundResourceTimeoutSeconds
+            timeoutIntervalForRequest = 2 * 60
+            timeoutIntervalForResource = 2 * 60 * 60
         }
     }
 }

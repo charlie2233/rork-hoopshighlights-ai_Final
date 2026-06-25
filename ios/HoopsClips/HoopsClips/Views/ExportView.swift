@@ -1398,6 +1398,6 @@ struct ExportView: View {
 }
 
 nonisolated enum ExportReelCopy {
-    static let previewMissingMessage = "Saved reel missing. Run AI Edit to preview."
-    static let previewShareMissingMessage = "Saved reel missing. Run AI Edit before sharing."
+    static let previewMissingMessage = "Make the reel with AI Edit to preview."
+    static let previewShareMissingMessage = "Make the reel with AI Edit before sharing."
 }

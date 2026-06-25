@@ -1411,7 +1411,8 @@ struct HoopsClipsTests {
 
         var startPayload: [String: Any]?
         var requestedPaths: [String] = []
-        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+        let service = CloudAnalysisService(
+            session: makeCloudAnalysisSession { request in
             let url = try #require(request.url)
             requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
 
@@ -1504,7 +1505,9 @@ struct HoopsClipsTests {
             }
 
             throw CloudAnalysisError.invalidResponse
-        })
+            },
+            uploadSessionFactory: makeCloudAnalysisUploadSession
+        )
 
         UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
         defer {
@@ -1546,7 +1549,8 @@ struct HoopsClipsTests {
 
         var startPayload: [String: Any]?
         var requestedPaths: [String] = []
-        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+        let service = CloudAnalysisService(
+            session: makeCloudAnalysisSession { request in
             let url = try #require(request.url)
             requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
 
@@ -1635,7 +1639,9 @@ struct HoopsClipsTests {
             }
 
             throw CloudAnalysisError.invalidResponse
-        })
+            },
+            uploadSessionFactory: makeCloudAnalysisUploadSession
+        )
 
         UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
         defer {
@@ -5457,6 +5463,16 @@ private func makeCloudAnalysisSession(
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [CloudAnalysisMockURLProtocol.self]
     return URLSession(configuration: configuration)
+}
+
+private func makeCloudAnalysisUploadSession(
+    backgroundIdentifier: String?,
+    delegate: URLSessionDelegate?
+) -> URLSession {
+    _ = backgroundIdentifier
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [CloudAnalysisMockURLProtocol.self]
+    return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
 }
 
 private func cloudAnalysisJSONResponse(for request: URLRequest, body: String) throws -> (HTTPURLResponse, Data) {

@@ -198,7 +198,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     static func friendlyProjectTitle(
         sourceFilename: String,
         sourceDuration: Double,
-        createdAt: Date
+        createdAt _: Date
     ) -> String {
         let basename = (sourceFilename as NSString).deletingPathExtension
         let cleaned = cleanedSourceTitle(basename)
@@ -207,9 +207,6 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             return cleaned
         }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, h:mm a"
-        let dateTitle = formatter.string(from: createdAt)
         if sourceDuration.isFinite, sourceDuration > 0 {
             let minutes = max(1, Int((sourceDuration / 60).rounded()))
             let kind: String
@@ -220,9 +217,9 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             } else {
                 kind = "Short Clip"
             }
-            return "\(kind) - \(minutes) min, \(dateTitle)"
+            return "\(kind) - \(minutes) min"
         }
-        return "Basketball Video \(dateTitle)"
+        return "Basketball Video"
     }
 
     private static func shouldReplaceGeneratedTitle(_ title: String, sourceBasename: String) -> Bool {
@@ -474,6 +471,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .map { token in
                 let lower = token.lowercased()
                 if lower == "vs" { return "vs" }
+                if lower == "el" { return "El" }
                 let upper = token.uppercased()
                 if preservedUppercaseTitleTokens.contains(upper) {
                     return upper

@@ -31,6 +31,8 @@ This integration branch finishes the report-driven merge pass across the upload/
 - Confirmed iOS consumes `proxyStorageKey` through `analysisStorageKey` and gates team scan/analysis/edit handoff until `proxy_ready` or `ready`.
 - Confirmed no production manual source-URL text input remains; URL overrides are limited to debug/smoke configuration paths.
 - Added `ios/backend/scripts/object_storage_upload_smoke.py` to verify provider-backed upload adapter put/head/materialize/copy/artifact operations without logging secrets or raw object keys.
+- Fixed the full `HoopsClipsTests` long-tail stall by letting unit tests inject the same mocked URL loading path into upload sessions while production continues to use background upload sessions.
+- Reconciled the remaining iOS copy/title expectations for project-history names, saved-reel empty states, and Review filter overflow labels.
 
 ## Conflict Fixes
 
@@ -61,14 +63,14 @@ Passed:
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudEditRequestEncodesOptionalUserPrompt -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudAssetUploadResponsesDecode -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudAnalysisResultDecodesAssetQueueFields -quiet`
 - `xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClipsUITests -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:HoopsClipsUITests/HoopsClipsUITests/testWorkflowSectionsNavigateEndToEndWithSmokeFixture -quiet`
+- `xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:HoopsClipsTests -parallel-testing-enabled NO -resultBundlePath /tmp/HoopsClipsTests-full-20260625-final.xcresult -quiet` (211 passed, 0 failed, 0 skipped)
 
 Notes:
 
 - `npm ci` completed and reported dependency audit warnings from the existing package set: 1 low and 4 high vulnerabilities.
 - The first UI-smoke attempt used the app scheme and failed because `HoopsClipsUITests` is not a member of that scheme; rerunning through the `HoopsClipsUITests` scheme passed.
-- Full `HoopsClipsTests` was attempted on June 25, 2026 with `xcodebuild test ... -only-testing:HoopsClipsTests`; it produced many passing tests but was interrupted after more than 6 minutes with no new output. This is not counted as a passed full-suite gate.
+- Earlier full-suite attempts stalled in `testCloudTeamScanPreparesJobThenStartSendsSelectedTeam()` because the legacy upload fallback created a background `URLSession` outside the test `URLProtocol` mock. The final full-suite run above is the counted passing gate.
 
 ## Remaining Launch Gates
 
-- Re-run the full `HoopsClipsTests` suite if the PR requires full-suite Xcode coverage beyond the focused lanes listed above.
 - Run managed object-storage smoke against deployed Worker/provider credentials. The smoke harness is present, but this local shell does not have the required object-storage/R2 env configured.

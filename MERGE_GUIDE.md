@@ -90,6 +90,11 @@ xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips \
   -derivedDataPath ios/build/DerivedData \
   -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudEditInputSignatureTracksSourceAssetAndCandidateChanges
 
+xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -only-testing:HoopsClipsTests \
+  -parallel-testing-enabled NO
+
 xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClipsUITests \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -derivedDataPath ios/build/DerivedData \

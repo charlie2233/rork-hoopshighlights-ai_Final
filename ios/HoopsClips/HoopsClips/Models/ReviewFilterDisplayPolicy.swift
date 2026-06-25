@@ -33,7 +33,8 @@ nonisolated enum ReviewFilterDisplayPolicy {
         return available.filter { !visible.contains($0) }
     }
 
-    static func moreFiltersTitle(hiddenCount _: Int, showAll: Bool) -> String {
-        showAll ? "Less" : "More"
+    static func moreFiltersTitle(hiddenCount: Int, showAll: Bool) -> String {
+        guard !showAll else { return "Less" }
+        return hiddenCount > 0 ? "More \(hiddenCount)" : "More"
     }
 }
