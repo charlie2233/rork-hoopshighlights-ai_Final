@@ -22,8 +22,8 @@
 - [x] Preserve `/api/ai/analyze` and `/api/ai/result/{jobId}` legacy Worker aliases.
 - [x] Add detection taxonomy data and model registry docs.
 - [x] Add deterministic benchmark CLI for the detection pipeline.
-- [ ] Add real OpenCLIP/SigLIP runtime adapters behind `EmbeddingAdapter` without changing response shapes.
-- [ ] Add real R2Plus1D model loading behind `VideoClassifierAdapter` without changing response shapes.
+- [x] Add real OpenCLIP/SigLIP runtime adapters behind `EmbeddingAdapter` without changing response shapes.
+- [x] Add real R2Plus1D model loading behind `VideoClassifierAdapter` without changing response shapes.
 
 ## UI Agent
 
@@ -76,4 +76,5 @@
 - [x] Re-run focused iOS AI Edit state reset test after detection merge.
 - [x] Re-run workflow UI smoke after final workflow/upload/detection/edit integration.
 - [ ] Re-run full `HoopsClipsTests` suite if a full-suite Xcode long-tail pass is required before PR merge.
-- [ ] Add managed object-storage smoke after Worker/provider deployment is available.
+- [x] Add managed object-storage smoke script for provider-backed upload adapter proof.
+- [ ] Run managed object-storage smoke after Worker/provider deployment credentials are available.

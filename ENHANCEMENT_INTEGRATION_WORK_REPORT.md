@@ -25,10 +25,12 @@ This integration branch finishes the report-driven merge pass across the upload/
 - Integrated durable edit-job idempotency/replay support from the editing service branch.
 - Added managed post-upload Cloud Tasks dispatch for proxy/thumbnail/waveform generation through `/v1/internal/assets/{assetId}/process`; local mode uses the same dispatcher with an inline emulator.
 - Integrated Detection V2 foundations: staged proposal, embedding-rerank, classifier, merge, taxonomy contracts, `/v2/detection/analyze`, `candidateClips`, `rankScore`, stage scores, top/raw labels, canonical label fields, and provenance metadata.
+- Added opt-in real runtime adapters behind the existing detection interfaces: OpenCLIP/SigLIP image-text reranking through `EmbeddingAdapter` and torchvision R2Plus1D loading through `VideoClassifierAdapter`.
 - Preserved legacy `/v1/analysis/jobs`, `/v1/analysis/jobs/{jobId}/start`, `/v1/analysis/jobs/{jobId}`, `/api/ai/analyze`, and `/api/ai/result/{jobId}` compatibility paths.
 - Updated editing-service team-scan and analysis materialization to prefer `storageKey`/`sourceObjectKey` before falling back to signed `sourceUrl`.
 - Confirmed iOS consumes `proxyStorageKey` through `analysisStorageKey` and gates team scan/analysis/edit handoff until `proxy_ready` or `ready`.
 - Confirmed no production manual source-URL text input remains; URL overrides are limited to debug/smoke configuration paths.
+- Added `ios/backend/scripts/object_storage_upload_smoke.py` to verify provider-backed upload adapter put/head/materialize/copy/artifact operations without logging secrets or raw object keys.
 
 ## Conflict Fixes
 
@@ -52,6 +54,8 @@ Passed:
 - `PYTHONPATH=services/editing uv run ... pytest services/editing/tests/test_editing_service.py`
 - `uv run ... python -m unittest ios.backend.tests.test_upload_pipeline ios.backend.tests.test_detection_pipeline -v`
 - `uv run ... python scripts/benchmark_detection_pipeline.py --json`
+- `PYTHONPATH=ios/backend uv run ... python -m unittest ios.backend.tests.test_detection_pipeline -v`
+- `PYTHONPATH=ios/backend uv run ... ios/backend/scripts/object_storage_upload_smoke.py --json --allow-missing`
 - `xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/WorkflowStateTests -quiet`
 - `xcodebuild test-without-building ... -only-testing:HoopsClipsTests/HoopsClipsTests/testCloudEditRequestEncodesOptionalUserPrompt -quiet`
@@ -62,11 +66,9 @@ Notes:
 
 - `npm ci` completed and reported dependency audit warnings from the existing package set: 1 low and 4 high vulnerabilities.
 - The first UI-smoke attempt used the app scheme and failed because `HoopsClipsUITests` is not a member of that scheme; rerunning through the `HoopsClipsUITests` scheme passed.
-- Full `HoopsClipsTests` was not run as a full-suite lane; focused integration tests and build-for-testing passed.
+- Full `HoopsClipsTests` was attempted on June 25, 2026 with `xcodebuild test ... -only-testing:HoopsClipsTests`; it produced many passing tests but was interrupted after more than 6 minutes with no new output. This is not counted as a passed full-suite gate.
 
 ## Remaining Launch Gates
 
-- Add real OpenCLIP/SigLIP runtime adapters behind `EmbeddingAdapter` without changing response shapes.
-- Add real R2Plus1D model loading behind `VideoClassifierAdapter` without changing response shapes.
 - Re-run the full `HoopsClipsTests` suite if the PR requires full-suite Xcode coverage beyond the focused lanes listed above.
-- Add managed object-storage smoke after Worker/provider deployment is available.
+- Run managed object-storage smoke against deployed Worker/provider credentials. The smoke harness is present, but this local shell does not have the required object-storage/R2 env configured.

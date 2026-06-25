@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
@@ -10,7 +12,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
 from app.detection_pipeline import run_staged_detection_pipeline  # noqa: E402
-from app.model_registry import ModelRegistry, disabled_embedding_adapter, openclip_embedding_adapter, siglip_embedding_adapter  # noqa: E402
+from app.model_registry import (  # noqa: E402
+    ModelRegistry,
+    OpenCLIPRuntimeEmbeddingAdapter,
+    SigLIPRuntimeEmbeddingAdapter,
+    TorchvisionR2Plus1DAdapter,
+    default_model_registry,
+    disabled_embedding_adapter,
+    openclip_embedding_adapter,
+    r2plus1d_classifier_adapter,
+    siglip_embedding_adapter,
+)
 from app.models import CandidateWindow, CloudClip  # noqa: E402
 from app.taxonomy import load_default_taxonomy  # noqa: E402
 
@@ -100,6 +112,63 @@ class DetectionPipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(result.clips[0].provenance.embeddingRerank.adapter, "siglip")
+
+    def test_openclip_runtime_adapter_can_score_windows_without_shape_changes(self) -> None:
+        class FakeOpenCLIPRuntimeAdapter(OpenCLIPRuntimeEmbeddingAdapter):
+            def _runtime_label_scores(self, windows, labels):
+                return [(0, 0.12, labels[0]), (1, 0.93, labels[-1])]
+
+        result = run_staged_detection_pipeline(
+            [_window(0.0, 0.72), _window(7.0, 0.74)],
+            registry=ModelRegistry(embedding=FakeOpenCLIPRuntimeAdapter()),
+            clip_limit=4,
+        )
+
+        self.assertEqual(result.summary.fallbackUsed, False)
+        self.assertEqual(result.summary.models["embedding"], "openclip-runtime-ViT-B-32-laion2b_s34b_b79k")
+        self.assertEqual(result.clips[0].provenance.embeddingRerank.adapter, "openclip")
+        self.assertEqual(result.clips[0].provenance.embeddingRerank.score, 0.93)
+        self.assertEqual(result.clips[0].provenance.embeddingRerank.status, "applied")
+
+    def test_siglip_runtime_adapter_fallback_is_explicit_when_source_path_missing(self) -> None:
+        result = run_staged_detection_pipeline(
+            [_window(0.0, 0.72)],
+            registry=ModelRegistry(embedding=SigLIPRuntimeEmbeddingAdapter()),
+            clip_limit=4,
+        )
+
+        self.assertTrue(result.summary.fallbackUsed)
+        self.assertIn("source_path_missing", result.summary.fallbackReasons)
+        self.assertEqual(result.clips[0].provenance.embeddingRerank.status, "fallback")
+
+    def test_r2plus1d_runtime_adapter_can_classify_window_without_shape_changes(self) -> None:
+        class FakeR2Plus1DAdapter(TorchvisionR2Plus1DAdapter):
+            def _runtime_classify(self, window):
+                return "Dunk", 0.91, (("Dunk", 0.91), ("Made Shot", 0.44))
+
+        result = run_staged_detection_pipeline(
+            [_window(0.0, 0.72)],
+            registry=ModelRegistry(classifier=FakeR2Plus1DAdapter()),
+            clip_limit=4,
+        )
+
+        clip = result.clips[0]
+        self.assertEqual(result.summary.models["classifier"], "r2plus1d-runtime-kinetics400")
+        self.assertEqual(clip.provenance.classifier.adapter, "r2plus1d")
+        self.assertEqual(clip.provenance.classifier.modelVersion, "r2plus1d-runtime-kinetics400")
+        self.assertEqual(clip.rawTopLabels[0].rawLabel, "Dunk")
+        self.assertEqual(clip.canonicalLabel, "dunk")
+
+    def test_runtime_factories_and_env_selection_are_supported(self) -> None:
+        self.assertIsInstance(openclip_embedding_adapter(runtime=True), OpenCLIPRuntimeEmbeddingAdapter)
+        self.assertIsInstance(siglip_embedding_adapter(runtime=True), SigLIPRuntimeEmbeddingAdapter)
+        self.assertIsInstance(r2plus1d_classifier_adapter(runtime=True), TorchvisionR2Plus1DAdapter)
+
+        with patch.dict(os.environ, {"HOOPS_DETECTION_EMBEDDING_ADAPTER": "siglip-runtime", "HOOPS_DETECTION_CLASSIFIER_ADAPTER": "r2plus1d-runtime"}):
+            registry = default_model_registry()
+
+        self.assertIsInstance(registry.embedding, SigLIPRuntimeEmbeddingAdapter)
+        self.assertIsInstance(registry.classifier, TorchvisionR2Plus1DAdapter)
 
 
 if __name__ == "__main__":

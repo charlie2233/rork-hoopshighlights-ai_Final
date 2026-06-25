@@ -661,6 +661,7 @@ def _run_native_candidate_detection(
     if not windows:
         windows = [_fallback_window(duration_seconds, audio_profile, settings)]
 
+    windows = [replace(window, source_path=source_path) for window in windows]
     resolved_limit = clip_limit or settings.max_returned_clips
     result = run_staged_detection_pipeline(windows, clip_limit=resolved_limit)
     return result.clips, len(windows), result.summary

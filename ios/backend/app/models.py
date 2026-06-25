@@ -544,6 +544,7 @@ class CandidateWindow:
     audio_pop_time: Optional[float] = None
     audio_cue_type: Optional[str] = None
     audio_cue_confidence: float = 0.0
+    source_path: Optional[Path] = None
 
 
 @dataclass

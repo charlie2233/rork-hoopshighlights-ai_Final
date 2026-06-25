@@ -16,7 +16,7 @@ This branch integrates Agent A's asset-first upload pipeline, the detection v2 a
 - `ios/backend/app/detection_pipeline.py`: staged proposal, rerank, classify, merge, and taxonomy detection pipeline.
 - `ios/backend/app/taxonomy.py`, `ios/backend/app/model_registry.py`, `ios/backend/app/data/basketball_taxonomy.json`: canonical label mapping and model metadata.
 - `ios/backend/tests/test_upload_pipeline.py`, `ios/backend/tests/test_detection_pipeline.py`: backend upload and detection coverage.
-- `scripts/benchmark_detection_pipeline.py`, `ios/backend/scripts/upload_benchmark.py`: timing, retry/resume, and detection benchmark CLIs.
+- `scripts/benchmark_detection_pipeline.py`, `ios/backend/scripts/upload_benchmark.py`, `ios/backend/scripts/object_storage_upload_smoke.py`: timing, retry/resume, managed object-storage, and detection benchmark CLIs.
 - `ios/HoopsClips/HoopsClips/Models/CloudAnalysisTypes.swift`: asset upload/status/job contract models.
 - `ios/HoopsClips/HoopsClips/Services/CloudAnalysisService.swift`: asset-first upload, proxy-ready wait, asset team scan, asset analysis start, and asset resume bridge.
 - `ios/HoopsClips/HoopsClips/Models/WorkflowState.swift`: upload queue and workflow navigation projections.
@@ -56,8 +56,8 @@ This branch integrates Agent A's asset-first upload pipeline, the detection v2 a
 
 - `CloudAnalysisTypes.swift` is shared by upload models and workflow projections; keep field additions additive.
 - Local post-upload processing attempts FFmpeg/ffprobe proxy and thumbnail generation, then falls back safely for invalid local test bytes.
-- Managed mode still needs provider-side object-storage smoke proof.
-- Detection v2 currently defines adapter contracts and deterministic fallbacks; real OpenCLIP/SigLIP and R2Plus1D runtime loading should stay behind the adapter interfaces without changing response shapes.
+- Managed mode still needs provider-side object-storage smoke proof with operator-held credentials.
+- Detection v2 has optional real OpenCLIP/SigLIP and R2Plus1D runtime adapters behind the existing interfaces. They are not default-enabled and require runtime dependencies plus model config.
 - UI tests need the existing smoke flag for the full fixture path.
 - Do not reintroduce a second AI editor in Exports.
 
@@ -78,6 +78,9 @@ uv run --with-requirements ios/backend/requirements.txt --python 3.11 env PYTHON
   services.editing.tests.test_editing_service -v
 
 uv run --with-requirements ios/backend/requirements.txt --python 3.11 python scripts/benchmark_detection_pipeline.py --json
+
+PYTHONPATH=ios/backend uv run --with-requirements ios/backend/requirements.txt --python 3.11 \
+  ios/backend/scripts/object_storage_upload_smoke.py --json
 
 npm --prefix services/control-plane run typecheck
 npm --prefix services/control-plane test

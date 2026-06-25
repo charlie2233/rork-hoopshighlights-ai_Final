@@ -89,6 +89,8 @@ Old result readers can continue reading `results.clipCount`, `results.clips`, an
 
 Missing inference/editing providers must fail queued jobs instead of returning synthetic stub AI. Embedding fallback is allowed only inside `provenance.embeddingRerank.status = "fallback"` and must set `pipeline.fallbackUsed = true` with a specific reason such as `embedding_adapter_unavailable`.
 
+Real model runtimes are allowed only behind the adapter interfaces. OpenCLIP/SigLIP runtime rerankers and torchvision R2Plus1D classifier loading are opt-in through backend environment configuration. They must preserve the same `candidateClips`, `pipeline`, `provenance`, `scores`, `topLabels`, and `rawTopLabels` response shapes and fall back explicitly when runtime inputs or optional dependencies are unavailable.
+
 ## Provider Dispatch Inputs
 
 Inference, team-scan, detection, and edit-planning payloads prefer `assetId` plus `storageKey`/`sourceObjectKey` when available. `sourceUrl` remains accepted only as a migration fallback and signed-read compatibility path for providers that do not yet share object storage credentials. The local backend and editing service materialize object keys first, then fall back to signed URLs.
