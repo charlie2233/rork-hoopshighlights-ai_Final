@@ -3686,6 +3686,17 @@ struct HoopsClipsTests {
         #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_template_pack_disabled", fallback: "fallback").contains("Template packs"))
     }
 
+    @Test func testCloudEditEmptyClipListUsesFriendlyBasketballGuidance() {
+        let friendly = CloudEditError.friendlyBackendMessage(
+            code: "empty_clip_list",
+            fallback: "EditPlan must include at least one clip."
+        )
+
+        #expect(friendly.contains("clear basketball play"))
+        #expect(friendly.contains("Review"))
+        #expect(!friendly.contains("EditPlan"))
+    }
+
     @Test func testCloudEditUnknownBackendMessagesStaySafeForDisplay() {
         let unsafeFallback = "Almost there, ETA 2 minutes at https://cdn.hoopsclips.test/renders/edit.mp4?X-Amz-Signature=secret"
         let friendly = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: unsafeFallback)
