@@ -958,11 +958,19 @@ struct HoopsClipsTests {
             evidenceFrameRefs: ["clip_1_release", "clip_1_result"],
             evidenceRoleGroups: ["action", "outcome"]
         )
+        let editIntent = CloudEditStructuredIntent.build(
+            preset: .personalHighlight,
+            templateID: CloudEditPreset.personalHighlight.templateID,
+            userPrompt: "Make it more hype and focus on defense.",
+            teamSelection: teamSelection
+        )
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
             analysisJobId: "analysis_123",
             installId: "install-123",
+            assetId: "asset_123",
             sourceObjectKey: "uploads/source.mp4",
+            sourceClipIds: ["clip_1"],
             preset: CloudEditPreset.personalHighlight.rawValue,
             templateId: CloudEditPreset.personalHighlight.templateID,
             targetDurationSeconds: 30,
@@ -970,6 +978,8 @@ struct HoopsClipsTests {
             planTier: .free,
             revenueCatAppUserID: nil,
             userPrompt: "Make it more hype and focus on defense.",
+            editIntent: editIntent,
+            idempotencyKey: "ios-edit-test-123",
             teamSelection: teamSelection,
             clips: [
                 CloudEditCandidateClip(
@@ -1001,7 +1011,19 @@ struct HoopsClipsTests {
         let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         #expect(payload["userPrompt"] as? String == "Make it more hype and focus on defense.")
+        #expect(payload["assetId"] as? String == "asset_123")
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
+        #expect(payload["sourceClipIds"] as? [String] == ["clip_1"])
+        #expect(payload["idempotencyKey"] as? String == "ios-edit-test-123")
+        let encodedEditIntent = try #require(payload["editIntent"] as? [String: Any])
+        #expect(encodedEditIntent["schemaVersion"] as? String == "edit-intent-v1")
+        #expect(encodedEditIntent["source"] as? String == "client")
+        #expect(encodedEditIntent["style"] as? String == "defense_focus")
+        let encodedConstraints = try #require(encodedEditIntent["hardConstraints"] as? [String: Any])
+        #expect(encodedConstraints["requireVisibleOutcome"] as? Bool == true)
+        #expect(encodedConstraints["requireFullPlayContext"] as? Bool == true)
+        #expect(encodedConstraints["rejectDuplicates"] as? Bool == true)
+        #expect(encodedConstraints["selectedTeamOnly"] as? Bool == false)
         let clips = try #require(payload["clips"] as? [[String: Any]])
 	        let firstClip = try #require(clips.first)
 	        let encodedSignals = try #require(firstClip["nativeShotSignals"] as? [String: Any])
@@ -1300,7 +1322,9 @@ struct HoopsClipsTests {
             keptClips: 8,
             needsReviewClips: 2,
             lastAnalysisBlockReason: "none",
+            fastUploadMode: true,
             latestUploadProgress: "bytes=196/525_MB speed=2.4_MB/s",
+            latestUploadSourceOptimization: "profile=compact_540p reason=fast_upload_mode",
             latestUnexpectedExit: "none",
             latestCrashReportDelivery: "sent"
         )
@@ -1311,6 +1335,8 @@ struct HoopsClipsTests {
         #expect(summary.contains("phoneSmokeIssueNote=redacted"))
         #expect(summary.contains("analysisProgressPercent=100"))
         #expect(summary.contains("analysisStatus=redacted"))
+        #expect(summary.contains("fastUploadMode=true"))
+        #expect(summary.contains("latestUploadSourceOptimization=profile=compact_540p_reason=fast_upload_mode"))
         #expect(summary.contains("privacy=no secrets"))
         #expect(!summary.localizedCaseInsensitiveContains("https://"))
         #expect(!summary.localizedCaseInsensitiveContains("uploads/"))
@@ -1385,9 +1411,14 @@ struct HoopsClipsTests {
 
         var startPayload: [String: Any]?
         var requestedPaths: [String] = []
-        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+        let service = CloudAnalysisService(
+            session: makeCloudAnalysisSession { request in
             let url = try #require(request.url)
             requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/uploads/init" {
+                return try cloudAnalysisEmptyResponse(for: request, statusCode: 404)
+            }
 
             if request.httpMethod == "POST", url.path == "/v1/analysis/jobs" {
                 return try cloudAnalysisJSONResponse(for: request, body: """
@@ -1474,7 +1505,9 @@ struct HoopsClipsTests {
             }
 
             throw CloudAnalysisError.invalidResponse
-        })
+            },
+            uploadSessionFactory: makeCloudAnalysisUploadSession
+        )
 
         UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
         defer {
@@ -1504,6 +1537,7 @@ struct HoopsClipsTests {
         #expect(encodedSelection["teamId"] as? String == "team_dark")
         #expect(encodedSelection["includeUncertain"] as? Bool == true)
         #expect(result.teamSelection?.teamId == "team_dark")
+        #expect(requestedPaths.contains("POST /v1/uploads/init"))
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/team-scan"))
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
     }
@@ -1515,9 +1549,14 @@ struct HoopsClipsTests {
 
         var startPayload: [String: Any]?
         var requestedPaths: [String] = []
-        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+        let service = CloudAnalysisService(
+            session: makeCloudAnalysisSession { request in
             let url = try #require(request.url)
             requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/uploads/init" {
+                return try cloudAnalysisEmptyResponse(for: request, statusCode: 404)
+            }
 
             if request.httpMethod == "POST", url.path == "/v1/analysis/jobs" {
                 return try cloudAnalysisJSONResponse(for: request, body: """
@@ -1600,7 +1639,9 @@ struct HoopsClipsTests {
             }
 
             throw CloudAnalysisError.invalidResponse
-        })
+            },
+            uploadSessionFactory: makeCloudAnalysisUploadSession
+        )
 
         UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
         defer {
@@ -1625,6 +1666,7 @@ struct HoopsClipsTests {
         #expect(encodedSelection["mode"] as? String == "all")
         #expect(encodedSelection["teamId"] as? String == nil)
         #expect(result.teamSelection?.mode == .all)
+        #expect(requestedPaths.contains("POST /v1/uploads/init"))
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan_all/team-scan"))
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan_all/start"))
     }
@@ -1939,8 +1981,7 @@ struct HoopsClipsTests {
             createdAt: Date(timeIntervalSince1970: 1_777_100_000)
         )
 
-        #expect(title.hasPrefix("HoopClips "))
-        #expect(title.hasSuffix(" - 4 min"))
+        #expect(title == "Short Clip - 4 min")
         #expect(!title.localizedCaseInsensitiveContains("imported"))
         #expect(!title.localizedCaseInsensitiveContains("1234"))
     }
@@ -1958,8 +1999,7 @@ struct HoopsClipsTests {
             lastOpenedAt: now
         )
 
-        #expect(project.displayTitle.hasPrefix("HoopClips "))
-        #expect(project.displayTitle.hasSuffix(" - 4 min"))
+        #expect(project.displayTitle == "Short Clip - 4 min")
         #expect(!project.displayTitle.localizedCaseInsensitiveContains("imported"))
         #expect(!project.displayTitle.localizedCaseInsensitiveContains("1234"))
     }
@@ -1993,11 +2033,11 @@ struct HoopsClipsTests {
         #expect(actionCopy.allSatisfy { !$0.contains("Review") })
         #expect(actionCopy.allSatisfy { $0.count <= 40 })
         #expect(HistoryProjectActionCopy.emptyPreviewHint == "Choose a saved video below.")
-        #expect(HistoryProjectActionCopy.shareAvailableSubtitle == "Share saved reel")
-        #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Continue editing this project")
-        #expect(HistoryProjectActionCopy.sourceAvailableSubtitle == "Watch original video")
-        #expect(HistoryProjectActionCopy.exportAvailableSubtitle == "Watch saved reel")
-        #expect(HistoryProjectActionCopy.shareMissingMessage == "Saved reel missing. Run AI Edit again.")
+        #expect(HistoryProjectActionCopy.shareAvailableSubtitle == "")
+        #expect(HistoryProjectActionCopy.openAvailableSubtitle == "")
+        #expect(HistoryProjectActionCopy.sourceAvailableSubtitle == "")
+        #expect(HistoryProjectActionCopy.exportAvailableSubtitle == "")
+        #expect(HistoryProjectActionCopy.shareMissingMessage == "Make the reel again before sharing.")
     }
 
     @Test func testExportMissingReelCopyUsesPlainSavedReelLanguage() {
@@ -2006,12 +2046,12 @@ struct HoopsClipsTests {
             ExportReelCopy.previewShareMissingMessage,
         ]
 
-        #expect(exportCopy.allSatisfy { $0.contains("Saved reel") })
+        #expect(exportCopy.allSatisfy { $0.contains("AI Edit") })
         #expect(exportCopy.allSatisfy { !$0.contains("export file") })
         #expect(exportCopy.allSatisfy { !$0.contains("exported file") })
         #expect(exportCopy.allSatisfy { $0.count <= 52 })
-        #expect(ExportReelCopy.previewMissingMessage == "Saved reel missing. Run AI Edit to preview.")
-        #expect(ExportReelCopy.previewShareMissingMessage == "Saved reel missing. Run AI Edit to preview/share.")
+        #expect(ExportReelCopy.previewMissingMessage == "Make the reel with AI Edit to preview.")
+        #expect(ExportReelCopy.previewShareMissingMessage == "Make the reel with AI Edit before sharing.")
     }
 
     @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
@@ -2040,16 +2080,16 @@ struct HoopsClipsTests {
             statusMessage: "Preparing cloud analysis"
         )
 
-        #expect(uploading.title == "Analyzing, please wait")
+        #expect(uploading.title == "Uploading video")
         #expect(uploading.icon == "brain.head.profile.fill")
-        #expect(uploading.message.contains("uploading your video"))
+        #expect(uploading.message.contains("Please wait."))
         #expect(uploading.message.contains("38% done"))
-        #expect(uploading.message.contains("Uploading video."))
+        #expect(uploading.message.contains("Now: Uploading video."))
         #expect(!uploading.message.localizedCaseInsensitiveContains("rerun"))
         #expect(!uploading.message.localizedCaseInsensitiveContains("re-run"))
 
-        #expect(analyzing.title == "Analyzing, please wait")
-        #expect(analyzing.message.contains("scanning your video"))
+        #expect(analyzing.title == "Finding highlights")
+        #expect(analyzing.message.contains("Please wait."))
         #expect(analyzing.message.contains("42% done"))
         #expect(analyzing.message.contains("Review opens automatically when clips are ready."))
         #expect(!analyzing.message.localizedCaseInsensitiveContains("rerun"))
@@ -2064,9 +2104,9 @@ struct HoopsClipsTests {
             statusMessage: "Preparing cloud analysis"
         )
 
-        #expect(idle.title == "Review opens after analysis")
+        #expect(idle.title == "No clips yet")
         #expect(idle.icon == "film.stack.fill")
-        #expect(idle.message.contains("Go to Player"))
+        #expect(idle.message.contains("Open Uploads"))
         #expect(!idle.message.localizedCaseInsensitiveContains("please wait"))
         #expect(!idle.message.localizedCaseInsensitiveContains("88%"))
     }
@@ -2176,6 +2216,44 @@ struct HoopsClipsTests {
         #expect(candidateStarts.contains(Double(strongIndex * 10)))
         #expect(reviewCandidateCount == 90)
         #expect(candidateStarts.contains(2_000.0))
+    }
+
+    @Test @MainActor func testCloudEditInputSignatureTracksSourceAssetAndCandidateChanges() {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source-a.mp4"
+        viewModel.cloudUploadAssetID = "asset_a"
+        let clip = Clip(
+            startTime: 10,
+            endTime: 16,
+            eventCenter: 13,
+            action: .madeShot,
+            confidence: 0.9,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.5,
+            visualScore: 0.8,
+            motionScore: 0.75,
+            combinedScore: 0.86,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [clip]
+
+        let initial = viewModel.cloudEditInputSignature
+        viewModel.cloudUploadAssetID = "asset_b"
+        let changedAsset = viewModel.cloudEditInputSignature
+
+        var adjustedClip = clip
+        adjustedClip.endTime = 17
+        viewModel.cloudUploadAssetID = "asset_a"
+        viewModel.analysisService.clips = [adjustedClip]
+        let changedCandidate = viewModel.cloudEditInputSignature
+
+        viewModel.cloudEditSourceObjectKey = "uploads/source-b.mp4"
+        let changedSource = viewModel.cloudEditInputSignature
+
+        #expect(changedAsset != initial)
+        #expect(changedCandidate != initial)
+        #expect(changedSource != changedCandidate)
     }
 
     @Test @MainActor func testCloudEditRequestReservesHalfCandidatePoolForReviewUnderPressure() throws {
@@ -4715,6 +4793,73 @@ struct HoopsClipsTests {
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
+    @Test func testCloudAssetUploadResponsesDecode() throws {
+        let initPayload = """
+        {
+          "assetId": "asset_123",
+          "storageKey": "assets/asset_123/source/game.mp4",
+          "status": "initialized",
+          "uploadMode": "multipart",
+          "uploadUrl": null,
+          "uploadMethod": "PUT",
+          "uploadHeaders": {},
+          "multipart": {
+            "uploadId": "upload_123",
+            "partSizeBytes": 5242880,
+            "partCount": 2,
+            "parts": [
+              {"partNumber": 1, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/1", "uploadMethod": "PUT", "uploadHeaders": {}},
+              {"partNumber": 2, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/2", "uploadMethod": "PUT", "uploadHeaders": {}}
+            ]
+          },
+          "expiresAt": "2026-05-26T20:00:00Z",
+          "pollAfterSeconds": 1,
+          "uploadState": "waiting_for_client_upload"
+        }
+        """
+        let completePayload = """
+        {
+          "assetId": "asset_123",
+          "storageKey": "assets/asset_123/source/game.mp4",
+          "status": "proxy_ready",
+          "artifacts": {
+            "proxyStorageKey": "assets/asset_123/proxy/proxy.mp4",
+            "thumbnailStorageKeys": ["assets/asset_123/thumbnails/0001.jpg"],
+            "waveformStorageKey": "assets/asset_123/metadata/waveform.json"
+          },
+          "pollAfterSeconds": 1
+        }
+        """
+        let analysisPayload = """
+        {
+          "jobId": "job_asset_123",
+          "assetId": "asset_123",
+          "storageKey": "assets/asset_123/proxy/proxy.mp4",
+          "status": "queued",
+          "pollAfterSeconds": 1,
+          "quotaRemainingToday": 2,
+          "analysisMode": "cloud"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let upload = try decoder.decode(CloudAssetUploadInitResponse.self, from: Data(initPayload.utf8))
+        #expect(upload.assetId == "asset_123")
+        #expect(upload.multipart?.partCount == 2)
+        #expect(upload.multipart?.parts.first?.partNumber == 1)
+
+        let complete = try decoder.decode(CloudAssetUploadCompleteResponse.self, from: Data(completePayload.utf8))
+        #expect(complete.status == "proxy_ready")
+        #expect(complete.artifacts.proxyStorageKey == "assets/asset_123/proxy/proxy.mp4")
+
+        let analysis = try decoder.decode(CloudAssetAnalysisJobResponse.self, from: Data(analysisPayload.utf8))
+        #expect(analysis.jobId == "job_asset_123")
+        #expect(analysis.assetId == upload.assetId)
+        #expect(analysis.storageKey == complete.artifacts.proxyStorageKey)
+    }
+
     @Test @MainActor func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {
         let payload = """
         {
@@ -5105,6 +5250,43 @@ struct HoopsClipsTests {
         #expect(kept.reduce(0.0) { $0 + $1.duration } <= settings.targetHighlightDuration + 0.001)
     }
 
+    @Test func testCloudAnalysisResultDecodesAssetQueueFields() throws {
+        let data = Data(
+            """
+            {
+              "analysisJobId": "analysis_123",
+              "sourceObjectKey": "uploads/analysis/source.mp4",
+              "assetId": "asset_123",
+              "storageKey": "assets/asset_123/source/game.mp4",
+              "proxyStorageKey": "assets/asset_123/proxy/proxy.mp4",
+              "status": "proxy_ready",
+              "uploadedBytes": 4200,
+              "fileSizeBytes": 8400,
+              "failureReason": null,
+              "clipCount": 0,
+              "clips": [],
+              "diagnostics": {
+                "processingMs": 0,
+                "backendModelVersion": "asset-test",
+                "usedVideoIntelligence": false,
+                "usedGeminiRelabeling": false,
+                "candidateSegments": 0,
+                "finalSegments": 0
+              }
+            }
+            """.utf8
+        )
+
+        let result = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
+
+        #expect(result.assetId == "asset_123")
+        #expect(result.assetStorageKey == "assets/asset_123/source/game.mp4")
+        #expect(result.proxyStorageKey == "assets/asset_123/proxy/proxy.mp4")
+        #expect(result.assetStatus == "proxy_ready")
+        #expect(result.assetUploadedBytes == 4200)
+        #expect(result.assetFileSizeBytes == 8400)
+    }
+
     @Test func testDefaultRedundantSuppressionPrefersHigherScoreWhenClipsOverlap() {
         let weaker = Clip(
             startTime: 10.8,
@@ -5281,6 +5463,16 @@ private func makeCloudAnalysisSession(
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [CloudAnalysisMockURLProtocol.self]
     return URLSession(configuration: configuration)
+}
+
+private func makeCloudAnalysisUploadSession(
+    backgroundIdentifier: String?,
+    delegate: URLSessionDelegate?
+) -> URLSession {
+    _ = backgroundIdentifier
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [CloudAnalysisMockURLProtocol.self]
+    return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
 }
 
 private func cloudAnalysisJSONResponse(for request: URLRequest, body: String) throws -> (HTTPURLResponse, Data) {

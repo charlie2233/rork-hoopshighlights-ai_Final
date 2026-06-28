@@ -319,6 +319,51 @@ def all_teams_coverage_clips(offset: float = 0.0) -> list[dict]:
 
 
 class TeamHighlightAccuracyEvalTests(unittest.TestCase):
+    def test_clip_accuracy_fixture_reports_topk_boundary_duplicate_and_five_tags(self) -> None:
+        fixture_path = Path(__file__).resolve().parent / "fixtures" / "clip_accuracy_calibration_fixture.json"
+        payload = json.loads(fixture_path.read_text())
+
+        report = evaluate_accuracy(
+            payload,
+            AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamEvidenceQuality=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.0,
+                shotOutcomeEvidenceQuality=0.0,
+                minCases=1,
+                minScoredClips=1,
+                minSelectedTeamHighlights=1,
+                minShotOutcomeEvidenceClips=0,
+                minMadeShotOutcomeEvidenceClips=0,
+                minMissedShotOutcomeEvidenceClips=0,
+                minOpponentHighlights=0,
+                minNegativeClips=0,
+                minBadWindowNegatives=0,
+                minUncertainReviewClips=0,
+                minSelectedTeamDefensiveEvents=0,
+                minSelectedTeamBlocks=0,
+                minSelectedTeamSteals=0,
+                minSelectedTeamForcedTurnovers=0,
+                minSelectedTeamDefensiveStops=0,
+                minAllTeamsCases=0,
+            ),
+        )
+
+        self.assertEqual(report.metrics.topK, 3)
+        self.assertEqual(report.metrics.recallAtK, 0.6667)
+        self.assertEqual(report.metrics.precisionAtK, 0.6667)
+        self.assertEqual(report.metrics.boundaryErrorSeconds, 0.5)
+        self.assertEqual(report.metrics.duplicateRate, 0.5)
+        self.assertEqual(report.metrics.duplicateFeedbackCount, 1)
+        self.assertEqual(report.metrics.wrongTeamFeedbackCount, 1)
+        self.assertEqual(report.metrics.badWindowFeedbackCount, 1)
+        self.assertEqual(report.metrics.wrongLabelFeedbackCount, 1)
+        self.assertEqual(report.metrics.lowQualityFeedbackCount, 1)
+
     def test_selected_team_eval_counts_uncertain_review_and_defensive_events(self) -> None:
         report = evaluate_accuracy(
             {

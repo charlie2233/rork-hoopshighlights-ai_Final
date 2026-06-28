@@ -416,6 +416,8 @@ function buildCallbackPatch(
 ): Partial<JobRecord> {
   const patch: Partial<JobRecord> = {
     status,
+    assetId: payload.assetId ?? job.assetId ?? job.jobId,
+    storageKey: payload.storageKey ?? job.storageKey ?? job.sourceObjectKey,
     schemaVersion: payload.schemaVersion ?? job.schemaVersion,
     stage:
       payload.stage ??
@@ -591,6 +593,7 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     rankScore: coerceNumber(value.rankScore) ?? null,
     reviewState: coerceString(value.reviewState) ?? null,
     reviewerNotes: coerceString(value.reviewerNotes) ?? null,
+    reviewFeedbackTags: normalizeReviewFeedbackTags(value.reviewFeedbackTags),
     topLabels: normalizeLabelScores(value.topLabels),
     comparisonTopLabels: normalizeLabelScores(value.comparisonTopLabels),
     rawTopLabels: normalizeRawLabelScores(value.rawTopLabels),
@@ -662,6 +665,7 @@ type InferenceManifestClipLike = {
   rankScore?: unknown;
   reviewState?: unknown;
   reviewerNotes?: unknown;
+  reviewFeedbackTags?: unknown;
   topLabels?: unknown;
   comparisonTopLabels?: unknown;
   rawTopLabels?: unknown;
@@ -690,6 +694,17 @@ function normalizeMakeMiss(value: unknown): "make" | "miss" | "unknown" | null {
     return "miss";
   }
   return null;
+}
+
+function normalizeReviewFeedbackTags(value: unknown): CloudClip["reviewFeedbackTags"] {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const allowed = new Set(["duplicate", "wrong_team", "bad_window", "wrong_label", "low_quality"]);
+  const tags = value
+    .map((item) => coerceString(item))
+    .filter((item): item is string => item !== null && allowed.has(item));
+  return Array.from(new Set(tags)) as CloudClip["reviewFeedbackTags"];
 }
 
 function normalizeOutcome(
@@ -988,6 +1003,8 @@ function toCloudAnalysisJobResponse(
     processingStartedAt: job.processingStartedAt ?? null,
     attemptCount: job.attemptCount ?? 0,
     jobId: job.jobId,
+    assetId: job.assetId ?? job.jobId,
+    storageKey: null,
     status: job.status,
     progress: job.progress,
     stage: job.stage,

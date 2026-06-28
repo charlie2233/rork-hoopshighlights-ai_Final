@@ -69,7 +69,7 @@ struct AIEditView: View {
     @State private var showAdvancedAIEditDetails = false
     @State private var showAllDurationOptions = false
     @State private var showMoreQuickPrompts = false
-    @State private var activeInstallID: String?
+    @State private var activeCloudEditInputSignature: String?
     @State private var foregroundRefreshTask: Task<Void, Never>?
 
     private let cloudEditService: any CloudEditServicing
@@ -126,8 +126,8 @@ struct AIEditView: View {
         } message: {
             Text("Your HoopClips video is in your photo library.")
         }
-        .task(id: viewModel.installID) {
-            resetCloudEditSessionIfIdentityChanged(to: viewModel.installID)
+        .task(id: viewModel.cloudEditInputSignature) {
+            resetCloudEditSessionIfInputChanged(to: viewModel.cloudEditInputSignature)
             await refreshCloudEditVersion()
             await refreshRenderHistory()
         }
@@ -135,12 +135,21 @@ struct AIEditView: View {
             guard phase == .active else { return }
             refreshCloudEditAfterForegroundIfNeeded()
         }
+        .onChange(of: renderStatus?.renderJobId) { _, _ in
+            viewModel.latestCloudEditRenderStatus = renderStatus
+        }
+        .onChange(of: renderStatus?.status) { _, _ in
+            viewModel.latestCloudEditRenderStatus = renderStatus
+        }
+        .onAppear {
+            viewModel.latestCloudEditRenderStatus = renderStatus
+        }
     }
 
-    private func resetCloudEditSessionIfIdentityChanged(to installID: String) {
-        let previousInstallID = activeInstallID
-        activeInstallID = installID
-        guard let previousInstallID, previousInstallID != installID else { return }
+    private func resetCloudEditSessionIfInputChanged(to signature: String) {
+        let previousSignature = activeCloudEditInputSignature
+        activeCloudEditInputSignature = signature
+        guard let previousSignature, previousSignature != signature else { return }
 
         foregroundRefreshTask?.cancel()
         foregroundRefreshTask = nil
@@ -171,6 +180,7 @@ struct AIEditView: View {
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
+        viewModel.latestCloudEditRenderStatus = nil
     }
 
     private func refreshCloudEditAfterForegroundIfNeeded() {
@@ -208,19 +218,17 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
-            promptCard
-            actionCard
             compactExportSetupCard
-            exportProgressCard
             if showSetupControls {
                 smartSetupCard
                 stylePicker
                 formatPicker
                 durationPicker
+                promptCard
             }
-            planTierCard
-            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
-                proValueCard
+            actionCard
+            if shouldShowExportProgressCard {
+                exportProgressCard
             }
             if shouldShowStatusNoticeCard {
                 statusCard
@@ -228,12 +236,20 @@ struct AIEditView: View {
             if let previewPlayer {
                 previewCard(player: previewPlayer)
             }
-            exportBottomDock
+            if shouldShowExportBottomDock {
+                exportBottomDock
+            }
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
-            aiEditDetailsToggle
-            if showAdvancedAIEditDetails {
+            if shouldShowAIEditDetailsToggle {
+                aiEditDetailsToggle
+            }
+            if shouldShowAIEditDetailsToggle && showAdvancedAIEditDetails {
+                planTierCard
+                if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
+                    proValueCard
+                }
                 if shouldShowAIWorkTimeline {
                     aiWorkTimelineCard
                 }
@@ -300,13 +316,6 @@ struct AIEditView: View {
                             .font(.caption2.bold())
                             .tracking(1.4)
                             .foregroundStyle(AppTheme.warningYellow)
-
-                        Text(appBuildPillText)
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AppTheme.cardBg.opacity(0.66), in: .capsule)
                     }
 
                     Text("Make the reel")
@@ -342,24 +351,6 @@ struct AIEditView: View {
                 exportHeroMetric(icon: "film.stack.fill", value: clipPoolChipText)
                 exportHeroMetric(icon: selectedAspectRatio.icon, value: selectedAspectRatio.rawValue)
                 exportHeroMetric(icon: "timer", value: formattedDuration(selectedDuration))
-            }
-
-            HStack(spacing: 8) {
-                Label(activePolicy.displayName, systemImage: activePolicy.planTier.isFree ? "person.crop.circle" : "crown.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(AppTheme.cardBg.opacity(0.68), in: .capsule)
-
-                Label(teamTargetChipText, systemImage: viewModel.settings.highlightTeamSelection.mode == .team ? "person.2.fill" : "person.3.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(AppTheme.cardBg.opacity(0.5), in: .capsule)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1066,23 +1057,6 @@ struct AIEditView: View {
                 }
             }
 
-            if let smartSetupSummary {
-                Label(smartSetupSummary, systemImage: "slider.horizontal.3")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AppTheme.accentPurple.opacity(0.16), in: .rect(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
-                    }
-                    .accessibilityIdentifier("export.aiEdit.smartSetupSummary")
-            }
-
             if let proIntentWarningText {
                 Label(proIntentWarningText, systemImage: "lock.fill")
                     .font(.caption.weight(.semibold))
@@ -1682,7 +1656,7 @@ struct AIEditView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
-                Text(receiptPlanTier.isFree ? "Free" : "Pro/Internal")
+                Text(receiptPlanTier.isFree ? "Free" : "Pro")
                     .font(.caption2.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)
@@ -2209,6 +2183,20 @@ struct AIEditView: View {
         hasStartedAIEditJob || hasServerWorkTimeline
     }
 
+    private var shouldShowExportProgressCard: Bool {
+        hasStartedAIEditJob || phase != .planning
+    }
+
+    private var shouldShowExportBottomDock: Bool {
+        downloadResponse != nil
+    }
+
+    private var shouldShowAIEditDetailsToggle: Bool {
+        hasStartedAIEditJob
+            || shouldShowCloudLocker
+            || activeWorkReceipt != nil
+    }
+
     private var shouldShowCloudLocker: Bool {
         proUXFlags.cloudLockerEnabled && (hasStartedAIEditJob || !renderHistory.isEmpty)
     }
@@ -2585,7 +2573,7 @@ struct AIEditView: View {
 
     private var launchReadinessFlagMessage: String? {
         guard let flags = serviceVersion?.featureFlags, !flags.hasRequiredLaunchReadinessFlags else { return nil }
-        return "HoopClips cloud is missing required launch flags; deploy the current service before TestFlight smoke."
+        return "Your video is safe. Reel creation is getting ready. Try again in a few minutes."
     }
 
     private var cloudEditVersionBlockMessage: String? {
@@ -2602,12 +2590,6 @@ struct AIEditView: View {
             || errorMessage != nil
             || serviceStatusBlocksRendering
             || (!serviceStatusIsChecking && serviceStatusErrorMessage != nil)
-    }
-
-    private var appBuildPillText: String {
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-        guard let build, !build.isEmpty else { return "Build -" }
-        return "Build \(build)"
     }
 
     private var exportProgressValue: CGFloat {
@@ -2881,14 +2863,6 @@ struct AIEditView: View {
         return summary.joined(separator: " - ")
     }
 
-    private var teamTargetChipText: String {
-        let selection = viewModel.settings.highlightTeamSelection
-        if selection.mode == .team {
-            return "Team: \(selection.displayTitle)"
-        }
-        return "All teams"
-    }
-
     private var sanitizedUserEditPrompt: String? {
         CloudEditUserPromptBuilder.effectivePrompt(
             userPrompt: userEditPrompt,
@@ -3029,20 +3003,7 @@ struct AIEditView: View {
             return activeAIWorkPhrase(for: runningStep.stepId)
         }
 
-        switch phase {
-        case .planning:
-            return "Cloud edit is reviewing candidate clips to build a plan."
-        case .planReady:
-            return "Plan is ready. Next step: make the finished reel."
-        case .renderRequested, .created:
-            return "Sending your reel plan to cloud render."
-        case .queued:
-            return "Your reel is queued. HoopClips refreshes from live cloud status."
-        case .rendering:
-            return "HoopClips is making the finished reel."
-        case .rendered, .failed, .failedTimeout, .cancelled:
-            return nil
-        }
+        return nil
     }
 
     private func activeAIWorkPhrase(for stepID: String) -> String {

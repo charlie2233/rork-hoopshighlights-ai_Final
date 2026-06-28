@@ -43,9 +43,9 @@ struct HistoryView: View {
 
                             if !viewModel.pastProjectRecords.isEmpty {
                                 projectSection(
-                                    title: "Past Projects",
+                                    title: "Saved Projects",
                                     icon: "clock.arrow.circlepath",
-                                    subtitle: "Reopen past runs and replay saved videos",
+                                    subtitle: "Find saved reels and reopen videos",
                                     accent: historySecondaryAccent,
                                     accessibilityIdentifier: "history.section.pastProjects",
                                     projects: viewModel.pastProjectRecords
@@ -340,15 +340,6 @@ struct HistoryView: View {
 
                     LazyVGrid(columns: historyActionGridColumns, alignment: .leading, spacing: 8) {
                         Button {
-                            selectedProject = project
-                        } label: {
-                            historyActionLabel(title: "Details", icon: "info.circle.fill", tint: AppTheme.courtBlue)
-                                .accessibilityLabel("Show saved project details for \(project.displayTitle)")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("history.project.details")
-
-                        Button {
                             viewModel.openProject(id: project.id)
                         } label: {
                             historyActionLabel(
@@ -363,14 +354,18 @@ struct HistoryView: View {
                         .opacity((viewModel.canOpenProject(project) && viewModel.currentProjectID != project.id) ? 1.0 : 0.54)
                         .accessibilityIdentifier("history.project.resume")
 
-                        Button(role: .destructive) {
-                            requestDelete(project)
+                        Button {
+                            selectedProject = project
                         } label: {
-                            historyActionLabel(title: "Delete", icon: "trash.fill", tint: AppTheme.dangerRed)
-                                .accessibilityLabel("Delete \(project.displayTitle)")
+                            historyActionLabel(
+                                title: project.hasLatestExport ? "Preview" : "More",
+                                icon: project.hasLatestExport ? "play.rectangle.fill" : "ellipsis.circle.fill",
+                                tint: AppTheme.courtBlue
+                            )
+                                .accessibilityLabel("Show saved project details for \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("history.project.delete")
+                        .accessibilityIdentifier("history.project.details")
                     }
                 }
                 .contextMenu {
@@ -487,21 +482,6 @@ struct HistoryView: View {
                     )
                 }
 
-                if let analysisMode = project.analysisMode {
-                    historyBadge(
-                        icon: userFacingAnalysisModeIcon(analysisMode),
-                        text: userFacingAnalysisModeLabel(analysisMode),
-                        tint: AppTheme.rimOrange
-                    )
-                }
-
-                if let teamTarget = projectTeamTargetShortLabel(project) {
-                    historyBadge(
-                        icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
-                        text: teamTarget,
-                        tint: AppTheme.rimOrange
-                    )
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -540,9 +520,17 @@ struct HistoryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
 
-                    Image(systemName: "pencil")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.subtleText)
+                    Label("Rename", systemImage: "pencil")
+                        .font(.caption2.weight(.bold))
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(AppTheme.neonPurple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppTheme.neonPurple.opacity(0.12), in: .capsule)
+                        .overlay {
+                            Capsule()
+                                .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                        }
                         .accessibilityHidden(true)
                 }
                 .font(.subheadline.weight(.semibold))
@@ -561,9 +549,9 @@ struct HistoryView: View {
             return "\(project.displayTitle) is already open"
         }
         if !viewModel.canOpenProject(project) {
-            return "\(project.displayTitle) cannot be resumed because its source video is missing"
+            return "\(project.displayTitle) is saved, but its source video is missing"
         }
-        return "Resume \(project.displayTitle)"
+        return "Open \(project.displayTitle)"
     }
 
     private func historyStatusLine(for project: PersistedProjectRecord) -> String {
@@ -599,24 +587,15 @@ struct HistoryView: View {
             return "Current"
         }
         if !viewModel.canOpenProject(project) {
-            return "Missing source"
+            return "Saved - source missing"
         }
-        return "Resume"
+        return "Open"
     }
 
     private func historyProjectStateLabel(for project: PersistedProjectRecord) -> String {
         let summary = project.analysisStatusSummary?.lowercased() ?? ""
         if !viewModel.canOpenProject(project) {
-            return "Source missing"
-        }
-        if summary.contains("cancel") || summary.contains("paused") {
-            return "Upload paused"
-        }
-        if summary.contains("upload") {
-            return "Upload saved"
-        }
-        if summary.contains("analy") || summary.contains("preparing") || summary.contains("team scan") {
-            return "Analysis saved"
+            return "Saved project"
         }
         if project.hasLatestExport {
             return "Reel saved"
@@ -627,10 +606,16 @@ struct HistoryView: View {
         if project.totalClipCount > 0 {
             return "Clips found"
         }
+        if summary.contains("cancel") || summary.contains("paused") || summary.contains("upload") {
+            return "Saved progress"
+        }
+        if summary.contains("analy") || summary.contains("preparing") || summary.contains("team scan") {
+            return "Saved progress"
+        }
         if project.lastAnalyzedAt != nil {
             return "Analyzed"
         }
-        return "Imported"
+        return "Imported video"
     }
 
     private var historyActionGridColumns: [GridItem] {
@@ -746,6 +731,8 @@ private struct HistoryProjectDetailView: View {
     @State private var showingShareSheet = false
     @State private var shareErrorMessage: String?
     @State private var showingShareError = false
+    @State private var showProjectDetails = false
+    @State private var showActivity = false
 
     var body: some View {
         NavigationStack {
@@ -754,10 +741,10 @@ private struct HistoryProjectDetailView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
-                        headerCard
-                        playbackCard
                         actionsCard
-                        timelineCard
+                        playbackCard
+                        projectDetailsDisclosure
+                        activityDisclosure
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -819,6 +806,44 @@ private struct HistoryProjectDetailView: View {
         }
     }
 
+    private var projectDetailsDisclosure: some View {
+        DisclosureGroup(isExpanded: $showProjectDetails) {
+            headerCard
+                .padding(.top, 8)
+        } label: {
+            Label("Project details", systemImage: "info.circle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.white)
+        }
+        .tint(AppTheme.courtBlue)
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.70), in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.courtBlue.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityIdentifier("history.detail.projectDetailsToggle")
+    }
+
+    private var activityDisclosure: some View {
+        DisclosureGroup(isExpanded: $showActivity) {
+            timelineCard
+                .padding(.top, 8)
+        } label: {
+            Label("Activity", systemImage: "list.bullet.rectangle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.white)
+        }
+        .tint(AppTheme.rimOrange)
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.70), in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.rimOrange.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityIdentifier("history.detail.activityToggle")
+    }
+
     private var headerCard: some View {
         VStack(spacing: 12) {
             Group {
@@ -869,7 +894,6 @@ private struct HistoryProjectDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 detailLine(label: "Source", value: project.sourceDisplayName)
                 detailLine(label: "Created", value: project.createdAt.formatted(date: .abbreviated, time: .shortened))
-                detailLine(label: "Updated", value: project.updatedAt.formatted(date: .abbreviated, time: .shortened))
                 if let lastExportedAt = project.lastExportedAt {
                     detailLine(label: "Saved Reel", value: lastExportedAt.formatted(date: .abbreviated, time: .shortened))
                 }
@@ -1004,21 +1028,6 @@ private struct HistoryProjectDetailView: View {
             .accessibilityIdentifier("history.detail.resumeProject")
 
             Button {
-                startPreview(url: sourceURL, title: "Source Video")
-            } label: {
-                actionLabel(
-                    title: "Watch Source",
-                    subtitle: sourceURL == nil ? HistoryProjectActionCopy.sourceMissingSubtitle : "",
-                    icon: "video.fill",
-                    tint: AppTheme.warningYellow
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(sourceURL == nil)
-            .opacity(sourceURL == nil ? 0.5 : 1.0)
-            .accessibilityIdentifier("history.detail.watchSource")
-
-            Button {
                 startPreview(url: latestExportURL, title: "Saved Reel")
             } label: {
                 actionLabel(
@@ -1047,6 +1056,21 @@ private struct HistoryProjectDetailView: View {
             .disabled(latestExportURL == nil)
             .opacity(latestExportURL == nil ? 0.5 : 1.0)
             .accessibilityIdentifier("history.project.shareLatestExport")
+
+            Button {
+                startPreview(url: sourceURL, title: "Source Video")
+            } label: {
+                actionLabel(
+                    title: "Watch Source",
+                    subtitle: sourceURL == nil ? HistoryProjectActionCopy.sourceMissingSubtitle : "",
+                    icon: "video.fill",
+                    tint: AppTheme.warningYellow
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(sourceURL == nil)
+            .opacity(sourceURL == nil ? 0.5 : 1.0)
+            .accessibilityIdentifier("history.detail.watchSource")
 
             Button(role: .destructive) {
                 showingDeleteConfirmation = true
@@ -1271,7 +1295,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let sourceAvailableSubtitle = ""
     static let sourceMissingSubtitle = "Source not on this device"
     static let exportAvailableSubtitle = ""
-    static let exportMissingSubtitle = "No saved export yet"
+    static let exportMissingSubtitle = "No saved reel yet; project still saved"
     static let shareAvailableSubtitle = ""
     static let shareMissingMessage = "Make the reel again before sharing."
     static let deleteSubtitle = ""

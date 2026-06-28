@@ -16,7 +16,7 @@ struct ReviewView: View {
     @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
     @State private var hasAutoFocusedPriorityFilter = false
-    @State private var sortByScore = true
+    @State private var reviewSortMode: ReviewSortMode = .score
     @State private var expandedClipID: UUID?
     @State private var focusedClipID: UUID?
     @State private var showAllFilterChips = false
@@ -47,6 +47,26 @@ struct ReviewView: View {
         case needsReview = "Check"
         case kept = "Kept"
         case discarded = "Skipped"
+    }
+
+    private enum ReviewSortMode: String, CaseIterable {
+        case score = "Score"
+        case confidence = "Confidence"
+        case label = "Label"
+        case time = "Time"
+
+        var iconName: String {
+            switch self {
+            case .score: return "chart.bar.fill"
+            case .confidence: return "gauge.with.dots.needle.67percent"
+            case .label: return "tag.fill"
+            case .time: return "clock.fill"
+            }
+        }
+
+        var accessibilityLabel: String {
+            "Sort by \(rawValue.lowercased())"
+        }
     }
 
     private typealias ReviewFeedbackTag = ClipReviewFeedbackTag
@@ -102,10 +122,22 @@ struct ReviewView: View {
         case .kept: base = viewModel.keptClips
         case .discarded: base = viewModel.discardedClips
         }
-        if sortByScore {
+        switch reviewSortMode {
+        case .score:
             return base.sorted { $0.combinedScore > $1.combinedScore }
+        case .confidence:
+            return base.sorted { $0.confidence > $1.confidence }
+        case .label:
+            return base.sorted {
+                let labelCompare = $0.label.localizedStandardCompare($1.label)
+                if labelCompare == .orderedSame {
+                    return $0.startTime < $1.startTime
+                }
+                return labelCompare == .orderedAscending
+            }
+        case .time:
+            return base.sorted { $0.startTime < $1.startTime }
         }
-        return base.sorted { $0.startTime < $1.startTime }
     }
 
     var body: some View {
@@ -119,14 +151,10 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
-                            if shouldShowReviewSmokeProofShortcut {
-                                reviewSmokeProofShortcut
-                            }
                             reviewCarousel
                             aiEditEntryCard
                             filterBar
                             priorityReviewCard
-                            reviewContextStrip
                             quickActionsBar
                         }
                         .padding(.horizontal, 16)
@@ -145,25 +173,23 @@ struct ReviewView: View {
                 if filteredClips.count > 1 {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            sortByScore.toggle()
+                            cycleReviewSortMode()
                         } label: {
-                            Image(systemName: sortByScore ? "clock.fill" : "chart.bar.fill")
+                            Image(systemName: reviewSortMode.iconName)
                                 .foregroundStyle(AppTheme.neonPurple)
                                 .padding(8)
                                 .background(AppTheme.neonPurple.opacity(0.12), in: Circle())
                         }
-                        .accessibilityLabel(sortByScore ? "Sort by time" : "Sort by score")
-                        .accessibilityValue(sortByScore ? "Currently sorted by score" : "Currently sorted by time")
-                        .accessibilityHint("Changes how review clips are ordered.")
+                        .accessibilityLabel(reviewSortMode.accessibilityLabel)
+                        .accessibilityValue("Currently sorted by \(reviewSortMode.rawValue.lowercased())")
+                        .accessibilityHint("Cycles review ordering through score, confidence, label, and time.")
                     }
                 }
             }
             .onAppear {
-                focusPriorityReviewIfNeeded()
                 settleFocusedClipIfNeeded()
             }
             .onChange(of: priorityReviewClips.map(\.id)) { _, _ in
-                focusPriorityReviewIfNeeded()
                 settleFocusedClipIfNeeded()
             }
             .onChange(of: filteredClips.map(\.id)) { _, _ in
@@ -401,14 +427,10 @@ struct ReviewView: View {
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.white.opacity(0.88))
                     Spacer(minLength: 8)
-                    if let eta = reviewWaitingCompactETA {
-                        Text(eta)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(1)
-                    }
                 }
             }
+
+            reviewWaitingFactsView
 
             if let waitingHint = reviewWaitingHint {
                 Label(waitingHint, systemImage: "iphone.and.arrow.forward")
@@ -516,7 +538,7 @@ struct ReviewView: View {
                     selectedTab = 0
                 }
             } label: {
-                Label("Back to Player", systemImage: "play.rectangle.fill")
+                Label("Back to Uploads", systemImage: "icloud.and.arrow.up.fill")
                     .font(.subheadline.weight(.heavy))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -524,7 +546,7 @@ struct ReviewView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("review.unavailable.backToPlayer")
-            .accessibilityHint("Returns to Player so you can import or analyze a video.")
+            .accessibilityHint("Returns to Uploads so you can import or analyze a video.")
         }
         .padding(18)
         .rorkCard(
@@ -622,7 +644,9 @@ struct ReviewView: View {
             )
         }
 
-        if let reminder = CloudAnalysisProgressCopy.backgroundReminder(
+        let hasUploadFact = facts.contains { $0.id == "upload" }
+        if !hasUploadFact,
+           let reminder = CloudAnalysisProgressCopy.backgroundReminder(
             statusMessage: reviewEmptyStateRawStatus,
             analysisMode: viewModel.analysisMode
         ) {
@@ -910,8 +934,8 @@ struct ReviewView: View {
 
             HStack(spacing: 8) {
                 RorkMetricChip(
-                    icon: sortByScore ? "chart.bar.fill" : "clock.fill",
-                    value: sortByScore ? "Score" : "Time",
+                    icon: reviewSortMode.iconName,
+                    value: reviewSortMode.rawValue,
                     label: "Sort",
                     tint: AppTheme.neonPurple
                 )
@@ -941,6 +965,15 @@ struct ReviewView: View {
         return filteredClips[currentReviewIndex]
     }
 
+    private func cycleReviewSortMode() {
+        let allModes = ReviewSortMode.allCases
+        guard let currentIndex = allModes.firstIndex(of: reviewSortMode) else {
+            reviewSortMode = .score
+            return
+        }
+        reviewSortMode = allModes[(currentIndex + 1) % allModes.count]
+    }
+
     private var canReviewPreviousClip: Bool {
         currentReviewClip != nil && currentReviewIndex > 0
     }
@@ -965,12 +998,13 @@ struct ReviewView: View {
                 reviewClipScrubber(clip)
                 reviewCarouselClipSummary(clip)
                 reviewDecisionButtons(clip: clip)
+                reviewBoundaryNudgeControls(clip)
                 reviewFeedbackTags(clip)
 
                 if expandedClipID == clip.id {
                     VStack(alignment: .leading, spacing: 12) {
                         clipScoreBreakdown(clip: clip, includeDivider: false)
-                        clipEvidenceRows(clip: clip, maxRows: 3)
+                        clipEvidenceRows(clip: clip, maxRows: 1)
                     }
                     .padding(12)
                     .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 14))
@@ -1009,6 +1043,12 @@ struct ReviewView: View {
                         ),
                         lineWidth: 1
                     )
+            }
+            .background {
+                reviewKeyboardShortcutControls(for: clip)
+                    .frame(width: 0, height: 0)
+                    .opacity(0.001)
+                    .accessibilityHidden(true)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("review.carousel")
@@ -1366,11 +1406,136 @@ struct ReviewView: View {
             .shadow(color: tint.opacity(isSelected ? 0.28 : 0.08), radius: isSelected ? 18 : 8, y: 8)
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(reviewKeyboardShortcut(forKeepDecision: keep), modifiers: [])
         .sensoryFeedback(.impact(weight: .medium), trigger: keep ? keepTrigger : discardTrigger)
         .accessibilityIdentifier(keep ? "review.carousel.keepButton" : "review.carousel.nahButton")
         .accessibilityLabel(keep ? "Keep clip" : "Nah, skip clip")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .hoopsSelectedState(isSelected)
+    }
+
+    private func reviewBoundaryNudgeControls(_ clip: Clip) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Image(systemName: "timeline.selection")
+                    .font(.caption2.weight(.heavy))
+                    .accessibilityHidden(true)
+                Text("Boundary")
+                    .font(.caption.weight(.heavy))
+                Spacer(minLength: 0)
+                Text("0.5s nudges")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+            .foregroundStyle(.white.opacity(0.86))
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    boundaryNudgeButton(title: "Start -", icon: "backward.end.fill") {
+                        nudgeClipStart(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "Start +", icon: "forward.end.fill") {
+                        nudgeClipStart(clip, by: 0.5)
+                    }
+                    boundaryNudgeButton(title: "End -", icon: "backward.frame.fill") {
+                        nudgeClipEnd(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "End +", icon: "forward.frame.fill") {
+                        nudgeClipEnd(clip, by: 0.5)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
+                    boundaryNudgeButton(title: "Start -", icon: "backward.end.fill") {
+                        nudgeClipStart(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "Start +", icon: "forward.end.fill") {
+                        nudgeClipStart(clip, by: 0.5)
+                    }
+                    boundaryNudgeButton(title: "End -", icon: "backward.frame.fill") {
+                        nudgeClipEnd(clip, by: -0.5)
+                    }
+                    boundaryNudgeButton(title: "End +", icon: "forward.frame.fill") {
+                        nudgeClipEnd(clip, by: 0.5)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(AppTheme.neonPurple.opacity(0.10), in: .rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityIdentifier("review.carousel.boundaryNudgeControls")
+    }
+
+    private func boundaryNudgeButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .padding(.horizontal, 8)
+        }
+        .buttonStyle(.bordered)
+        .tint(AppTheme.neonPurple)
+        .accessibilityIdentifier("review.carousel.boundary.\(title.lowercased().replacingOccurrences(of: " ", with: ""))")
+    }
+
+    private func nudgeClipStart(_ clip: Clip, by seconds: Double) {
+        guard let updatedClip = viewModel.nudgeClipStart(clip, by: seconds) else { return }
+        focusedClipID = updatedClip.id
+        prepareClipPlayer(for: updatedClip)
+        HoopsAccessibility.announce("Clip start nudged \(seconds < 0 ? "earlier" : "later").")
+    }
+
+    private func nudgeClipEnd(_ clip: Clip, by seconds: Double) {
+        guard let updatedClip = viewModel.nudgeClipEnd(clip, by: seconds) else { return }
+        focusedClipID = updatedClip.id
+        prepareClipPlayer(for: updatedClip)
+        HoopsAccessibility.announce("Clip end nudged \(seconds < 0 ? "earlier" : "later").")
+    }
+
+    private func reviewKeyboardShortcut(forKeepDecision keep: Bool) -> KeyEquivalent {
+        keep ? "k" : "d"
+    }
+
+    private func reviewKeyboardShortcutControls(for clip: Clip) -> some View {
+        VStack {
+            Button("Nah shortcut") {
+                setClip(clip, keep: false)
+            }
+            .keyboardShortcut("n", modifiers: [])
+
+            Button("Nudge start earlier") {
+                nudgeClipStart(clip, by: -0.5)
+            }
+            .keyboardShortcut("[", modifiers: [])
+
+            Button("Nudge end later") {
+                nudgeClipEnd(clip, by: 0.5)
+            }
+            .keyboardShortcut("]", modifiers: [])
+
+            ForEach(Array(ReviewFeedbackTag.allCases.prefix(5).enumerated()), id: \.element.id) { index, tag in
+                Button("Review label \(index + 1)") {
+                    toggleFeedbackTag(tag, for: clip)
+                }
+                .keyboardShortcut(reviewFeedbackShortcut(for: index), modifiers: [])
+            }
+        }
+    }
+
+    private func reviewFeedbackShortcut(for index: Int) -> KeyEquivalent {
+        switch index {
+        case 0: return "1"
+        case 1: return "2"
+        case 2: return "3"
+        case 3: return "4"
+        default: return "5"
+        }
     }
 
     private func reviewCarouselEvidenceChips(_ clip: Clip) -> some View {
@@ -1628,7 +1793,7 @@ struct ReviewView: View {
     }
 
     private var primaryFilterOptions: Set<FilterOption> {
-        [.all, .priority, .selectedTeam]
+        [.all, .needsReview, .kept]
     }
 
     private func shouldShowFilter(_ option: FilterOption) -> Bool {
@@ -1661,7 +1826,9 @@ struct ReviewView: View {
 
     @ViewBuilder
     private var priorityReviewCard: some View {
-        if !priorityReviewClips.isEmpty {
+        if !priorityReviewClips.isEmpty,
+           filterOption != priorityReviewFilter,
+           !visibleFilterOptions.contains(.priority) {
             Button {
                 HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                     filterOption = priorityReviewFilter
@@ -1680,12 +1847,6 @@ struct ReviewView: View {
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.86)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(viewModel.priorityReviewSummary ?? "Team calls, blocks, steals, sound cues, and unclear outcomes.")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                            .minimumScaleFactor(0.84)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .layoutPriority(1)
@@ -1758,39 +1919,42 @@ struct ReviewView: View {
         ]
     }
 
+    @ViewBuilder
     private var quickActionsBar: some View {
-        LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
-            reviewQuickActionButton(
-                title: "Keep Strong",
-                subtitle: highConfidencePendingSubtitle,
-                icon: "checkmark.seal.fill",
-                tint: AppTheme.successGreen,
-                isDisabled: highConfidencePendingCount == 0
-            ) {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                    viewModel.keepHighConfidenceClips()
+        if highConfidencePendingCount > 0 || lowConfidenceKeptCount > 0 {
+            LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
+                reviewQuickActionButton(
+                    title: "Keep Strong",
+                    subtitle: highConfidencePendingSubtitle,
+                    icon: "checkmark.seal.fill",
+                    tint: AppTheme.successGreen,
+                    isDisabled: highConfidencePendingCount == 0
+                ) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        viewModel.keepHighConfidenceClips()
+                    }
                 }
-            }
 
-            reviewQuickActionButton(
-                title: "Skip Weak",
-                subtitle: lowConfidenceKeptSubtitle,
-                icon: "xmark.seal.fill",
-                tint: AppTheme.dangerRed,
-                isDisabled: lowConfidenceKeptCount == 0
-            ) {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                    viewModel.discardLowConfidenceClips()
+                reviewQuickActionButton(
+                    title: "Skip Weak",
+                    subtitle: lowConfidenceKeptSubtitle,
+                    icon: "xmark.seal.fill",
+                    tint: AppTheme.dangerRed,
+                    isDisabled: lowConfidenceKeptCount == 0
+                ) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        viewModel.discardLowConfidenceClips()
+                    }
                 }
             }
+            .padding(10)
+            .rorkCard(
+                cornerRadius: 14,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+                stroke: AppTheme.softBorder,
+                glowOpacity: 0.04
+            )
         }
-        .padding(10)
-        .rorkCard(
-            cornerRadius: 14,
-            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
-            stroke: AppTheme.softBorder,
-            glowOpacity: 0.04
-        )
     }
 
     private var reviewActionGridColumns: [GridItem] {
@@ -1859,15 +2023,6 @@ struct ReviewView: View {
 
         withAnimation(tabTransitionAnimation) {
             selectedTab = 2
-        }
-    }
-
-    private func focusPriorityReviewIfNeeded() {
-        guard !hasAutoFocusedPriorityFilter else { return }
-        guard filterOption == .all, !priorityReviewClips.isEmpty else { return }
-        hasAutoFocusedPriorityFilter = true
-        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-            filterOption = .priority
         }
     }
 
@@ -1976,15 +2131,15 @@ struct ReviewView: View {
         }
         .accessibilityLabel(showAllFilterChips ? "Show fewer review filters" : "Show more review filters")
         .accessibilityValue(showAllFilterChips ? "All filters visible" : "\(hiddenFilterOptions.count) filters hidden")
-        .accessibilityHint("Shows or hides extra filters like defense, blocks, steals, sound, kept, and skipped.")
+        .accessibilityHint("Shows or hides extra filters like team, defense, sound, and skipped.")
     }
 
     private func filterChipLabel(title: String, isSelected: Bool, icon: String?) -> some View {
         Label {
             Text(title)
                 .font(.subheadline.weight(.medium))
-                .lineLimit(2)
-                .minimumScaleFactor(0.84)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
@@ -2096,7 +2251,7 @@ struct ReviewView: View {
         case .sound:
             return "Sound \(clipCount(for: option))"
         case .needsReview:
-            return "Check \(viewModel.needsReviewClips.count)"
+            return "Review \(viewModel.needsReviewClips.count)"
         case .kept:
             return "Kept \(viewModel.keptClips.count)"
         case .discarded:
@@ -2152,7 +2307,7 @@ struct ReviewView: View {
             if expandedClipID == clip.id {
                 VStack(spacing: 12) {
                     Divider().overlay(AppTheme.accentPurple.opacity(0.2))
-                    clipEvidenceRows(clip: clip, maxRows: 4)
+                    clipEvidenceRows(clip: clip, maxRows: 1)
                     clipScoreBreakdown(clip: clip, includeDivider: false)
                 }
                     .padding(.horizontal, 12)
@@ -3053,6 +3208,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return "Duplicate"
         case .wrongTeam: return "Wrong team"
         case .badWindow: return "Bad window"
+        case .wrongLabel: return "Wrong label"
+        case .lowQuality: return "Low quality"
         }
     }
 
@@ -3061,6 +3218,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return "rectangle.on.rectangle.angled"
         case .wrongTeam: return "person.2.slash.fill"
         case .badWindow: return "crop"
+        case .wrongLabel: return "tag.slash.fill"
+        case .lowQuality: return "hand.thumbsdown.fill"
         }
     }
 
@@ -3069,6 +3228,8 @@ private extension ClipReviewFeedbackTag {
         case .duplicate: return AppTheme.warningYellow
         case .wrongTeam: return AppTheme.dangerRed
         case .badWindow: return .orange
+        case .wrongLabel: return AppTheme.courtBlue
+        case .lowQuality: return AppTheme.subtleText
         }
     }
 }

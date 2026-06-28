@@ -128,11 +128,29 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
            !Self.shouldReplaceGeneratedTitle(trimmedTitle, sourceBasename: sourceBasename) {
             return trimmedTitle
         }
+        if let contextTitle = contextualProjectTitle {
+            return contextTitle
+        }
         return Self.friendlyProjectTitle(
             sourceFilename: sourceFilename,
             sourceDuration: sourceDuration,
             createdAt: createdAt
         )
+    }
+
+    private var contextualProjectTitle: String? {
+        guard let selection = highlightTeamSelection,
+              selection.mode == .team else {
+            return nil
+        }
+
+        let selectedTeam = Self.sanitizedContextName(selection.displayTitle)
+        guard let selectedTeam else { return nil }
+
+        if let opponent = Self.sanitizedContextName(opponentTeamName) {
+            return "\(Self.titleCased(selectedTeam)) vs \(Self.titleCased(opponent))"
+        }
+        return "\(Self.titleCased(selectedTeam)) Highlights"
     }
 
     var sourceDisplayName: String {
@@ -180,7 +198,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     static func friendlyProjectTitle(
         sourceFilename: String,
         sourceDuration: Double,
-        createdAt: Date
+        createdAt _: Date
     ) -> String {
         let basename = (sourceFilename as NSString).deletingPathExtension
         let cleaned = cleanedSourceTitle(basename)
@@ -189,9 +207,6 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             return cleaned
         }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, h:mm a"
-        let dateTitle = formatter.string(from: createdAt)
         if sourceDuration.isFinite, sourceDuration > 0 {
             let minutes = max(1, Int((sourceDuration / 60).rounded()))
             let kind: String
@@ -204,7 +219,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             }
             return "\(kind) - \(minutes) min"
         }
-        return "Basketball Video \(dateTitle)"
+        return "Basketball Video"
     }
 
     private static func shouldReplaceGeneratedTitle(_ title: String, sourceBasename: String) -> Bool {
@@ -223,6 +238,11 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
 
     private static func cleanedSourceTitle(_ basename: String) -> String {
         var value = basename
+        if let mediaRange = value.range(of: "_Media", options: [.caseInsensitive]) {
+            value = String(value[..<mediaRange.lowerBound])
+        }
+
+        value = value
             .replacingOccurrences(of: "YTDown_YouTube_", with: "")
             .replacingOccurrences(of: "YTDown_", with: "")
             .replacingOccurrences(of: "_YouTube_", with: " ")
@@ -233,10 +253,6 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .replacingOccurrences(of: "downloaded video", with: "", options: [.caseInsensitive])
             .replacingOccurrences(of: "screenrecording", with: "screen recording", options: [.caseInsensitive])
             .replacingOccurrences(of: "videoplayback", with: "", options: [.caseInsensitive])
-
-        if let mediaRange = value.range(of: "_Media", options: [.caseInsensitive]) {
-            value = String(value[..<mediaRange.lowerBound])
-        }
 
         value = value
             .replacingOccurrences(of: "-vs-", with: " vs ", options: [.caseInsensitive])
@@ -279,7 +295,31 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             tokens.removeLast()
         }
 
-        return tokens
+        return tokens.filter { !shouldDropEmbeddedGeneratedToken($0) }
+    }
+
+    private static func shouldDropEmbeddedGeneratedToken(_ token: String) -> Bool {
+        let lower = token.lowercased()
+        if generatedWrapperTokens.contains(lower) {
+            return true
+        }
+        if lower.range(of: #"^\d{3,4}p$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if looksLikeRandomCode(token) {
+            return true
+        }
+        if lower.count >= 6 {
+            let alphanumeric = lower.filter { $0.isLetter || $0.isNumber }
+            let digitCount = alphanumeric.filter(\.isNumber).count
+            let letterCount = alphanumeric.filter(\.isLetter).count
+            if alphanumeric.count == lower.count,
+               digitCount > 0,
+               letterCount > 0 {
+                return true
+            }
+        }
+        return false
     }
 
     private static func shouldDropTrailingGeneratedToken(_ token: String) -> Bool {
@@ -431,6 +471,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             .map { token in
                 let lower = token.lowercased()
                 if lower == "vs" { return "vs" }
+                if lower == "el" { return "El" }
                 let upper = token.uppercased()
                 if preservedUppercaseTitleTokens.contains(upper) {
                     return upper
@@ -474,6 +515,17 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
             }
         }
         return false
+    }
+
+    private static func sanitizedContextName(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !looksLikeRandomCode(trimmed),
+              !looksLikeGenericSourceTitle(cleanedTitleTokens(trimmed)) else {
+            return nil
+        }
+        return trimmed
     }
 }
 

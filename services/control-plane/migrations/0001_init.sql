@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS clip_reviews (
   action TEXT,
   review_state TEXT NOT NULL DEFAULT 'unreviewed',
   reviewer_notes TEXT,
+  review_feedback_tags_json TEXT,
   promoted_to_training_set INTEGER NOT NULL DEFAULT 0,
   model_version TEXT,
   failure_reason TEXT,

@@ -11,6 +11,109 @@ const {
   uploadObject,
 } = harness;
 
+test("legacy /api/ai analyze and result aliases use the cloud job contract", async () => {
+  const harness = createControlPlaneHarness();
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/api/ai/analyze",
+    {
+      filename: "legacy-api-game.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 2048,
+      durationSeconds: 18,
+      installId: "install-legacy-api",
+      appVersion: "1.0.0",
+      analysisVersion: "detection-v2",
+    },
+    { "x-trace-id": "trace-legacy-api" },
+  );
+  assert.equal(createResponse.status, 201);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    uploadUrl: string;
+    status: string;
+  }>(createResponse);
+  assert.equal(createJson.status, "upload_pending");
+
+  const resultResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/api/ai/result/${createJson.jobId}`,
+    undefined,
+    { "x-trace-id": "trace-legacy-api-result" },
+  );
+  assert.equal(resultResponse.status, 200);
+  const resultJson = await parseJsonResponse<{
+    jobId: string;
+    status: string;
+    results: unknown | null;
+  }>(resultResponse);
+  assert.equal(resultJson.jobId, createJson.jobId);
+  assert.equal(resultJson.status, "upload_pending");
+  assert.equal(resultJson.results, null);
+});
+
+test("control plane does not fall back to stub AI when analysis providers are missing", async () => {
+  const harness = createControlPlaneHarness({
+    INFERENCE_BASE_URL: "",
+    EDITING_BASE_URL: "",
+  });
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "no-provider-game.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 2048,
+      durationSeconds: 18,
+      installId: "install-no-provider",
+      appVersion: "1.0.0",
+      analysisVersion: "detection-v2",
+    },
+    { "x-trace-id": "trace-no-provider" },
+  );
+  assert.equal(createResponse.status, 201);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    uploadUrl: string;
+    sourceObjectKey: string;
+  }>(createResponse);
+
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
+
+  const finalizeResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-no-provider",
+      sourceObjectKey: createJson.sourceObjectKey,
+    },
+    { "x-trace-id": "trace-no-provider" },
+  );
+  assert.equal(finalizeResponse.status, 200);
+
+  const processedMessages = await harness.drainQueue();
+  assert.equal(processedMessages, 1);
+  const failedJob = harness.state.jobs.get(createJson.jobId);
+  assert.equal(failedJob?.status, "failed");
+  assert.equal(failedJob?.results, null);
+  assert.match(failedJob?.failureReason ?? "", /Missing inference service base URL/);
+  assert.equal(
+    JSON.stringify(failedJob?.results ?? {}).includes("stub-inference-v1"),
+    false,
+  );
+});
+
 test("control plane happy path advances upload_pending -> uploaded -> queued -> processing -> completed", async () => {
   const harness = createControlPlaneHarness();
 
@@ -82,7 +185,13 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal("callbackUrl" in harness.state.queueMessages[0], false);
   assert.equal("installId" in harness.state.queueMessages[0], false);
   assert.equal("analysisVersion" in harness.state.queueMessages[0], false);
+  assert.equal(harness.state.queueMessages[0]?.assetId, createJson.jobId);
+  assert.equal(
+    harness.state.queueMessages[0]?.storageKey,
+    createJson.sourceObjectKey,
+  );
   assert.deepEqual(Object.keys(harness.state.queueMessages[0] ?? {}).sort(), [
+    "assetId",
     "jobId",
     "kind",
     "modelVersion",
@@ -90,6 +199,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     "resultObjectKey",
     "schemaVersion",
     "sourceObjectKey",
+    "storageKey",
     "teamSelection",
     "traceId",
     "uploadTraceId",

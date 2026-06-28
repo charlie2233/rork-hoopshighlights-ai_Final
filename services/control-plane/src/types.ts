@@ -10,6 +10,22 @@ export type JobStatus =
   | "succeeded"
   | "expired";
 
+export type AssetStatus =
+  | "initialized"
+  | "uploading"
+  | "uploaded"
+  | "processing"
+  | "proxy_ready"
+  | "ready"
+  | "failed";
+
+export type ReviewFeedbackTag =
+  | "duplicate"
+  | "wrong_team"
+  | "bad_window"
+  | "wrong_label"
+  | "low_quality";
+
 export interface ResponseEnvelope {
   requestId: string;
   schemaVersion?: string | null;
@@ -30,6 +46,8 @@ export interface CreateCloudAnalysisJobRequest {
   analysisVersion: string;
   teamSelection?: TeamSelection | null;
   uploadPreference?: "single" | "resumable" | null;
+  assetId?: string | null;
+  storageKey?: string | null;
 }
 
 export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
@@ -45,6 +63,8 @@ export interface CloudAnalysisCapabilitiesResponse extends ResponseEnvelope {
 
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   uploadUrl: string;
   uploadMethod: "PUT";
   uploadHeaders: Record<string, string>;
@@ -56,6 +76,106 @@ export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   resultObjectKey?: string | null;
   status?: JobStatus;
   resumableUpload?: ResumableUploadDescriptor | null;
+}
+
+export interface AssetArtifacts {
+  proxyStorageKey?: string | null;
+  thumbnailStorageKeys: string[];
+  waveformStorageKey?: string | null;
+}
+
+export interface AssetRecord {
+  assetId: string;
+  installId: string;
+  filename: string;
+  contentType: string;
+  fileSizeBytes: number;
+  durationSeconds: number;
+  storageKey: string;
+  status: AssetStatus;
+  uploadMode: "single" | "multipart";
+  uploadedBytes: number;
+  artifacts: AssetArtifacts;
+  createdAt: string;
+  updatedAt: string;
+  failureReason?: string | null;
+}
+
+export interface UploadInitRequest {
+  filename: string;
+  contentType: string;
+  fileSizeBytes: number;
+  durationSeconds: number;
+  installId: string;
+  appVersion: string;
+  analysisVersion: string;
+  uploadPreference?: "single" | "multipart" | "auto" | null;
+  partSizeBytes?: number | null;
+}
+
+export interface UploadTargetResponse {
+  uploadUrl: string;
+  uploadMethod: "PUT";
+  uploadHeaders: Record<string, string>;
+  partNumber?: number | null;
+}
+
+export interface MultipartUploadResponse {
+  uploadId: string;
+  partSizeBytes: number;
+  partCount: number;
+  parts: UploadTargetResponse[];
+}
+
+export interface UploadInitResponse extends ResponseEnvelope {
+  assetId: string;
+  storageKey: string;
+  status: AssetStatus;
+  uploadMode: "single" | "multipart";
+  uploadUrl?: string | null;
+  uploadMethod: "PUT";
+  uploadHeaders: Record<string, string>;
+  multipart?: MultipartUploadResponse | null;
+  expiresAt: string;
+  pollAfterSeconds: number;
+  uploadState: string;
+}
+
+export interface UploadCompleteRequest {
+  installId: string;
+  uploadId?: string | null;
+  parts?: Array<{
+    partNumber: number;
+    etag?: string | null;
+    sizeBytes?: number | null;
+  }>;
+}
+
+export interface UploadCompleteResponse extends ResponseEnvelope {
+  assetId: string;
+  storageKey: string;
+  status: AssetStatus;
+  artifacts: AssetArtifacts;
+  pollAfterSeconds: number;
+}
+
+export interface AssetStatusResponse extends AssetRecord, ResponseEnvelope {}
+
+export interface CreateAssetAnalysisJobRequest {
+  installId: string;
+  appVersion?: string | null;
+  analysisVersion?: string | null;
+  teamSelection?: TeamSelection | null;
+}
+
+export interface AssetAnalysisJobResponse extends ResponseEnvelope {
+  jobId: string;
+  assetId: string;
+  storageKey: string;
+  status: JobStatus;
+  pollAfterSeconds: number;
+  quotaRemainingToday: number;
+  analysisMode: "cloud";
 }
 
 export interface StartCloudAnalysisJobRequest {
@@ -80,6 +200,8 @@ export interface ScanCloudAnalysisTeamsResponse extends ResponseEnvelope {
 
 export interface InferenceTeamScanRequest {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   requestId: string;
   uploadTraceId: string;
   traceId: string;
@@ -99,6 +221,8 @@ export interface UploadPresignRequest extends CreateCloudAnalysisJobRequest {}
 
 export interface UploadPresignResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   sourceObjectKey: string;
   resultObjectKey: string;
   uploadUrl: string;
@@ -194,6 +318,42 @@ export interface CloudRawLabelScore {
   modelVersion?: string | null;
 }
 
+export type DetectionPipelineStage =
+  | "proposal"
+  | "embedding_rerank"
+  | "classifier"
+  | "merge"
+  | "taxonomy";
+
+export interface DetectionStageProvenance {
+  stage: DetectionPipelineStage;
+  status?: "applied" | "fallback" | "skipped" | "unavailable";
+  source: string;
+  modelId?: string | null;
+  modelVersion?: string | null;
+  adapter?: string | null;
+  score?: number | null;
+  rank?: number | null;
+  rawLabel?: string | null;
+  details?: Record<string, unknown> | null;
+}
+
+export interface CloudClipProvenance {
+  proposal: DetectionStageProvenance;
+  embeddingRerank?: DetectionStageProvenance | null;
+  classifier?: DetectionStageProvenance | null;
+  merge?: DetectionStageProvenance | null;
+  taxonomy?: DetectionStageProvenance | null;
+}
+
+export interface CloudClipScores {
+  proposalScore: number;
+  embeddingScore?: number | null;
+  classifierScore?: number | null;
+  mergeScore?: number | null;
+  finalScore: number;
+}
+
 export interface CloudClip {
   startTime: number;
   endTime: number;
@@ -232,10 +392,15 @@ export interface CloudClip {
   rankScore?: number | null;
   reviewState?: string | null;
   reviewerNotes?: string | null;
+  reviewFeedbackTags?: ReviewFeedbackTag[] | null;
   topLabels?: CloudLabelScore[] | null;
   comparisonTopLabels?: CloudLabelScore[] | null;
   rawTopLabels?: CloudRawLabelScore[] | null;
   comparisonRawTopLabels?: CloudRawLabelScore[] | null;
+  pipelineStage?: "proposal" | "embedding_rerank" | "classified" | "merged_candidate" | null;
+  pipelineVersion?: string | null;
+  provenance?: CloudClipProvenance | null;
+  scores?: CloudClipScores | null;
   nativeShotSignals?: NativeShotSignals | null;
   teamAttribution?: ClipTeamAttribution | null;
   teamAttributionStatus?: "all" | "matched" | "opponent" | "uncertain" | null;
@@ -263,6 +428,12 @@ export interface CloudDiagnostics {
   usedGeminiRelabeling: boolean;
   candidateSegments: number;
   finalSegments: number;
+  proposalSegments?: number;
+  embeddedSegments?: number;
+  classifiedSegments?: number;
+  mergedCandidateSegments?: number;
+  usedSemanticRerank?: boolean;
+  taxonomyVersion?: string | null;
   usedTeamQuickScan?: boolean;
   preTeamFilterSegments?: number;
   teamMatchedCandidateSegments?: number;
@@ -277,17 +448,44 @@ export interface CloudDiagnostics {
   defensiveStopReviewSegments?: number;
 }
 
+export interface DetectionPipelineSummary {
+  pipelineVersion: string;
+  stages: DetectionPipelineStage[];
+  proposalCount: number;
+  rerankedCount: number;
+  classifiedCount: number;
+  mergedCandidateCount: number;
+  models: Record<string, string>;
+  taxonomyVersion: string;
+  fallbackUsed?: boolean;
+  fallbackReasons?: string[];
+}
+
 export interface CloudAnalysisResult extends ResponseEnvelope {
+  analysisJobId?: string | null;
+  assetId?: string | null;
+  assetStorageKey?: string | null;
+  storageKey?: string | null;
+  proxyStorageKey?: string | null;
+  assetStatus?: AssetStatus | string | null;
+  uploadedBytes?: number | null;
+  fileSizeBytes?: number | null;
+  assetFailureReason?: string | null;
+  sourceObjectKey?: string | null;
   clipCount: number;
   clips: CloudClip[];
   diagnostics: CloudDiagnostics;
   resultConfidence: number;
+  candidateClips?: CloudClip[] | null;
+  pipeline?: DetectionPipelineSummary | null;
   detectedTeams?: TeamOption[] | null;
   teamSelection?: TeamSelection | null;
 }
 
 export interface CloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   status: JobStatus;
   progress: number;
   stage: string;
@@ -318,6 +516,8 @@ export interface ErrorResponse extends ResponseEnvelope {
 export interface QueueJobMessage {
   kind: "process-job";
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   requestId: string;
   uploadTraceId: string;
   traceId: string;
@@ -343,6 +543,8 @@ export interface DeadLetterQueueMessage {
 
 export interface InferenceCallbackPayload {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   status: "processing" | "completed" | "failed" | "cancelled" | "succeeded";
   progress?: number;
   stage?: string;
@@ -361,6 +563,8 @@ export interface InferenceCallbackPayload {
 
 export interface JobRecord extends ResponseEnvelope {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   schemaVersion: string;
   traceId: string;
   uploadTraceId?: string | null;
@@ -421,6 +625,8 @@ export interface JobMutationInput {
 
 export interface InferenceDispatchRequest {
   jobId: string;
+  assetId?: string | null;
+  storageKey?: string | null;
   requestId: string;
   uploadTraceId: string;
   inferenceAttemptId: string;
@@ -470,6 +676,7 @@ export interface ClipReviewUpdate {
   promotedToTrainingSet?: boolean;
   label?: string;
   action?: string;
+  reviewFeedbackTags?: ReviewFeedbackTag[];
   jobId?: string;
   clipIndex?: number;
 }
@@ -492,6 +699,42 @@ export interface MetadataJobRecord extends ResponseEnvelope {
 
 export type RenderStatus = "render_requested" | "created" | "queued" | "rendering" | "rendered" | "failed" | "failed_timeout" | "cancelled";
 export type EditPlanTier = "free" | "pro" | "internal" | "dev";
+export type EditIntentStyle =
+  | "personal_highlight"
+  | "full_game_highlight"
+  | "coach_review"
+  | "recruiting_reel"
+  | "cinematic_mixtape"
+  | "nba_recap"
+  | "team_highlight"
+  | "defense_focus"
+  | "custom";
+export type EditIntentPace = "fast" | "balanced" | "cinematic" | "coach_review" | "deliberate";
+export type EditIntentAudioPreference = "music_forward" | "game_audio" | "balanced" | "muted";
+export type EditIntentChronology = "best_first" | "chronological" | "story_arc" | "coach_review";
+export type EditIntentCaptionDensity = "minimal" | "clean" | "medium" | "high";
+
+export interface EditIntentHardConstraints {
+  requireVisibleOutcome: boolean;
+  requireFullPlayContext: boolean;
+  rejectDuplicates: boolean;
+  rejectDeadBall: boolean;
+  defenseOnly: boolean;
+  selectedTeamOnly: boolean;
+  maxCaptionCharacters: number;
+}
+
+export interface StructuredEditIntent {
+  schemaVersion: "edit-intent-v1";
+  source: "client" | "server_derived" | "legacy_prompt";
+  style: EditIntentStyle;
+  pace: EditIntentPace;
+  audioPreference: EditIntentAudioPreference;
+  chronology: EditIntentChronology;
+  captionDensity: EditIntentCaptionDensity;
+  hardConstraints: EditIntentHardConstraints;
+  promptSummary?: string | null;
+}
 
 export interface EditCandidateClip {
   id: string;
@@ -518,7 +761,9 @@ export interface CreateEditJobRequest {
   videoId: string;
   analysisJobId: string;
   installId: string;
+  assetId?: string | null;
   sourceObjectKey?: string | null;
+  sourceClipIds?: string[];
   preset: "personal_highlight" | "full_game_highlight" | "coach_review" | "fast_break_mix" | "best_five";
   templateId?:
     | "personal_highlight_v1"
@@ -535,6 +780,8 @@ export interface CreateEditJobRequest {
   planTier?: EditPlanTier;
   revenueCatAppUserID?: string | null;
   userPrompt?: string | null;
+  editIntent?: StructuredEditIntent | null;
+  idempotencyKey?: string | null;
   teamSelection?: TeamSelection | null;
   clips: EditCandidateClip[];
 }
@@ -543,19 +790,29 @@ export interface EditJobResponse extends ResponseEnvelope {
   editJobId: string;
   videoId: string;
   analysisJobId: string;
+  assetId?: string | null;
+  sourceObjectKey?: string | null;
+  sourceClipIds?: string[];
   status: string;
   preset: string;
   templateId?: string | null;
+  editIntent?: StructuredEditIntent | null;
   targetDurationSeconds: number;
   aspectRatio: "9:16" | "16:9" | "source";
   clipCount: number;
+  candidateClipCount?: number;
+  candidateClips?: EditCandidateClip[];
   validationErrors?: Array<Record<string, unknown>>;
 }
 
 export interface EditPlanResponse extends ResponseEnvelope {
   editJobId: string;
+  assetId?: string | null;
+  sourceObjectKey?: string | null;
+  sourceClipIds?: string[];
   status: string;
   plan: Record<string, unknown>;
+  editIntent?: StructuredEditIntent | null;
   validationErrors?: Array<Record<string, unknown>>;
 }
 

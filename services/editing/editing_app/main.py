@@ -50,6 +50,7 @@ from .render_storage import EditingServiceError, RenderStorage
 
 ensure_ios_backend_on_path()
 
+from app.detection_pipeline import PIPELINE_VERSION  # noqa: E402
 from app.editing import (  # noqa: E402
     AIEditFeatureFlags,
     EditPlan,
@@ -61,10 +62,10 @@ from app.editing import (  # noqa: E402
     build_revision_response,
     default_ai_edit_feature_flags,
     estimate_render_cost,
-    filter_clips_for_team_selection,
     get_plan_tier_policy,
     get_template_pack,
     policy_summary_for_client,
+    source_clips_for_edit_request,
     validate_edit_plan,
 )
 from app.config import get_settings as get_analysis_settings  # noqa: E402
@@ -239,6 +240,33 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         if expected and value != expected:
             raise EditingServiceError(401, "invalid_editing_secret", "Invalid editing service secret.")
 
+    def materialize_dispatch_source(
+        storage_key: Optional[str],
+        source_url: Optional[str],
+        filename: str,
+        max_file_size_bytes: int,
+    ) -> MaterializedSource:
+        object_error: Optional[EditingServiceError] = None
+        if storage_key:
+            try:
+                return storage.materialize_source(storage_key)
+            except EditingServiceError as error:
+                object_error = error
+                if not source_url:
+                    raise
+
+        if source_url:
+            return materialize_team_scan_source(
+                source_url,
+                filename,
+                max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+
+        if object_error is not None:
+            raise object_error
+        raise EditingServiceError(400, "source_missing", "Source video object or signed URL is required.")
+
     def analysis_result_confidence(result: CloudAnalysisResult) -> float:
         if not result.clips:
             return 0.0
@@ -264,6 +292,25 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             stage="Analyzing in cloud",
         )
 
+    def detection_job_from_request(request: ScanCloudAnalysisSourceRequest, job_ttl_seconds: int) -> StoredJob:
+        created_at = now_utc()
+        return StoredJob(
+            job_id=request.jobId,
+            install_id=request.installId,
+            filename=request.filename,
+            content_type=request.contentType or "video/mp4",
+            file_size_bytes=1,
+            duration_seconds=request.durationSeconds,
+            app_version=request.appVersion or "unknown",
+            analysis_version=request.analysisVersion or "detection-v2",
+            created_at=created_at,
+            expires_at=created_at + timedelta(seconds=job_ttl_seconds),
+            object_key=request.sourceObjectKey or f"detection/{request.jobId}/source.mp4",
+            status=JobStatus.PROCESSING,
+            progress=0.62,
+            stage="Analyzing detection candidates",
+        )
+
     def inference_callback_payload(
         request: InferenceDispatchRequest,
         *,
@@ -285,7 +332,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "uploadTraceId": request.uploadTraceId,
             "inferenceAttemptId": request.inferenceAttemptId,
             "traceId": request.traceId,
-            "results": result.model_dump(mode="json") if result is not None else None,
+            "results": result.model_dump(mode="json", exclude_none=True) if result is not None else None,
         }
         if result is not None:
             result_confidence = analysis_result_confidence(result)
@@ -353,11 +400,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             except ValueError as error:
                 raise EditingServiceError(503, "analysis_unconfigured", "Cloud analysis is not configured.") from error
             source = await run_in_threadpool(
-                materialize_team_scan_source,
+                materialize_dispatch_source,
+                request.storageKey or request.sourceObjectKey,
                 request.sourceUrl,
                 request.filename,
                 analysis_settings.max_file_size_bytes,
-                resolved_settings.upload_root,
             )
             stage_ref["stage"] = "Analyzing in cloud"
             emit_event("analysis.source.materialized", jobId=request.jobId, teamMode=request.teamSelection.mode if request.teamSelection else "all")
@@ -509,6 +556,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         return job
 
     def persist_edit_job(job: StoredEditJob, plan_id: Optional[str] = None) -> None:
+        if job.request.idempotencyKey and not render_state_store.reserve_edit_job_idempotency_key(
+            job.edit_job_id,
+            job.install_id,
+            job.request.idempotencyKey,
+            job.updated_at,
+        ):
+            raise EditingServiceError(409, "edit_job_idempotency_conflict", "Edit job idempotency key already belongs to another edit job.")
         cache_edit_job(job)
         render_state_store.save_edit_job_payload(job.edit_job_id, edit_job_to_durable_payload(job))
         if plan_id:
@@ -525,6 +579,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             return cache_edit_job(edit_job_from_durable_payload(payload))
         except Exception:
             return None
+
+    def load_idempotent_edit_job(idempotency_key: str) -> Optional[StoredEditJob]:
+        edit_job_id = render_state_store.load_edit_job_id_by_idempotency_key(idempotency_key)
+        if not edit_job_id:
+            return None
+        return load_edit_job(edit_job_id)
 
     def require_edit_job(edit_job_id: str) -> StoredEditJob:
         job = load_edit_job(edit_job_id)
@@ -670,11 +730,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=job.plan_tier,
             revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
-            sourceClips=filter_clips_for_team_selection(
-                edit_job.request.clips,
-                edit_job.request.teamSelection,
-                include_review_only_uncertain=False,
-            ),
+            sourceClips=source_clips_for_edit_request(edit_job.request),
             gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
@@ -801,11 +857,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=stored_edit_job.request.planTier,
             revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
             editPlan=edit_plan,
-            sourceClips=filter_clips_for_team_selection(
-                stored_edit_job.request.clips,
-                stored_edit_job.request.teamSelection,
-                include_review_only_uncertain=False,
-            ),
+            sourceClips=source_clips_for_edit_request(stored_edit_job.request),
             gptRerankSummary=stored_edit_job.request.gptRerankSummary,
             idempotencyKey=request.idempotencyKey,
         )
@@ -1213,6 +1265,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "ffmpeg": ffmpeg_diagnostics(),
             "featureFlags": feature_flags.model_dump(),
             "gptHighlightReranker": gpt_reranker_settings.public_status(),
+            "detectionPipeline": {
+                "pipelineVersion": PIPELINE_VERSION,
+                "supportsCandidateClips": True,
+                "stages": ["proposal", "embedding_rerank", "classifier", "merge"],
+            },
         }
 
     @app.post("/v1/analyze", status_code=202, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
@@ -1230,6 +1287,45 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         except EditingServiceError as error:
             return error_response(error)
 
+    @app.post("/v2/detection/analyze", response_model=CloudAnalysisResult, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+    async def analyze_detection_candidates(
+        request: ScanCloudAnalysisSourceRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        source: Optional[MaterializedSource] = None
+        try:
+            require_secret(x_hoops_inference_secret or x_hoops_internal_secret or x_hoops_editing_secret)
+            try:
+                analysis_settings = get_analysis_settings()
+            except ValueError as error:
+                raise EditingServiceError(503, "analysis_unconfigured", "Cloud analysis is not configured.") from error
+            source = await run_in_threadpool(
+                materialize_team_scan_source,
+                request.sourceUrl,
+                request.filename,
+                analysis_settings.max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+            job = detection_job_from_request(request, analysis_settings.job_ttl_seconds)
+            return await run_in_threadpool(run_analysis, job, analysis_settings, source.local_path)
+        except EditingServiceError as error:
+            return error_response(error)
+        except APIError as error:
+            return JSONResponse(
+                status_code=error.status_code,
+                content=ErrorResponse(errorCode=error.error_code, errorMessage=error.error_message, failureReason=error.error_message).model_dump(exclude_none=True),
+            )
+        except PipelineError as error:
+            return JSONResponse(
+                status_code=400,
+                content=ErrorResponse(errorCode=error.error_code, errorMessage=error.error_message, failureReason=error.error_message).model_dump(exclude_none=True),
+            )
+        finally:
+            if source is not None:
+                source.cleanup()
+
     @app.post("/v1/team-scan", response_model=ScanCloudAnalysisTeamsResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
     async def scan_source_teams(
         request: ScanCloudAnalysisSourceRequest,
@@ -1246,11 +1342,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 raise EditingServiceError(503, "team_scan_unconfigured", "Team scan is not configured.") from error
             prescan_settings = team_quick_prescan_settings(analysis_settings)
             source = await run_in_threadpool(
-                materialize_team_scan_source,
+                materialize_dispatch_source,
+                request.storageKey or request.sourceObjectKey,
                 request.sourceUrl,
                 request.filename,
                 prescan_settings.max_file_size_bytes,
-                resolved_settings.upload_root,
             )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
@@ -1364,6 +1460,17 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ):
         try:
             require_secret(x_hoops_editing_secret)
+            if request.idempotencyKey:
+                existing_job = load_idempotent_edit_job(request.idempotencyKey)
+                if existing_job is not None:
+                    require_edit_owner(existing_job, request.installId)
+                    emit_event(
+                        "edit_plan.replayed",
+                        editJobId=existing_job.edit_job_id,
+                        templateId=existing_job.plan.templateId,
+                        planTier=existing_job.request.planTier,
+                    )
+                    return existing_job.to_response()
             validate_create_request_policy(request)
             edit_job_id = "edit_" + uuid4().hex
             effective_request = maybe_apply_gpt_highlight_rerank(request)
@@ -1509,11 +1616,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     planTier=stored_edit_job.request.planTier,
                     revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
-                    sourceClips=filter_clips_for_team_selection(
-                        stored_edit_job.request.clips,
-                        stored_edit_job.request.teamSelection,
-                        include_review_only_uncertain=False,
-                    ),
+                    sourceClips=source_clips_for_edit_request(stored_edit_job.request),
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary,
                     revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
@@ -1556,11 +1659,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
             if stored_edit_job is not None:
                 edit_plan = stored_edit_job.plan
-                source_clips = filter_clips_for_team_selection(
-                    stored_edit_job.request.clips,
-                    stored_edit_job.request.teamSelection,
-                    include_review_only_uncertain=False,
-                )
+                source_clips = source_clips_for_edit_request(stored_edit_job.request)
                 source_object_key = stored_edit_job.request.sourceObjectKey
                 plan_tier = stored_edit_job.request.planTier
                 revenuecat_app_user_id = stored_edit_job.request.revenueCatAppUserID

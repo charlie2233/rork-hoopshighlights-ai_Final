@@ -4,20 +4,31 @@ import asyncio
 from typing import Awaitable, Callable, Protocol
 
 from .config import Settings
-from .models import StoredJob
+from .models import StoredAsset, StoredJob
 
 
 class TaskDispatcher(Protocol):
     async def enqueue_process(self, job: StoredJob) -> None:
         ...
 
+    async def enqueue_post_upload(self, asset: StoredAsset) -> None:
+        ...
+
 
 class InlineTaskDispatcher:
-    def __init__(self, process_callback: Callable[[str], Awaitable[None]]) -> None:
+    def __init__(
+        self,
+        process_callback: Callable[[str], Awaitable[object]],
+        post_upload_callback: Callable[[str], Awaitable[object]],
+    ) -> None:
         self._process_callback = process_callback
+        self._post_upload_callback = post_upload_callback
 
     async def enqueue_process(self, job: StoredJob) -> None:
         await self._process_callback(job.job_id)
+
+    async def enqueue_post_upload(self, asset: StoredAsset) -> None:
+        await self._post_upload_callback(asset.asset_id)
 
 
 class CloudTasksDispatcher:
@@ -28,17 +39,17 @@ class CloudTasksDispatcher:
         self._client = tasks_module.CloudTasksClient()
 
     async def enqueue_process(self, job: StoredJob) -> None:
-        await asyncio.to_thread(self._enqueue_process_sync, job)
+        await asyncio.to_thread(self._enqueue_path_sync, f"/v1/internal/process/{job.job_id}")
 
-    def _enqueue_process_sync(self, job: StoredJob) -> None:
+    async def enqueue_post_upload(self, asset: StoredAsset) -> None:
+        await asyncio.to_thread(self._enqueue_path_sync, f"/v1/internal/assets/{asset.asset_id}/process")
+
+    def _enqueue_path_sync(self, path: str) -> None:
         parent = self._settings.cloud_tasks_parent
         if not parent:
             raise RuntimeError("HOOPS_GCP_PROJECT_ID must be configured for Cloud Tasks dispatch.")
 
-        process_url = "{base}/v1/internal/process/{job_id}".format(
-            base=self._settings.cloud_run_base_url,
-            job_id=job.job_id,
-        )
+        process_url = f"{self._settings.cloud_run_base_url}{path}"
         headers = {"Content-Type": "application/json"}
         if self._settings.internal_process_secret:
             headers["X-Hoops-Internal-Secret"] = self._settings.internal_process_secret

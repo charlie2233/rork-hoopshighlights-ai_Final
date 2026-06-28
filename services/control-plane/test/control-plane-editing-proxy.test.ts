@@ -109,11 +109,33 @@ test("edit job creation proxies to internal editing service with shared secret",
       editJobId: "edit_123",
       videoId: "video_123",
       analysisJobId: "analysis_123",
+      assetId: "asset_123",
+      sourceObjectKey: "uploads/job/source.mp4",
+      sourceClipIds: ["clip_1"],
       status: "plan_ready",
       preset: "personal_highlight",
+      editIntent: {
+        schemaVersion: "edit-intent-v1",
+        source: "client",
+        style: "defense_focus",
+        pace: "fast",
+        audioPreference: "music_forward",
+        chronology: "best_first",
+        captionDensity: "high",
+        hardConstraints: {
+          requireVisibleOutcome: true,
+          requireFullPlayContext: true,
+          rejectDuplicates: true,
+          rejectDeadBall: true,
+          defenseOnly: true,
+          selectedTeamOnly: false,
+          maxCaptionCharacters: 24
+        }
+      },
       targetDurationSeconds: 30,
       aspectRatio: "9:16",
       clipCount: 2,
+      candidateClipCount: 1,
       validationErrors: []
     });
   };
@@ -127,12 +149,33 @@ test("edit job creation proxies to internal editing service with shared secret",
         videoId: "video_123",
         analysisJobId: "analysis_123",
         installId: "install-local-001",
+        assetId: "asset_123",
         sourceObjectKey: "uploads/job/source.mp4",
+        sourceClipIds: ["clip_1"],
         preset: "personal_highlight",
         targetDurationSeconds: 30,
         aspectRatio: "9:16",
         planTier: "free",
         userPrompt: "Make it more hype and focus on defense.",
+        editIntent: {
+          schemaVersion: "edit-intent-v1",
+          source: "client",
+          style: "defense_focus",
+          pace: "fast",
+          audioPreference: "music_forward",
+          chronology: "best_first",
+          captionDensity: "high",
+          hardConstraints: {
+            requireVisibleOutcome: true,
+            requireFullPlayContext: true,
+            rejectDuplicates: true,
+            rejectDeadBall: true,
+            defenseOnly: true,
+            selectedTeamOnly: false,
+            maxCaptionCharacters: 24
+          }
+        },
+        idempotencyKey: "idem-edit-create-001",
         clips: []
       },
       { "x-trace-id": "trace-editing-create" },
@@ -148,7 +191,11 @@ test("edit job creation proxies to internal editing service with shared secret",
     assert.equal(seen[0]!.url, "http://editing.local/v1/edit-jobs");
     assert.equal(seen[0]!.headers["x-hoops-editing-secret"], controlPlane.env.EDITING_SHARED_SECRET);
     assert.equal(seen[0]!.headers["x-hoops-install-id"], "install-local-001");
+    assert.equal(seen[0]!.body.assetId, "asset_123");
+    assert.deepEqual(seen[0]!.body.sourceClipIds, ["clip_1"]);
     assert.equal(seen[0]!.body.userPrompt, "Make it more hype and focus on defense.");
+    assert.equal((seen[0]!.body.editIntent as Record<string, unknown>).style, "defense_focus");
+    assert.equal(seen[0]!.body.idempotencyKey, "idem-edit-create-001");
   } finally {
     globalThis.fetch = originalFetch;
   }

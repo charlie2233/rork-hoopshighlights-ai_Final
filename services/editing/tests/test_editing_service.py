@@ -34,7 +34,7 @@ from app.editing import (  # noqa: E402
     validate_edit_plan,
     validate_template_registry,
 )
-from app.models import CloudAnalysisResult, CloudDiagnostics, TeamOption  # noqa: E402
+from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, TeamOption  # noqa: E402
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.gpt_reranker import GPTEditPlanPatchAttempt  # noqa: E402
@@ -175,6 +175,27 @@ class EditingServiceTests(unittest.TestCase):
             clips=[_clip("c1", 0.0, "Fast Break", 0.95), _clip("c2", 8.0, "Made Shot", 0.9)],
         )
 
+    def _structured_edit_intent(self, *, style: str = "defense_focus") -> dict:
+        return {
+            "schemaVersion": "edit-intent-v1",
+            "source": "client",
+            "style": style,
+            "pace": "fast",
+            "audioPreference": "music_forward",
+            "chronology": "best_first",
+            "captionDensity": "high",
+            "hardConstraints": {
+                "requireVisibleOutcome": True,
+                "requireFullPlayContext": True,
+                "rejectDuplicates": True,
+                "rejectDeadBall": True,
+                "defenseOnly": style == "defense_focus",
+                "selectedTeamOnly": False,
+                "maxCaptionCharacters": 24,
+            },
+            "promptSummary": "Prefer defense stops, visible outcomes, and hype pacing.",
+        }
+
     def _render_payload(self, edit_request: CreateEditJobRequest) -> dict:
         edit_job = build_edit_job(edit_request, "edit_service_test")
         self.assertFalse(edit_job.validation_errors)
@@ -294,6 +315,52 @@ class EditingServiceTests(unittest.TestCase):
         self.assertIs(apply_scan.call_args.args[3], prescan_settings)
         self.assertEqual(cleanup_calls, [True])
 
+    def test_team_scan_endpoint_prefers_source_object_key_without_signed_url(self) -> None:
+        settings = self._settings(shared_secret="editing-secret")
+        source_key = "uploads/install/object-key-video.mp4"
+        source_path = self._temp_dir / source_key
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b"fake object video bytes")
+        client = TestClient(create_app(settings))
+
+        team = TeamOption(
+            teamId="team_dark",
+            label="Dark jerseys",
+            colorLabel="black",
+            primaryColorHex="#111111",
+            confidence=0.9,
+            source="quick_scan",
+        )
+
+        with (
+            patch.object(editing_main, "materialize_team_scan_source", create=True) as materialize_url,
+            patch.object(editing_main, "apply_team_quick_scan", return_value=([], [team], True), create=True) as apply_scan,
+        ):
+            response = client.post(
+                "/v1/team-scan",
+                headers={"x-hoops-inference-secret": "editing-secret"},
+                json={
+                    "jobId": "job_team_scan_object",
+                    "requestId": "request-team-scan-object",
+                    "uploadTraceId": "upload-trace-team-scan-object",
+                    "traceId": "trace-team-scan-object",
+                    "installId": "install-team-scan-object",
+                    "sourceObjectKey": source_key,
+                    "filename": "video.mp4",
+                    "contentType": "video/mp4",
+                    "durationSeconds": 24,
+                    "appVersion": "1.0.0",
+                    "analysisVersion": "phase-team",
+                    "schemaVersion": "2026-05-30",
+                    "modelVersion": "worker-model-v1",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "scanned")
+        materialize_url.assert_not_called()
+        self.assertEqual(apply_scan.call_args.args[0], source_path)
+
     def test_analyze_endpoint_accepts_worker_dispatch_and_posts_callback(self) -> None:
         client = TestClient(create_app(self._settings(shared_secret="editing-secret")))
         local_source = self._temp_dir / "analysis-source.mp4"
@@ -393,6 +460,121 @@ class EditingServiceTests(unittest.TestCase):
         self.assertNotIn("sourceObjectKey", serialized_heartbeats)
         self.assertNotIn("https://uploads.example.test", serialized_heartbeats)
 
+    def test_detection_v2_analyze_returns_multiple_candidate_clips(self) -> None:
+        client = TestClient(create_app(self._settings(shared_secret="editing-secret")))
+        local_source = self._temp_dir / "detection-source.mp4"
+        local_source.write_bytes(b"fake video bytes")
+        cleanup_calls: list[bool] = []
+
+        class Source:
+            local_path = local_source
+
+            def cleanup(self) -> None:
+                cleanup_calls.append(True)
+
+        clips = [
+            CloudClip(
+                startTime=0.0,
+                endTime=4.8,
+                eventCenter=2.3,
+                confidence=0.88,
+                label="Dunk",
+                action="Dunk",
+                canonicalLabel="dunk",
+                eventFamily="shot",
+                eventSubtype="finish",
+                shotSubtype="dunk",
+                outcome="made",
+                audioScore=0.7,
+                visualScore=0.8,
+                motionScore=0.82,
+                combinedScore=0.86,
+                detectionMethod="cloud",
+                shouldAutoKeep=True,
+                shouldEnableSlowMotion=True,
+                rankScore=0.9,
+                pipelineStage="merged_candidate",
+                pipelineVersion="detection-pipeline-v2",
+            ),
+            CloudClip(
+                startTime=8.0,
+                endTime=13.5,
+                eventCenter=10.5,
+                confidence=0.79,
+                label="Steal",
+                action="Steal",
+                canonicalLabel="steal",
+                eventFamily="defense",
+                eventSubtype="steal",
+                outcome="uncertain",
+                audioScore=0.45,
+                visualScore=0.68,
+                motionScore=0.77,
+                combinedScore=0.76,
+                detectionMethod="cloud",
+                shouldAutoKeep=True,
+                shouldEnableSlowMotion=False,
+                rankScore=0.8,
+                pipelineStage="merged_candidate",
+                pipelineVersion="detection-pipeline-v2",
+            ),
+        ]
+        result = CloudAnalysisResult(
+            clipCount=2,
+            clips=clips,
+            diagnostics=CloudDiagnostics(
+                processingMs=18,
+                backendModelVersion="editing-cloud-v1+detection-pipeline-v2",
+                usedVideoIntelligence=False,
+                usedGeminiRelabeling=False,
+                candidateSegments=2,
+                finalSegments=2,
+                proposalSegments=2,
+                embeddedSegments=2,
+                classifiedSegments=2,
+                mergedCandidateSegments=2,
+                usedSemanticRerank=True,
+                taxonomyVersion="basketball-detection-taxonomy-v1",
+            ),
+            resultConfidence=0.835,
+            candidateClips=clips,
+        )
+
+        with (
+            patch.object(editing_main, "materialize_team_scan_source", return_value=Source(), create=True) as materialize,
+            patch.object(editing_main, "run_analysis", return_value=result, create=True) as run_cloud_analysis,
+        ):
+            response = client.post(
+                "/v2/detection/analyze",
+                headers={"x-hoops-inference-secret": "editing-secret"},
+                json={
+                    "jobId": "job_detection",
+                    "requestId": "request-detection",
+                    "uploadTraceId": "upload-trace-detection",
+                    "traceId": "trace-detection",
+                    "installId": "install-detection",
+                    "sourceUrl": "https://uploads.example.test/signed/video.mp4?secret=hidden",
+                    "sourceObjectKey": "uploads/install/video.mp4",
+                    "filename": "video.mp4",
+                    "contentType": "video/mp4",
+                    "durationSeconds": 24,
+                    "appVersion": "1.0.0",
+                    "analysisVersion": "detection-v2",
+                    "schemaVersion": "2026-06-23",
+                    "modelVersion": "worker-model-v2",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["clipCount"], 2)
+        self.assertEqual(len(payload["candidateClips"]), 2)
+        self.assertEqual(payload["candidateClips"][0]["canonicalLabel"], "dunk")
+        self.assertEqual(payload["diagnostics"]["usedSemanticRerank"], True)
+        materialize.assert_called_once()
+        run_cloud_analysis.assert_called_once()
+        self.assertEqual(cleanup_calls, [True])
+
     def test_worker_callbacks_use_service_user_agent(self) -> None:
         captured: list[dict] = []
 
@@ -477,6 +659,77 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(plan_payload["plan"]["templateId"], "personal_highlight_v1")
         self.assertEqual(plan_payload["plan"]["captionStyle"], "bold_hype")
         self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
+
+    def test_create_edit_job_accepts_asset_source_clip_ids_and_structured_intent(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        request_payload = self._edit_request(source_key="uploads/test/source.mp4").model_dump(mode="json")
+        request_payload.update(
+            {
+                "assetId": "asset_123",
+                "sourceClipIds": ["c2"],
+                "editIntent": self._structured_edit_intent(),
+                "idempotencyKey": "idem-edit-contract-001",
+                "userPrompt": "Defense stops only, make it hype.",
+            }
+        )
+
+        response = client.post("/v1/edit-jobs", json=request_payload)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assetId"], "asset_123")
+        self.assertEqual(payload["sourceObjectKey"], "uploads/test/source.mp4")
+        self.assertEqual(payload["sourceClipIds"], ["c2"])
+        self.assertEqual(payload["candidateClipCount"], 2)
+        self.assertEqual([clip["id"] for clip in payload["candidateClips"]], ["c1", "c2"])
+        self.assertEqual(payload["clipCount"], 1)
+        self.assertEqual(payload["editIntent"]["schemaVersion"], "edit-intent-v1")
+        self.assertEqual(payload["editIntent"]["style"], "defense_focus")
+
+        plan_response = client.get(
+            f"/v1/edit-jobs/{payload['editJobId']}/plan",
+            params={"installId": request_payload["installId"]},
+        )
+        self.assertEqual(plan_response.status_code, 200)
+        plan_payload = plan_response.json()
+        self.assertEqual(plan_payload["assetId"], "asset_123")
+        self.assertEqual(plan_payload["sourceClipIds"], ["c2"])
+        self.assertEqual([clip["clipId"] for clip in plan_payload["plan"]["clips"]], ["c2"])
+        self.assertEqual(plan_payload["editIntent"]["style"], "defense_focus")
+
+    def test_create_edit_job_idempotency_replays_after_app_reload(self) -> None:
+        settings = self._settings()
+        request_payload = self._edit_request(source_key="uploads/test/source.mp4").model_dump(mode="json")
+        request_payload.update(
+            {
+                "assetId": "asset_replay_123",
+                "sourceClipIds": ["c1"],
+                "editIntent": self._structured_edit_intent(style="personal_highlight"),
+                "idempotencyKey": "idem-edit-reload-001",
+            }
+        )
+
+        first_client = TestClient(create_app(settings))
+        first_response = first_client.post("/v1/edit-jobs", json=request_payload)
+        self.assertEqual(first_response.status_code, 200)
+        first_payload = first_response.json()
+
+        reloaded_client = TestClient(create_app(settings))
+        replay_response = reloaded_client.post("/v1/edit-jobs", json=request_payload)
+        self.assertEqual(replay_response.status_code, 200)
+        replay_payload = replay_response.json()
+        self.assertEqual(replay_payload["editJobId"], first_payload["editJobId"])
+        self.assertEqual(replay_payload["assetId"], "asset_replay_123")
+        self.assertEqual(replay_payload["sourceClipIds"], ["c1"])
+        self.assertEqual(replay_payload["candidateClipCount"], 2)
+        self.assertEqual([clip["id"] for clip in replay_payload["candidateClips"]], ["c1", "c2"])
+
+        plan_response = reloaded_client.get(
+            f"/v1/edit-jobs/{replay_payload['editJobId']}/plan",
+            params={"installId": request_payload["installId"]},
+        )
+        self.assertEqual(plan_response.status_code, 200)
+        self.assertEqual(plan_response.json()["sourceClipIds"], ["c1"])
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_create_edit_job_expands_thin_shot_context_even_when_gpt_disabled(self) -> None:

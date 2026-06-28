@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "clip-accuracy-v1",
+  "source": "agent-a-fixture",
+  "evaluationK": 3,
+  "cases": [
+    {
+      "caseId": "fixture-game-1",
+      "videoId": "video_fixture_1",
+      "analysisJobId": "job_fixture_1",
+      "teamScanJobId": "scan_fixture_1",
+      "teamMode": "team",
+      "selectedTeamId": "team_dark",
+      "detectedTeams": [
+        {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "confidence": 0.94}
+      ],
+      "clips": [
+        {
+          "expected": {"teamId": "team_dark", "isHighlight": true, "eventType": "made_three", "start": 10.0, "end": 14.0, "outcome": "made"},
+          "prediction": {
+            "keep": true,
+            "includeForReview": true,
+            "rank": 1,
+            "start": 9.5,
+            "end": 14.5,
+            "eventCenter": 12.0,
+            "teamAttribution": {"teamId": "team_dark", "confidence": 0.95, "evidenceFrameRefs": ["release", "rim"], "evidenceRoleGroups": ["action", "outcome"]},
+            "outcome": "made",
+            "qualitySignals": {"ballPathVisible": true, "rimResultVisible": true},
+            "shotResultEvidence": {"releaseToRimContinuity": "continuous", "rimResultEvidence": "made_visible", "outcomeConfidence": 0.92, "rimEntrySequence": "visible_entry", "rimEntrySequenceConfidence": 0.92, "ballApproachFrameRole": "rimApproach", "rimEntryFrameRole": "rimEntry", "ballBelowRimOrNetFrameRole": "belowRim"},
+            "shotTrackingEvidence": {"ballVisibleFrameRoles": ["release", "rimApproach", "rimEntry", "belowRim"], "rimVisibleFrameRoles": ["rimApproach", "rimEntry", "belowRim"], "resultFrameRole": "rimEntry", "ballEntersRimFrameRole": "rimEntry", "trajectoryContinuity": "continuous"},
+            "reviewFeedbackTags": ["wrong_label"],
+            "duplicateGroup": "shot-a"
+          }
+        },
+        {
+          "expected": {"teamId": "team_dark", "isHighlight": true, "eventType": "steal", "start": 20.0, "end": 23.0},
+          "prediction": {
+            "keep": true,
+            "includeForReview": true,
+            "rank": 2,
+            "start": 20.0,
+            "end": 23.0,
+            "eventCenter": 21.5,
+            "teamAttribution": {"teamId": "team_dark", "confidence": 0.91, "evidenceFrameRefs": ["challenge", "recovery"], "evidenceRoleGroups": ["event", "outcome"]},
+            "outcome": "steal",
+            "qualitySignals": {"setupVisible": true, "eventVisible": true, "outcomeVisible": true, "ballPathVisible": true, "playerControlVisible": true, "cleanCamera": true, "fullPlayContext": true},
+            "shotResultEvidence": {"releaseToRimContinuity": "missing", "rimResultEvidence": "unclear", "outcomeConfidence": 0.86, "rimEntrySequence": "unclear"},
+            "shotTrackingEvidence": {"ballVisibleFrameRoles": ["challenge", "possessionChange", "recovery"], "resultFrameRole": "recovery"},
+            "reviewFeedbackTags": ["low_quality"],
+            "duplicateGroup": "shot-a"
+          }
+        },
+        {
+          "expected": {"teamId": "team_light", "isHighlight": true, "eventType": "layup", "start": 30.0, "end": 34.0},
+          "prediction": {
+            "keep": true,
+            "includeForReview": true,
+            "rank": 3,
+            "start": 30.0,
+            "end": 34.0,
+            "eventCenter": 32.0,
+            "teamAttribution": {"teamId": "team_light", "confidence": 0.93},
+            "reviewFeedbackTags": ["wrong_team"]
+          }
+        },
+        {
+          "expected": {"teamId": "team_dark", "isHighlight": true, "eventType": "block", "start": 40.0, "end": 43.0},
+          "prediction": {
+            "keep": true,
+            "includeForReview": true,
+            "rank": 4,
+            "start": 39.0,
+            "end": 44.0,
+            "eventCenter": 41.5,
+            "teamAttribution": {"teamId": "team_dark", "confidence": 0.9, "evidenceFrameRefs": ["challenge", "block"], "evidenceRoleGroups": ["event", "outcome"]},
+            "reviewFeedbackTags": ["duplicate"]
+          }
+        },
+        {
+          "expected": {"teamId": "team_dark", "isHighlight": false, "eventType": "bad_window", "start": 50.0, "end": 51.0},
+          "prediction": {
+            "keep": false,
+            "includeForReview": false,
+            "rank": 5,
+            "reviewFeedbackTags": ["bad_window"]
+          }
+        }
+      ]
+    }
+  ]
+}
