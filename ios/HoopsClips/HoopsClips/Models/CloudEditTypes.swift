@@ -1411,6 +1411,8 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return "The render worker lost its lock. Try again in a moment."
         case "download_url_refresh_failed":
             return "HoopClips could not refresh the download link. Try again in a moment."
+        case "empty_clip_list":
+            return "HoopClips could not find a clear basketball play to render. Try a real game clip with the play visible from setup through the result, or keep stronger clips in Review and start AI Edit again."
         case "ai_edit_disabled":
             return "Cloud AI editing is temporarily paused. Your video and clips are safe; try again after HoopClips re-enables editing."
         case "ai_edit_live_render_disabled":

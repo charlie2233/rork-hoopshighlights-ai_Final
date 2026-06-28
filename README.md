@@ -2,32 +2,39 @@
 
 Hoopclips is a cloud-first AI video editing product for basketball clips. The target product is HoopClips AI Edit Agent: users upload video from iOS, choose an edit style, review generated clips/edit plans, request a cloud render, preview the finished MP4, then download, save, share, or open the export in editors such as CapCut, iMovie, Adobe, Files, or Photos.
 
-Cloud analysis, AI edit planning, and final rendering are the intended production architecture. The current public release posture keeps cloud disabled as a safety gate until production auth, storage, observability, render reliability, and Phase 4h data-truth gates are cleared.
+Cloud analysis, AI edit planning, and final rendering are the intended production architecture. Internal beta builds can point at the staging cloud stack, while public release remains gated until production auth, storage, observability, render reliability, and the data-truth gates are cleared.
 
 ## Current Launch Posture
 
-- Current public-safe fallback: iOS app with local import, review, export, save, and on-device analysis while cloud gates stay locked.
+- PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`; the enhancement integration workstream is complete on `main`.
+- Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, and deterministic Worker render smoke passed for the merged SHA.
+- Remaining beta blocker: iOS signing/TestFlight archive is blocked by Apple Developer account license/provisioning state, not by cloud integration code. See `TESTFLIGHT_BLOCKER.md`.
+- Current public-safe fallback: iOS app with local import, review, export, save, and on-device analysis while public cloud gates stay locked.
 - Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
-- Cloud ML/rendering path: gated off for public launch until the cutover rules below are satisfied.
+- Cloud ML/rendering path: available to internal staging/TestFlight only after signing succeeds; gated off for public launch until the cutover rules below are satisfied.
 - Release bundle ID: `atrak.charlie.hoopsclips`.
-- Release cloud mode: `HOOPS_CLOUD_LAUNCH_MODE = disabled`.
-- Release cloud base URL: empty.
+- Internal staging cloud mode: `HOOPS_CLOUD_LAUNCH_MODE = internal_only`.
+- Internal staging cloud base URL: `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`.
 - Release email/password auth: Firebase Auth via `HOOPS_FIREBASE_AUTH_API_KEY`.
 - Phase 4h: labeling-only; no retrain, smoke, medium batch, or threshold changes until confirmed labels land.
 
 ## Latest Verified State
 
-Last local verification: April 26, 2026.
+Last launch-gate verification: June 28, 2026.
 
-- iOS unit tests: `38/38` passed.
-- iOS UI tests: `7/7` passed.
-- Backend guardrail tests: `6/6` passed.
-- Release simulator build: passed.
-- Release physical-device build: passed on the connected iPhone.
-- Release physical-device install and command launch: passed for `atrak.charlie.hoopsclips`.
-- GitHub Actions `Release Secrets Preflight`: passed on `main` in run `24968469454`.
+- `main`: `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
+- PR #43: merged, `Integrate HoopClips enhancement workstream`.
+- GitHub Actions on merged `main`:
+  - `Cloud Edit Deploy Preflight` push run `28317247578`: success.
+  - `iOS Internal TestFlight Upload` push/codecheck run `28317247560`: success.
+  - `Cloud Edit Deploy Preflight` credential-check run `28317383878`: success.
+  - `Cloud Edit Deploy Preflight` deploy run `28317412159`: success.
+  - `iOS Internal TestFlight Upload` archive run `28317649241`: failed during signed archive because Apple Developer Program license/provisioning must be repaired.
+- Live staging version proof: Worker `/v1/editing/version` and direct editing `/version` reported the merged SHA and required AI Edit/GPT feature flags.
+- Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
+- Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.
 
-Known launch blocker: the remaining human real-device smoke still needs to complete purchase/restore, Photos import, Files import, on-device analysis, review, export, save to Photos, and legal-link checks. RevenueCat configuration previously returned `Unable to load subscription options`, so App Store Connect and RevenueCat product/offering wiring must be verified before submission.
+Known beta launch blocker: the Apple account holder must accept the current Apple Developer Program License Agreement, verify App Store Connect agreements, and ensure valid provisioning for bundle ID `atrak.charlie.hoopsclips`. After that, rerun the archive/upload workflow and complete the real-basketball TestFlight smoke checklist.
 
 ## Repo Layout
 
@@ -35,7 +42,9 @@ Known launch blocker: the remaining human real-device smoke still needs to compl
 - `ios/backend/` - internal cloud-analysis backend scaffold and future cloud editing service home.
 - `docs/architecture/video_editing_cloud_backend.md` - cloud-first HoopClips AI Edit Agent architecture.
 - `docs/video_editing_repo_audit.md` - current repo audit for the cloud editing pivot.
+- `docs/phase_beta_launch_gates_after_pr43.md` - post-merge beta launch gate report and real-basketball TestFlight smoke checklist.
 - `skills/hoopclips-ai-edit-agent/SKILL.md` - repo-local Codex skill for cloud-backend edit-agent work.
+- `TESTFLIGHT_BLOCKER.md` - Apple account/license/provisioning blocker handoff.
 - `ios/docs/checklists/public-launch-cloud-gated.md` - public launch checklist.
 - `ios/docs/runbooks/public-launch-cloud-gated.md` - launch-day support and fallback runbook.
 - `ios/docs/runbooks/firebase-auth-setup.md` - Firebase email/password auth setup.
@@ -126,9 +135,12 @@ gh run watch "$run_id" --exit-status
 Before App Store submission:
 
 - Confirm GitHub `production` secrets are present for signing, RevenueCat, Google, Firebase auth, and telemetry.
+- Resolve the Apple account/license/provisioning blocker in `TESTFLIGHT_BLOCKER.md`.
+- Rerun the internal archive/upload workflow from `main` after Apple provisioning is repaired.
+- Complete the real-basketball TestFlight smoke checklist in `docs/phase_beta_launch_gates_after_pr43.md`.
 - Confirm Firebase Authentication has Email/Password enabled and the App Review account works in Release.
 - Confirm `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` resolve in the Release build.
-- Confirm Release Settings shows cloud is disabled for the current fallback launch.
+- Confirm public Release Settings keeps public cloud gates locked unless a separate public cutover decision has been made.
 - Complete the real-device smoke and update `ios/docs/reports/release-device-smoke-report.md`.
 - Fix RevenueCat product/offering/package wiring if subscription options still fail to load.
 - Keep cloud ML and cloud rendering disabled for public users until the cloud cutover rules pass.
