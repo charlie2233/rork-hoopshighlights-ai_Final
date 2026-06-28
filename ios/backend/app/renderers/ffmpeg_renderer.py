@@ -13,7 +13,7 @@ from ..models import APIError
 
 
 RENDERER_VERSION = "ffmpeg-renderer-v1.3"
-BRANDED_OUTRO_BACKGROUND = "0xf97316"
+BRANDED_OUTRO_BACKGROUND = "0x1b1208"
 BRANDED_OUTRO_ACCENT = "0xfff7ed"
 BRANDED_OUTRO_SHADOW = "0x07111f"
 RENDER_SLOW_MOTION_SEGMENTS = False
@@ -153,8 +153,8 @@ class FfmpegRenderer:
                 "templateId": plan.templateId,
                 "captionStyle": template.captionStyle.styleId,
                 "templateSignature": template_signature,
-                "outroBackground": "branded_court_orange",
-                "outroVisualStyle": "bright_end_card_no_black_slate",
+                "outroBackground": "branded_slate",
+                "outroVisualStyle": "branded_end_card_no_black_screen",
                 "watermarkAssetId": plan.watermark.assetId or template.watermarkProfile.assetId,
                 "outroAssetId": plan.outro.assetId or template.outroProfile.assetId,
                 "clipCount": len(plan.clips),

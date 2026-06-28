@@ -149,11 +149,14 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         pipeline_summary = external_pipeline.summary
         candidate_segments = len(external_clips)
     else:
-        native_clips, native_candidate_segments, native_pipeline_summary = _run_native_candidate_detection(
-            source_path,
-            duration_seconds,
-            settings,
-            clip_limit=candidate_pool_limit,
+        native_clips, native_candidate_segments, native_pipeline_summary = _normalize_native_detection_result(
+            _run_native_candidate_detection(
+                source_path,
+                duration_seconds,
+                settings,
+                clip_limit=candidate_pool_limit,
+            ),
+            settings=expanded_settings,
         )
         if detection_provider:
             provider_tags.append(detection_provider)
@@ -294,11 +297,14 @@ def build_team_quick_scan_candidate_clips(
     candidate_limit = _team_quick_scan_candidate_pool_limit(settings)
     try:
         probed_duration = _probe_duration(source_path, fallback=duration_seconds)
-        clips, _, _ = _run_native_candidate_detection(
-            source_path,
-            probed_duration,
-            settings,
-            clip_limit=candidate_limit,
+        clips, _, _ = _normalize_native_detection_result(
+            _run_native_candidate_detection(
+                source_path,
+                probed_duration,
+                settings,
+                clip_limit=candidate_limit,
+            ),
+            settings=settings,
         )
         return _normalize_analysis_clips(
             clips,
@@ -329,6 +335,23 @@ def _settings_with_candidate_limit(settings: Settings, clip_limit: int) -> Setti
     copied = copy(settings)
     copied.max_returned_clips = clip_limit
     return copied
+
+
+def _normalize_native_detection_result(result, *, settings: Settings) -> tuple[list[CloudClip], int, DetectionPipelineSummary]:
+    if isinstance(result, tuple) and len(result) == 3:
+        clips, candidate_segments, summary = result
+        return list(clips), int(candidate_segments), summary
+    if isinstance(result, tuple) and len(result) == 2:
+        clips, candidate_segments = result
+        clip_list = list(clips)
+        summary = pipeline_summary_for_clips(
+            clip_list,
+            taxonomy_version="legacy-native",
+            model_version=getattr(settings, "backend_model_version", "native"),
+            fallback_reason="legacy_native_detection_result",
+        )
+        return clip_list, int(candidate_segments), summary
+    raise ValueError("native detection must return clips/candidate count with optional pipeline summary")
 
 
 def _team_key(value: Optional[str]) -> Optional[str]:

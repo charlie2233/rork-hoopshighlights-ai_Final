@@ -324,7 +324,11 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
         key = storage_key or source_object_key
         if key:
-            return await runtime.upload_storage.materialize_storage_key(key, filename)
+            try:
+                return await runtime.upload_storage.materialize_storage_key(key, filename)
+            except APIError:
+                if not source_url:
+                    raise
 
         if source_url:
             return await materialize_remote_source(

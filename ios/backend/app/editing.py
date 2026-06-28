@@ -2618,10 +2618,11 @@ def select_best_clips(
             )
 
     for clip in selection_order:
-        if duration_so_far >= target_seconds:
-            break
+        clip_duration = min(max_clip_seconds, clip.duration)
+        if selected and duration_so_far + clip_duration > target_seconds:
+            continue
         selected.append(clip)
-        duration_so_far += min(max_clip_seconds, clip.duration)
+        duration_so_far += clip_duration
 
     if not story_ordered:
         selected = reserve_defensive_highlight_families(selected, ranked_candidates, target_seconds, max_clip_seconds)

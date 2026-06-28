@@ -94,65 +94,71 @@ def annotate_external_clips(
         proposal_score = _clip_proposal_score(clip)
         classifier_score = clamp(clip.confidence, 0.0, 1.0)
         final_score = clamp((proposal_score * 0.34) + (clip.combinedScore * 0.36) + (classifier_score * 0.3), 0.0, 1.0)
+        enriched = _apply_taxonomy(
+            clip,
+            mapping=mapping,
+            confidence=final_score,
+            rank=rank,
+            top_labels=((clip.label, clip.confidence),),
+            raw_model_version=model_version,
+            provenance=CloudClipProvenance(
+                proposal=DetectionStageProvenance(
+                    stage="proposal",
+                    source=source,
+                    status="applied",
+                    score=proposal_score,
+                    rank=rank,
+                    details={
+                        "startTime": clip.startTime,
+                        "endTime": clip.endTime,
+                        "eventCenter": clip.eventCenter,
+                    },
+                ),
+                embeddingRerank=DetectionStageProvenance(
+                    stage="embedding_rerank",
+                    source="external_provider",
+                    status="skipped",
+                    modelVersion=model_version,
+                    score=clip.rankScore,
+                    rank=rank,
+                ),
+                classifier=DetectionStageProvenance(
+                    stage="classifier",
+                    source=source,
+                    status="applied",
+                    modelVersion=model_version,
+                    rawLabel=clip.label,
+                    score=clip.confidence,
+                ),
+                merge=DetectionStageProvenance(
+                    stage="merge",
+                    source="temporal_merge",
+                    status="applied",
+                    score=final_score,
+                    rank=rank,
+                ),
+                taxonomy=DetectionStageProvenance(
+                    stage="taxonomy",
+                    source=resolved_taxonomy.schema_version,
+                    status="applied",
+                    rawLabel=clip.label,
+                    details={"matchedAlias": mapping.matched_alias},
+                ),
+            ),
+            scores=CloudClipScores(
+                proposalScore=proposal_score,
+                embeddingScore=clip.rankScore or clip.combinedScore,
+                classifierScore=classifier_score,
+                mergeScore=final_score,
+                finalScore=final_score,
+            ),
+        )
         annotated.append(
-            _apply_taxonomy(
-                clip,
-                mapping=mapping,
-                confidence=final_score,
-                rank=rank,
-                top_labels=((clip.label, clip.confidence),),
-                raw_model_version=model_version,
-                provenance=CloudClipProvenance(
-                    proposal=DetectionStageProvenance(
-                        stage="proposal",
-                        source=source,
-                        status="applied",
-                        score=proposal_score,
-                        rank=rank,
-                        details={
-                            "startTime": clip.startTime,
-                            "endTime": clip.endTime,
-                            "eventCenter": clip.eventCenter,
-                        },
-                    ),
-                    embeddingRerank=DetectionStageProvenance(
-                        stage="embedding_rerank",
-                        source="external_provider",
-                        status="skipped",
-                        modelVersion=model_version,
-                        score=clip.rankScore,
-                        rank=rank,
-                    ),
-                    classifier=DetectionStageProvenance(
-                        stage="classifier",
-                        source=source,
-                        status="applied",
-                        modelVersion=model_version,
-                        rawLabel=clip.label,
-                        score=clip.confidence,
-                    ),
-                    merge=DetectionStageProvenance(
-                        stage="merge",
-                        source="temporal_merge",
-                        status="applied",
-                        score=final_score,
-                        rank=rank,
-                    ),
-                    taxonomy=DetectionStageProvenance(
-                        stage="taxonomy",
-                        source=resolved_taxonomy.schema_version,
-                        status="applied",
-                        rawLabel=clip.label,
-                        details={"matchedAlias": mapping.matched_alias},
-                    ),
-                ),
-                scores=CloudClipScores(
-                    proposalScore=proposal_score,
-                    embeddingScore=clip.rankScore or clip.combinedScore,
-                    classifierScore=classifier_score,
-                    mergeScore=final_score,
-                    finalScore=final_score,
-                ),
+            enriched.model_copy(
+                update={
+                    "label": clip.label,
+                    "action": clip.action or clip.label,
+                }
             )
         )
 
