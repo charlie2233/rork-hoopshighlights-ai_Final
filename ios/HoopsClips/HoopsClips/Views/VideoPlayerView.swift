@@ -225,6 +225,10 @@ struct VideoPlayerView: View {
                 guard clipCount > 0 else { return }
                 HoopsAccessibility.announce("\(clipCount) clips found. Review is ready.")
             }
+            .task(id: playerUnexpectedExitSummary) {
+                guard let summary = playerUnexpectedExitSummary else { return }
+                await autoDismissPassiveUnexpectedExitCard(summary)
+            }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
@@ -1256,22 +1260,12 @@ struct VideoPlayerView: View {
     }
 
     private func playerUnexpectedExitFriendlyMessage(for summary: String) -> String {
-        let lowercased = summary.lowercased()
-        if lowercased.contains("analysis was active") || lowercased.contains("analyzing") {
-            return "HoopClips closed while analysis was running. Stay on Player or reopen the app; Review should wait until clips are ready."
-        }
-        if lowercased.contains("upload") || lowercased.contains("background") {
-            return "HoopClips closed during upload/background work. Your upload proof is saved, and reopening refreshes progress."
-        }
-        if lowercased.contains("review") || lowercased.contains("no_reviewable_clips") {
-            return "Review was safely blocked because clips were not ready yet. Stay on Player while analysis finishes, then open Review."
-        }
-        return "The last session ended before a normal close. HoopClips saved a clean note so we can see the last screen and step."
+        PlayerRecoveryDisplayPolicy.friendlyMessage(for: summary)
     }
 
     private func unexpectedExitProofText(summary: String) -> String {
         [
-            "source=HoopClips Player recovery card",
+            "source=\(PlayerRecoveryDisplayPolicy.proofSource)",
             "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
             "appVersion=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String))",
             "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))",
@@ -1306,6 +1300,30 @@ struct VideoPlayerView: View {
     private func dismissUnexpectedExitCard(_ summary: String) {
         dismissedUnexpectedExitSummary = summary
         LaunchTelemetry.shared.recordStabilityCheckpoint("player.unexpected_exit_card_hidden")
+    }
+
+    @MainActor
+    private func autoDismissPassiveUnexpectedExitCard(_ summary: String) async {
+        guard PlayerRecoveryDisplayPolicy.shouldAutoDismiss(
+            videoLoaded: viewModel.isVideoLoaded,
+            importInProgress: viewModel.isVideoImportInProgress,
+            analysisIsAnalyzing: viewModel.analysisService.isAnalyzing,
+            clipCount: viewModel.clips.count
+        ) else { return }
+
+        try? await Task.sleep(nanoseconds: PlayerRecoveryDisplayPolicy.autoDismissDelayNanoseconds)
+        guard !Task.isCancelled,
+              playerUnexpectedExitSummary == summary,
+              PlayerRecoveryDisplayPolicy.shouldAutoDismiss(
+                  videoLoaded: viewModel.isVideoLoaded,
+                  importInProgress: viewModel.isVideoImportInProgress,
+                  analysisIsAnalyzing: viewModel.analysisService.isAnalyzing,
+                  clipCount: viewModel.clips.count
+              ) else {
+            return
+        }
+
+        dismissUnexpectedExitCard(summary)
     }
 
     private func featurePill(icon: String, text: String) -> some View {

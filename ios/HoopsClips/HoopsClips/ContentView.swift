@@ -598,9 +598,14 @@ struct ContentView: View {
     }
 
     private var shouldShowGlobalPipelineBanner: Bool {
-        (viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing)
-            && activeTab != .review
-            && !isRookieGuideVisible
+        PipelineBannerDisplayPolicy.shouldShow(
+            videoLoaded: viewModel.isVideoLoaded,
+            hasVideoURL: viewModel.videoURL != nil,
+            importInProgress: viewModel.isVideoImportInProgress,
+            analysisIsAnalyzing: viewModel.analysisService.isAnalyzing,
+            activeTabIsReview: activeTab == .review,
+            rookieGuideVisible: isRookieGuideVisible
+        )
     }
 
     private var isReviewWaitingForAnalysis: Bool {
@@ -626,12 +631,9 @@ struct ContentView: View {
         let liveUploadDetail = uploadProgressPipelineDetail(from: CloudAnalysisService.latestUploadProgressSummary())
             ?? CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: pipelineStatusMessage)
         let savedUploadDetail = savedUploadPipelineDetail(from: CloudAnalysisService.pendingBackgroundUploadManifestSummary())
-        let uploadDetail = [savedUploadDetail, liveUploadDetail]
-            .compactMap { $0 }
-            .prefix(2)
-            .joined(separator: " -> ")
         return uploadOptimizationPipelineDetail(
-            uploadDetail: uploadDetail.isEmpty ? nil : uploadDetail
+            liveUploadDetail: liveUploadDetail,
+            savedUploadDetail: savedUploadDetail
         )
     }
 
@@ -673,23 +675,16 @@ struct ContentView: View {
         return parts.joined(separator: " -> ")
     }
 
-    private func uploadOptimizationPipelineDetail(uploadDetail: String?) -> String? {
+    private func uploadOptimizationPipelineDetail(liveUploadDetail: String?, savedUploadDetail: String?) -> String? {
         let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(
             from: CloudAnalysisService.latestUploadSourceOptimizationSummary()
         )
         let fastUploadFact = CloudAnalysisProgressCopy.fastUploadModeFact()
-        let leadingFact = savingsFact ?? fastUploadFact
-
-        switch (leadingFact, uploadDetail) {
-        case let (savings?, detail?) where !detail.localizedCaseInsensitiveContains("saved "):
-            return "\(savings) -> \(detail)"
-        case let (savings?, _):
-            return savings
-        case (_, let detail?):
-            return detail
-        default:
-            return nil
-        }
+        return PipelineBannerDisplayPolicy.compactUploadDetail(
+            liveDetail: liveUploadDetail,
+            savedResumeDetail: savedUploadDetail,
+            optimizationFact: savingsFact ?? fastUploadFact
+        )
     }
 
     private func uploadProgressField(_ field: String, in summary: String) -> String? {
@@ -1343,6 +1338,7 @@ struct ContentView: View {
                 reviewRecoveryNotice = notice
             }
         }
+        scheduleReviewRecoveryNoticeDismiss(notice)
     }
 
     private func dismissReviewRecoveryNotice() {
@@ -1354,6 +1350,13 @@ struct ContentView: View {
             withAnimation(tabSelectionAnimation) {
                 reviewRecoveryNotice = nil
             }
+        }
+    }
+
+    private func scheduleReviewRecoveryNoticeDismiss(_ notice: ReviewRecoveryNotice) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            guard reviewRecoveryNotice == notice else { return }
+            dismissReviewRecoveryNotice()
         }
     }
 
