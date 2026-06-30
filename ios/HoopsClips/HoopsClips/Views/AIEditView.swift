@@ -219,6 +219,7 @@ struct AIEditView: View {
         VStack(spacing: 18) {
             heroCard
             compactExportSetupCard
+            aiEditPackageCard
             if showSetupControls {
                 smartSetupCard
                 stylePicker
@@ -472,6 +473,91 @@ struct AIEditView: View {
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
             .background(AppTheme.accentPurple.opacity(0.26), in: .rect(cornerRadius: 12))
+    }
+
+    private var aiEditPackageCard: some View {
+        let policy = activePolicy
+        let accent = policy.planTier.isFree ? AppTheme.courtBlue : AppTheme.successGreen
+        return VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(accent.opacity(0.18))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: policy.planTier.isFree ? "wand.and.stars" : "bolt.badge.checkmark.fill")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(accent)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("AI Edit package")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(policy.displayName) - \(policy.queueTitle)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(accent)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Text(policy.maxOutputResolution)
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(accent.opacity(0.20), in: Capsule())
+            }
+
+            HStack(spacing: 8) {
+                aiEditPackageChip(title: selectedTemplateTitle, icon: "sparkles", accent: AppTheme.warningYellow)
+                aiEditPackageChip(title: selectedAspectRatio.rawValue, icon: selectedAspectRatio.icon, accent: AppTheme.iceBlue)
+                aiEditPackageChip(title: formattedDuration(selectedDuration), icon: "timer", accent: AppTheme.mintGlow)
+            }
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [
+                    accent.opacity(0.18),
+                    AppTheme.surfaceBg.opacity(0.72),
+                    AppTheme.cardBg.opacity(0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: .rect(cornerRadius: 18)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(accent.opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: accent.opacity(0.12), radius: 18, x: 0, y: 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("AI Edit package")
+        .accessibilityValue("\(policy.displayName), \(selectedTemplateTitle), \(selectedAspectRatio.rawValue), \(formattedDuration(selectedDuration))")
+        .accessibilityIdentifier("export.aiEdit.packageCard")
+    }
+
+    private func aiEditPackageChip(title: String, icon: String, accent: Color) -> some View {
+        Label(title, systemImage: icon)
+            .font(.caption.bold())
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(accent.opacity(0.14), in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(accent.opacity(0.20), lineWidth: 1)
+            }
     }
 
     private var exportProgressCard: some View {

@@ -793,6 +793,67 @@ struct HoopsClipsTests {
         )
     }
 
+    @Test func testPipelineBannerOnlyShowsForSelectedVideoOrActiveImport() {
+        #expect(
+            PipelineBannerDisplayPolicy.shouldShow(
+                videoLoaded: false,
+                hasVideoURL: false,
+                importInProgress: false,
+                analysisIsAnalyzing: true,
+                activeTabIsReview: false,
+                rookieGuideVisible: false
+            ) == false
+        )
+        #expect(
+            PipelineBannerDisplayPolicy.shouldShow(
+                videoLoaded: false,
+                hasVideoURL: false,
+                importInProgress: true,
+                analysisIsAnalyzing: false,
+                activeTabIsReview: false,
+                rookieGuideVisible: false
+            )
+        )
+        #expect(
+            PipelineBannerDisplayPolicy.shouldShow(
+                videoLoaded: true,
+                hasVideoURL: true,
+                importInProgress: false,
+                analysisIsAnalyzing: true,
+                activeTabIsReview: false,
+                rookieGuideVisible: false
+            )
+        )
+        #expect(
+            PipelineBannerDisplayPolicy.shouldShow(
+                videoLoaded: true,
+                hasVideoURL: true,
+                importInProgress: false,
+                analysisIsAnalyzing: true,
+                activeTabIsReview: true,
+                rookieGuideVisible: false
+            ) == false
+        )
+    }
+
+    @Test func testPipelineUploadDetailPrefersOneReadableLine() {
+        let detail = PipelineBannerDisplayPolicy.compactUploadDetail(
+            liveDetail: "42 MB/s - about 1m left",
+            savedResumeDetail: "saved chunks only",
+            optimizationFact: "Saved 80 MB before upload"
+        )
+
+        #expect(detail == "42 MB/s - about 1m left")
+        #expect(detail?.contains(" -> ") == false)
+        #expect(
+            PipelineBannerDisplayPolicy.compactUploadDetail(
+                liveDetail: " ",
+                savedResumeDetail: nil,
+                optimizationFact: "Saved 80 MB before upload"
+            ) == "Saved 80 MB before upload"
+        )
+    }
+
     @Test func testCloudAnalysisSlowUploadHelpOnlyAppearsForBadUploadStates() {
         #expect(
             CloudAnalysisProgressCopy.slowUploadHelp(
@@ -1381,6 +1442,45 @@ struct HoopsClipsTests {
         #expect(PhoneSmokeIssueNoteCopy.sanitized("ignored", enabled: false) == "none")
         #expect(PhoneSmokeIssueNoteCopy.sanitized("analysis crashed after tap", enabled: true) == "analysis_crashed_after_tap")
         #expect(PhoneSmokeIssueNoteCopy.sanitized("https://x.test/uploads/a?X-Amz-Signature=b", enabled: true) == "redacted")
+    }
+
+    @Test func testPlayerRecoveryCardAutoDismissesOnlyWhenPassive() {
+        #expect(
+            PlayerRecoveryDisplayPolicy.shouldAutoDismiss(
+                videoLoaded: false,
+                importInProgress: false,
+                analysisIsAnalyzing: false,
+                clipCount: 0
+            )
+        )
+        #expect(
+            PlayerRecoveryDisplayPolicy.shouldAutoDismiss(
+                videoLoaded: true,
+                importInProgress: false,
+                analysisIsAnalyzing: false,
+                clipCount: 0
+            ) == false
+        )
+        #expect(
+            PlayerRecoveryDisplayPolicy.shouldAutoDismiss(
+                videoLoaded: false,
+                importInProgress: true,
+                analysisIsAnalyzing: false,
+                clipCount: 0
+            ) == false
+        )
+        #expect(PlayerRecoveryDisplayPolicy.proofSource == "HoopClips Player support note")
+    }
+
+    @Test func testPlayerRecoveryCopyAvoidsBackendStageLanguage() {
+        let message = PlayerRecoveryDisplayPolicy.friendlyMessage(
+            for: "Previous session may have ended unexpectedly. State: active. Screen: player. Last step: runtime.state."
+        )
+
+        #expect(message.contains("support note"))
+        #expect(!message.localizedCaseInsensitiveContains("backend"))
+        #expect(!message.localizedCaseInsensitiveContains("stage"))
+        #expect(!message.localizedCaseInsensitiveContains("last step"))
     }
 
     @Test func testSmokeProofIssueBundleIncludesKeySectionsAndRedactsCrashValues() {
