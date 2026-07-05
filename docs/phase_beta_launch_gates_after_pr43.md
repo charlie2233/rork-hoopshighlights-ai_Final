@@ -6,13 +6,13 @@ Date: 2026-07-05
 
 PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`. The enhancement integration workstream is complete on `main`; do not redo that integration.
 
-Current `main` is `4540381752db2eb5ac22442c8f49971e0d49f6cb` after the launch UI cleanup and build `44` bump. The remaining beta launch blocker is Apple certificate/provisioning state during TestFlight upload. The cloud integration, staging deploy, live version proof, deterministic Worker render path, and build `44` archive are proven.
+Build `44` launch proof baseline is `4540381752db2eb5ac22442c8f49971e0d49f6cb` after the launch UI cleanup and build `44` bump. The remaining beta launch blocker is Apple certificate/provisioning state during TestFlight upload. The cloud integration, staging deploy, live version proof, deterministic Worker render path, and build `44` archive are proven.
 
 ## Confirmed Main State
 
 - PR #43: merged at `2026-06-28T09:00:46Z`.
 - Integration merge commit: `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
-- Current main commit: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
+- Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #46 and PR #47: merged; launch proof/testing UI hidden, Settings Formspree support retained, and Settings support banners auto-dismiss.
 - PR #48: merged; next TestFlight build bumped to `1.0.0 (44)`.
 - Branch posture: `main` contains the integration; follow-up work should stay scoped to launch gates, docs, signing, and smoke proof.
