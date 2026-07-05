@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var feedbackMessage = ""
     @State private var isSubmittingFeedback = false
     @State private var feedbackBanner: FeedbackBanner?
+    @State private var feedbackBannerDismissTask: Task<Void, Never>?
     @State private var expandedFAQIDs: Set<String> = []
     @State private var buildSummaryCopied = false
     @State private var testFlightChecklistCopied = false
@@ -2677,7 +2678,7 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 Button {
                     feedbackMessage = ""
-                    feedbackBanner = nil
+                    setFeedbackBanner(nil)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "eraser.fill")
@@ -3161,25 +3162,25 @@ struct SettingsView: View {
     @MainActor
     private func submitFeedback() async {
         guard canSubmitFeedback else {
-            feedbackBanner = FeedbackBanner(
+            setFeedbackBanner(FeedbackBanner(
                 message: languageStore.text(.settingsFeedbackValidationMessage),
                 icon: "exclamationmark.triangle.fill",
                 tint: AppTheme.dangerRed
-            )
+            ))
             return
         }
 
         guard let endpoint = URL(string: "https://formspree.io/f/mbdzrwbo") else {
-            feedbackBanner = FeedbackBanner(
+            setFeedbackBanner(FeedbackBanner(
                 message: languageStore.text(.settingsFeedbackConfigError),
                 icon: "xmark.octagon.fill",
                 tint: AppTheme.dangerRed
-            )
+            ))
             return
         }
 
         isSubmittingFeedback = true
-        feedbackBanner = nil
+        setFeedbackBanner(nil)
         defer { isSubmittingFeedback = false }
 
         let trimmedMessage = String(
@@ -3217,26 +3218,59 @@ struct SettingsView: View {
             guard (200..<300).contains(http.statusCode) else {
                 let envelope = try? JSONDecoder().decode(FormspreeErrorEnvelope.self, from: data)
                 let serverMessage = envelope?.errors?.compactMap(\.message).first
-                feedbackBanner = FeedbackBanner(
+                setFeedbackBanner(FeedbackBanner(
                     message: serverMessage ?? languageStore.text(.settingsFeedbackSendFailure),
                     icon: "wifi.exclamationmark",
                     tint: AppTheme.dangerRed
-                )
+                ))
                 return
             }
 
-            feedbackBanner = FeedbackBanner(
+            setFeedbackBanner(FeedbackBanner(
                 message: languageStore.text(.settingsFeedbackSentThanks),
                 icon: "checkmark.circle.fill",
                 tint: AppTheme.successGreen
-            )
+            ))
             feedbackMessage = ""
         } catch {
-            feedbackBanner = FeedbackBanner(
+            setFeedbackBanner(FeedbackBanner(
                 message: languageStore.text(.settingsFeedbackNetworkError),
                 icon: "wifi.exclamationmark",
                 tint: AppTheme.dangerRed
-            )
+            ))
+        }
+    }
+
+    @MainActor
+    private func setFeedbackBanner(_ banner: FeedbackBanner?) {
+        feedbackBannerDismissTask?.cancel()
+        feedbackBannerDismissTask = nil
+
+        if reduceMotion {
+            feedbackBanner = banner
+        } else {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                feedbackBanner = banner
+            }
+        }
+
+        guard let banner else { return }
+
+        feedbackBannerDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard feedbackBanner?.id == banner.id else { return }
+                if reduceMotion {
+                    feedbackBanner = nil
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        feedbackBanner = nil
+                    }
+                }
+                feedbackBannerDismissTask = nil
+            }
         }
     }
 
