@@ -114,13 +114,8 @@ struct VideoPlayerView: View {
     @State private var importRecoveryOffersHistory = false
     @State private var lastAnalysisAnnouncementPercent = -1
     @State private var showingCancelUploadConfirmation = false
-    @State private var didCopyUploadProof = false
-    @State private var isSendingUploadProof = false
-    @State private var didSendUploadProof = false
-    @State private var uploadProofSendFailed = false
     @State private var sourcePreviewHasAudioTrack: Bool?
     @State private var sourcePreviewAudioCheckTask: Task<Void, Never>?
-    @State private var didCopyUnexpectedExitProof = false
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @AppStorage("hoops.player.dismissedUnexpectedExitSummary.v1") private var dismissedUnexpectedExitSummary = ""
     @State private var showingCloudVideoConsent = false
@@ -1213,37 +1208,20 @@ struct VideoPlayerView: View {
                 .layoutPriority(1)
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    copyUnexpectedExitProof(summary)
-                } label: {
-                    Label(didCopyUnexpectedExitProof ? "Copied" : "Copy proof", systemImage: didCopyUnexpectedExitProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.warningYellow)
-                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
-                        .background(AppTheme.warningYellow.opacity(0.12), in: .rect(cornerRadius: 12))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    dismissUnexpectedExitCard(summary)
-                } label: {
-                    Text("Hide")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.subtleText)
-                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
-                        .background(AppTheme.surfaceBg.opacity(0.64), in: .rect(cornerRadius: 12))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(AppTheme.softBorder, lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
+            Button {
+                dismissUnexpectedExitCard(summary)
+            } label: {
+                Label("Got it", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
+                    .background(AppTheme.warningYellow.opacity(0.12), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
+                    }
             }
+            .buttonStyle(.plain)
         }
         .padding(14)
         .background(AppTheme.warningYellow.opacity(0.08), in: .rect(cornerRadius: 18))
@@ -1261,46 +1239,12 @@ struct VideoPlayerView: View {
             return "HoopClips closed while analysis was running. Stay on Player or reopen the app; Review should wait until clips are ready."
         }
         if lowercased.contains("upload") || lowercased.contains("background") {
-            return "HoopClips closed during upload/background work. Your upload proof is saved, and reopening refreshes progress."
+            return "HoopClips closed during upload/background work. A safe upload note is saved, and reopening refreshes progress."
         }
         if lowercased.contains("review") || lowercased.contains("no_reviewable_clips") {
             return "Review was safely blocked because clips were not ready yet. Stay on Player while analysis finishes, then open Review."
         }
         return "The last session ended before a normal close. HoopClips saved a clean note so we can see the last screen and step."
-    }
-
-    private func unexpectedExitProofText(summary: String) -> String {
-        [
-            "source=HoopClips Player recovery card",
-            "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
-            "appVersion=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String))",
-            "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))",
-            "environment=\(safeUploadProofValue(AppConstants.environmentName))",
-            "cloudLaunchMode=\(safeUploadProofValue(AppConstants.cloudLaunchMode.rawValue))",
-            "recoverySummary=\(safeUploadProofLongValue(summary))",
-            "crashReportDelivery=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
-            "analysisIsAnalyzing=\(viewModel.analysisService.isAnalyzing)",
-            "analysisProgressPercent=\(analysisDisplayPercent)",
-            "analysisStatus=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
-            "videoLoaded=\(viewModel.isVideoLoaded)",
-            "clipCount=\(viewModel.clips.count)",
-            "keptClipCount=\(viewModel.keptClips.count)",
-            "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
-        ].joined(separator: "\n")
-    }
-
-    private func copyUnexpectedExitProof(_ summary: String) {
-        UIPasteboard.general.string = unexpectedExitProofText(summary: summary)
-        didCopyUnexpectedExitProof = true
-        LaunchTelemetry.shared.recordStabilityCheckpoint(
-            "player.unexpected_exit_proof_copied",
-            metadata: "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))"
-        )
-
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
-            didCopyUnexpectedExitProof = false
-        }
     }
 
     private func dismissUnexpectedExitCard(_ summary: String) {
@@ -2739,12 +2683,10 @@ struct VideoPlayerView: View {
     private var backgroundUploadDiagnosticsTray: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Safe to switch apps. Reopen HoopClips anytime for live progress. If progress stops updating, send diagnostics so we can help.")
+                Text("Safe to switch apps. Reopen HoopClips anytime for live progress. If progress stops updating, message us from Settings.")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
-
-                backgroundUploadProofActionButtons
             }
             .padding(.top, 8)
         } label: {
@@ -2763,21 +2705,6 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("analysis.backgroundUploadDiagnosticsTray")
     }
 
-    @ViewBuilder
-    private var backgroundUploadProofActionButtons: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                backgroundUploadProofCopyButton
-                backgroundUploadProofSendButton
-            }
-
-            VStack(spacing: 8) {
-                backgroundUploadProofCopyButton
-                backgroundUploadProofSendButton
-            }
-        }
-    }
-
     private func recoveredUploadProofPrompt(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(text, systemImage: "arrow.triangle.2.circlepath.circle.fill")
@@ -2788,7 +2715,10 @@ struct VideoPlayerView: View {
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
-            backgroundUploadProofActionButtons
+            Text("Need help? Open Settings, then Message us.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
@@ -2875,7 +2805,10 @@ struct VideoPlayerView: View {
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
-            backgroundUploadProofActionButtons
+            Text("Need help? Open Settings, then Message us.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
@@ -3100,12 +3033,12 @@ struct VideoPlayerView: View {
         }
 
         if combined.contains("file_size_policy") || combined.contains("duration_policy") {
-            return "Cloud rejected this video limit. Send proof so we can confirm the deployed backend policy."
+            return "Cloud rejected this video limit. Message us from Settings if this looks wrong."
         }
         if combined.contains("connectivity") || combined.contains("timed_out") {
-            return "Upload stopped because the connection looked unstable. Send proof, then retry on Wi-Fi."
+            return "Upload stopped because the connection looked unstable. Retry on Wi-Fi when ready."
         }
-        return "Upload did not finish. Send proof so we can see the safe failure reason before retrying."
+        return "Upload did not finish. Message us from Settings if retrying does not help."
     }
 
     private var uploadExpiredFreshUploadPromptText: String? {
@@ -3220,9 +3153,9 @@ struct VideoPlayerView: View {
         }
 
         if combined.contains("source_still_uploading") || combined.contains("pending") {
-            return "Upload is still running in the background. Send diagnostics if progress does not change so we can help."
+            return "Upload is still running in the background. Message us from Settings if progress does not change."
         }
-        return "Upload recovered after app switch. Send proof so we can confirm resume worked."
+        return "Upload recovered after app switch. You can keep going."
     }
 
     private var analysisSlowUploadHelp: CloudAnalysisSlowUploadHelp? {
@@ -3308,96 +3241,6 @@ struct VideoPlayerView: View {
         return parts.joined(separator: " ")
     }
 
-    private var backgroundUploadProofText: String {
-        [
-            "source=HoopClips Player upload card",
-            "proofGeneratedAt=\(ISO8601DateFormatter().string(from: Date()))",
-            "build=\(safeUploadProofValue(Bundle.main.infoDictionary?["CFBundleVersion"] as? String))",
-            "scenePhase=\(uploadProofScenePhase)",
-            "environment=\(safeUploadProofValue(AppConstants.environmentName))",
-            "cloudLaunchMode=\(safeUploadProofValue(AppConstants.cloudLaunchMode.rawValue))",
-            "cloudAnalysisEnabled=\(AppConstants.cloudAnalysisEnabled)",
-            "cloudAnalysisBaseURLConfigured=\(!AppConstants.cloudAnalysisBaseURL.isEmpty)",
-            "cloudEditBaseURLConfigured=\(!AppConstants.cloudEditBaseURL.isEmpty)",
-            "cloudAnalysisEndpoint=\(cloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
-            "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
-            "uploadSummary=\(safeUploadProofValue(backgroundUploadProofSummaryText))",
-            "terminalUploadError=\(safeUploadProofValue(terminalUploadErrorProofValue))",
-            "terminalUploadHTTPStatus=\(safeUploadProofValue(terminalUploadHTTPStatusProofValue))",
-            "terminalUploadNextAction=\(safeUploadProofValue(terminalUploadNextActionProofValue))",
-            "videoFileSize=\(safeUploadProofValue(currentVideoFileSizeProofText))",
-            "safeToSwitchApps=true",
-            "switchAppGuidance=safe_to_switch_apps_reopen_for_live_progress",
-            "clientChunkedUploadCompatible=true",
-            "serverMultipartCompleteIdempotent=true",
-            "uploadSourceOptimizationPolicy=\(safeUploadProofValue(analysisUploadSourceOptimization.proof))",
-            "latestUploadSourceOptimization=\(safeUploadProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
-            "multipartUploadPolicy=\(safeUploadProofValue(CloudAnalysisService.multipartUploadPolicySummary()))",
-            "backgroundUploadRuntimePolicy=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
-            "proofCapturedAt=\(Date().ISO8601Format())",
-            "backgroundUploadCompletionProof=\(safeUploadProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
-            "backgroundUploadSurvivalHint=\((CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("completedwhileaway=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("wakereceived=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("relaunchcompletion=true") || CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased().contains("inferredsourcecompletion=true")) ? "detected" : "not_detected")",
-            "backgroundUploadWakeReceived=\(backgroundUploadWakeReceivedFlag)",
-            "progress=\(analysisDisplayPercent)%",
-            "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
-            "analysisMode=\(safeUploadProofValue(String(describing: viewModel.analysisMode)))",
-            "reviewReady=\(!viewModel.clips.isEmpty)",
-            "clipCount=\(viewModel.clips.count)",
-            "keptClipCount=\(viewModel.keptClips.count)",
-            "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
-            "recentBackgroundUploadProofTrail=\(safeUploadProofLongValue(LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary))",
-            "latestUploadProgress=\(safeUploadProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
-            "uploadProofDeliveryStatus=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
-            "serverUploadPlan=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadPlanSummary()))",
-            "serverUploadCapability=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadCapabilitySummary()))",
-            "deployedUploadCapability=\(safeUploadProofValue(CloudAnalysisService.latestDeployedUploadCapabilitySummary()))",
-            "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
-            "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
-        ].joined(separator: "\n")
-    }
-
-    private var terminalUploadErrorProofValue: String {
-        uploadExpiredSignalPresent ? "upload_expired" : "none"
-    }
-
-    private var terminalUploadHTTPStatusProofValue: String {
-        uploadExpiredSignalPresent ? "410" : "none"
-    }
-
-    private var terminalUploadNextActionProofValue: String {
-        uploadExpiredSignalPresent ? "start_fresh_upload" : "none"
-    }
-
-    private var uploadExpiredSignalPresent: Bool {
-        let summary = CloudAnalysisService.pendingBackgroundUploadManifestSummary().lowercased()
-        let status = viewModel.analysisService.statusMessage.lowercased()
-        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
-        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
-        let combined = [summary, status, latestProof, recentProof].joined(separator: " ")
-        return combined.contains("upload_expired") || combined.contains("uploadexpired=true")
-    }
-
-    private var backgroundUploadProofSummaryText: String {
-        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
-        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
-        let resumeProgress = CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: latestProgress)
-            ?? CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: pendingManifest)
-
-        let progressText = resumeProgress ?? "progress=\(analysisDisplayPercent)%"
-        return "\(progressText); file=\(currentVideoFileSizeProofText); safeToSwitchApps=true; reopenForLiveProgress=true"
-    }
-
-    private var currentVideoFileSizeProofText: String {
-        guard let bytes = currentVideoFileSizeBytes, bytes > 0 else {
-            return "unknown"
-        }
-
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useMB, .useGB]
-        formatter.countStyle = .file
-        return "\(formatter.string(fromByteCount: bytes)) (\(bytes) bytes)"
-    }
-
     private var currentVideoFileSizeShortText: String {
         guard let bytes = currentVideoFileSizeBytes, bytes > 0 else {
             return "unknown"
@@ -3422,28 +3265,6 @@ struct VideoPlayerView: View {
         return nil
     }
 
-    private var backgroundUploadWakeReceivedFlag: String {
-        let latestProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
-        let proofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
-        let combinedProof = "\(latestProof) \(proofTrail)".lowercased()
-        let didWake = combinedProof.contains("background_urlsession_events_received")
-            || combinedProof.contains("events_received")
-        return didWake ? "true" : "false"
-    }
-
-    private var uploadProofScenePhase: String {
-        switch scenePhase {
-        case .active:
-            return "active"
-        case .inactive:
-            return "inactive"
-        case .background:
-            return "background"
-        @unknown default:
-            return "unknown"
-        }
-    }
-
     private func safeUploadProofValue(_ value: String?) -> String {
         let compact = (value ?? "none")
             .split(whereSeparator: \.isWhitespace)
@@ -3451,164 +3272,6 @@ struct VideoPlayerView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !compact.isEmpty else { return "none" }
         return String(compact.prefix(180))
-    }
-
-    private func cloudEndpointProofValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let url = URL(string: trimmed),
-              let host = url.host?.lowercased(),
-              !host.isEmpty else {
-            return "configured=false"
-        }
-
-        let scheme = safeUploadProofValue(url.scheme ?? "unknown")
-        let pathDepth = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }.count
-        return [
-            "configured=true",
-            "scheme=\(scheme)",
-            "hostHash=\(stableUploadProofHash(host))",
-            "pathDepth=\(pathDepth)"
-        ].joined(separator: "_")
-    }
-
-    private func stableUploadProofHash(_ value: String) -> String {
-        var hash: UInt64 = 14_695_981_039_346_656_037
-        for byte in value.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 1_099_511_628_211
-        }
-        return String(hash, radix: 16)
-    }
-
-    private func safeUploadProofLongValue(_ value: String?) -> String {
-        let compact = (value ?? "none")
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: "_")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !compact.isEmpty else { return "none" }
-        return String(compact.prefix(720))
-    }
-
-    private var backgroundUploadSurvivalDetected: Bool {
-        let proof = CloudAnalysisService.backgroundUploadCompletionProofSummary().lowercased()
-        return proof.contains("completedwhileaway=true")
-            || proof.contains("wakereceived=true")
-            || proof.contains("relaunchcompletion=true")
-            || proof.contains("inferredsourcecompletion=true")
-    }
-
-    private var backgroundUploadProofCopyButton: some View {
-        VStack(spacing: 8) {
-            Button {
-                copyBackgroundUploadProof()
-            } label: {
-                Label(didCopyUploadProof ? "Copied" : "Copy", systemImage: didCopyUploadProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.cyan)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.cyan.opacity(0.11), in: .rect(cornerRadius: 14))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Copy background upload proof")
-            .accessibilityHint("Copies timestamped upload proof for the app-switch background upload test.")
-
-            if backgroundUploadSurvivalDetected {
-                Label("Upload survived background", systemImage: "checkmark.circle.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.green)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("analysis.backgroundUploadSurvivedBadge")
-                }
-        }
-    }
-
-    private var backgroundUploadProofSendButton: some View {
-        Button {
-            sendBackgroundUploadProof()
-        } label: {
-            Label(uploadProofSendButtonTitle, systemImage: uploadProofSendButtonIcon)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(uploadProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background((uploadProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen).opacity(0.11), in: .rect(cornerRadius: 14))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke((uploadProofSendFailed ? AppTheme.warningYellow : AppTheme.successGreen).opacity(0.24), lineWidth: 1)
-                }
-        }
-        .buttonStyle(.plain)
-        .disabled(isSendingUploadProof)
-        .accessibilityIdentifier("analysis.sendBackgroundUploadProofButton")
-    }
-
-    private var uploadProofSendButtonTitle: String {
-        if isSendingUploadProof {
-            return "Sending"
-        }
-        if didSendUploadProof {
-            return "Sent"
-        }
-        if uploadProofSendFailed {
-            return "Queued"
-        }
-        return "Send"
-    }
-
-    private var uploadProofSendButtonIcon: String {
-        if isSendingUploadProof {
-            return "paperplane"
-        }
-        if didSendUploadProof {
-            return "checkmark.circle.fill"
-        }
-        if uploadProofSendFailed {
-            return "arrow.clockwise.circle.fill"
-        }
-        return "paperplane.fill"
-    }
-
-    private func copyBackgroundUploadProof() {
-        UserDefaults.standard.set(backgroundUploadProofText, forKey: "hoopclips.lastBackgroundUploadProofText")
-        UserDefaults.standard.set(Date().ISO8601Format(), forKey: "hoopclips.lastBackgroundUploadProofSavedAt")
-        UIPasteboard.general.string = backgroundUploadProofText
-        didCopyUploadProof = true
-        LaunchTelemetry.shared.recordStabilityCheckpoint(
-            "upload.proof.copied",
-            metadata: "progress=\(analysisDisplayPercent)"
-        )
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
-            didCopyUploadProof = false
-        }
-    }
-
-    private func sendBackgroundUploadProof() {
-        guard !isSendingUploadProof else { return }
-        isSendingUploadProof = true
-        didSendUploadProof = false
-        uploadProofSendFailed = false
-        let proof = backgroundUploadProofText
-        LaunchTelemetry.shared.recordStabilityCheckpoint(
-            "upload.proof.send_requested",
-            metadata: "progress=\(Int(viewModel.analysisService.progress * 100))"
-        )
-
-        Task { @MainActor in
-            let sent = await LaunchTelemetry.shared.sendManualUploadProof(proof)
-            isSendingUploadProof = false
-            didSendUploadProof = sent
-            uploadProofSendFailed = !sent
-            try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
-            didSendUploadProof = false
-            uploadProofSendFailed = false
-        }
     }
 
     private var requiresProForCurrentVideo: Bool {

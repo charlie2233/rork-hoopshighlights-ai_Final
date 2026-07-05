@@ -450,8 +450,12 @@ struct SettingsView: View {
     }
 
     private var shouldShowSmokeProofCard: Bool {
-        shouldSurfaceSmokeProofCard
+#if HOOPS_ENABLE_INTERNAL_SUPPORT_TOOLS
+        return shouldSurfaceSmokeProofCard
             && (AppConstants.environmentName != "production" || AppConstants.cloudLaunchMode == .internalOnly)
+#else
+        return false
+#endif
     }
 
     private var hasSettingsUploadProofReady: Bool {
@@ -1141,7 +1145,7 @@ struct SettingsView: View {
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Proof retry queued")
+                    Text("Support retry queued")
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.white)
                     Text(compactUploadStatusDetail(retrySummary))
@@ -3165,7 +3169,7 @@ struct SettingsView: View {
             return
         }
 
-        guard let endpoint = URL(string: "https://formspree.io/f/xlgwzrdk") else {
+        guard let endpoint = URL(string: "https://formspree.io/f/mbdzrwbo") else {
             feedbackBanner = FeedbackBanner(
                 message: languageStore.text(.settingsFeedbackConfigError),
                 icon: "xmark.octagon.fill",
@@ -3248,8 +3252,8 @@ struct SettingsView: View {
 
     private func prefillStabilityFeedback(_ stabilitySummary: String) {
         feedbackType = .bug
-        let prefix = "The app quit unexpectedly during testing."
-        let diagnosticLine = "Diagnostics: \(stabilitySummary)"
+        let prefix = "The app quit unexpectedly."
+        let diagnosticLine = "App status: \(stabilitySummary)"
         let current = feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         let separator = current.isEmpty ? "" : "\n\n"
         feedbackMessage = String((current + separator + prefix + "\n" + diagnosticLine).prefix(1200))
