@@ -18,12 +18,8 @@ struct ContentView: View {
     @State private var reviewRecoveryNotice: ReviewRecoveryNotice?
     @State private var uploadResumeNotice: UploadResumeNotice?
     @State private var showingPipelineCancelConfirmation = false
-    @State private var didCopyPipelineUploadProof = false
     @State private var showingHistorySheet = false
     @State private var showingSettingsSheet = false
-    @State private var isSendingPipelineUploadProof = false
-    @State private var didSendPipelineUploadProof = false
-    @State private var pipelineUploadProofSendFailed = false
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
@@ -273,13 +269,7 @@ struct ContentView: View {
                         detailMessage: pipelineDetailMessage,
                         stage: pipelineStage,
                         canResumeUpload: canResumePipelineUpload,
-                        didCopyProof: didCopyPipelineUploadProof,
-                        isSendingProof: isSendingPipelineUploadProof,
-                        didSendProof: didSendPipelineUploadProof,
-                        sendProofFailed: pipelineUploadProofSendFailed,
                         onResumeUpload: resumePipelineUpload,
-                        onCopyProof: copyPipelineUploadProof,
-                        onSendProof: sendPipelineUploadProof,
                         onCancel: requestPipelineCancelConfirmation
                     )
                         .padding(.horizontal, 16)
@@ -1174,89 +1164,6 @@ struct ContentView: View {
         )
     }
 
-    private func copyPipelineUploadProof() {
-        UIPasteboard.general.string = pipelineUploadProofText
-        didCopyPipelineUploadProof = true
-        LaunchTelemetry.shared.recordStabilityCheckpoint(
-            "pipeline_upload_proof.copied",
-            metadata: "stage=\(pipelineStage.title) progress=\(analysisProgressPercent)"
-        )
-        Task {
-            try? await Task.sleep(nanoseconds: 1_600_000_000)
-            await MainActor.run {
-                didCopyPipelineUploadProof = false
-            }
-        }
-    }
-
-    private func sendPipelineUploadProof() {
-        guard !isSendingPipelineUploadProof else { return }
-        let proof = pipelineUploadProofText
-        isSendingPipelineUploadProof = true
-        didSendPipelineUploadProof = false
-        pipelineUploadProofSendFailed = false
-        LaunchTelemetry.shared.recordStabilityCheckpoint(
-            "pipeline_upload_proof.send_requested",
-            metadata: "stage=\(pipelineStage.title) progress=\(analysisProgressPercent)"
-        )
-
-        Task { @MainActor in
-            let sent = await LaunchTelemetry.shared.sendManualUploadProof(proof)
-            isSendingPipelineUploadProof = false
-            didSendPipelineUploadProof = sent
-            pipelineUploadProofSendFailed = !sent
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            didSendPipelineUploadProof = false
-            pipelineUploadProofSendFailed = false
-        }
-    }
-
-    private var pipelineUploadProofText: String {
-        [
-            "HoopClips Upload Proof",
-            "generatedAt=\(safePipelineProofValue(ISO8601DateFormatter().string(from: Date())))",
-            "appVersion=\(safePipelineProofValue(pipelineAppVersionString))",
-            "build=\(safePipelineProofValue(pipelineBuildString))",
-            "environment=\(safePipelineProofValue(AppConstants.environmentName))",
-            "cloudLaunchMode=\(safePipelineProofValue(AppConstants.cloudLaunchMode.rawValue))",
-            "projectID=\(safePipelineProofValue(viewModel.currentProjectID?.uuidString ?? "none"))",
-            "analysisJobID=\(safePipelineProofValue(viewModel.cloudAnalysisJobID == nil ? "none" : "available_redacted"))",
-            "sourceObjectKey=\(safePipelineProofValue(viewModel.cloudEditSourceObjectKey == nil ? "none" : "available_redacted"))",
-            "pipelineStage=\(safePipelineProofValue(pipelineStage.title))",
-            "analysisProgress=\(analysisProgressPercent)%",
-            "analysisStatus=\(safePipelineProofValue(pipelineStatusMessage))",
-            "uploadDetail=\(safePipelineProofValue(pipelineDetailMessage ?? "none"))",
-            "fastUploadMode=\(CloudAnalysisProgressCopy.isFastUploadModeEnabled())",
-            "latestUploadProgress=\(safePipelineProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
-            "latestUploadSourceOptimization=\(safePipelineProofValue(CloudAnalysisService.latestUploadSourceOptimizationSummary()))",
-            "pendingBackgroundUploadManifest=\(safePipelineProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
-            "backgroundUploadRuntimePolicy=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadRuntimePolicySummary()))",
-            "multipartUploadPolicy=\(safePipelineProofValue(CloudAnalysisService.multipartUploadPolicySummary()))",
-            "backgroundUploadCompletionProof=\(safePipelineProofValue(CloudAnalysisService.backgroundUploadCompletionProofSummary()))",
-            "latestBackgroundUploadProof=\(safePipelineProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"))",
-            "privacy=no_urls_no_object_keys_no_local_file_paths"
-        ].joined(separator: "\n")
-    }
-
-    private var pipelineAppVersionString: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-    }
-
-    private var pipelineBuildString: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-    }
-
-    private func safePipelineProofValue(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "file://", with: "file-redacted://")
-            .replacingOccurrences(of: "/var/", with: "/redacted/")
-            .replacingOccurrences(of: "/Users/", with: "/redacted/")
-            .prefix(260)
-            .description
-    }
-
     private func selectTab(_ tab: AppTab) {
         guard selectedTab != tab.rawValue else { return }
         recordTabSwitchBreadcrumb(fromRawValue: selectedTab, toRawValue: tab.rawValue, phase: "requested", trigger: "tab_bar")
@@ -1832,13 +1739,7 @@ private struct GlobalImportProgressBanner: View {
     let detailMessage: String?
     let stage: AnalysisPipelineStage
     let canResumeUpload: Bool
-    let didCopyProof: Bool
-    let isSendingProof: Bool
-    let didSendProof: Bool
-    let sendProofFailed: Bool
     let onResumeUpload: () -> Void
-    let onCopyProof: () -> Void
-    let onSendProof: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
@@ -1923,73 +1824,6 @@ private struct GlobalImportProgressBanner: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Resume upload")
         .accessibilityIdentifier("analysis.pipeline.resumeUploadButton")
-    }
-
-    private var copyProofButton: some View {
-        Button(action: onCopyProof) {
-            Image(systemName: didCopyProof ? "checkmark.circle.fill" : "doc.on.doc.fill")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(didCopyProof ? AppTheme.successGreen : stage.tint)
-                .frame(width: 30, height: 30)
-                .background(Color.white.opacity(didCopyProof ? 0.16 : 0.08), in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(didCopyProof ? "Upload proof copied" : "Copy upload proof")
-        .accessibilityIdentifier("analysis.pipeline.copyProofButton")
-    }
-
-    private var sendProofButton: some View {
-        Button(action: onSendProof) {
-            if isSendingProof {
-                ProgressView()
-                    .tint(stage.tint)
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.08), in: Circle())
-            } else {
-                Image(systemName: sendProofIconName)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(sendProofColor)
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(didSendProof || sendProofFailed ? 0.16 : 0.08), in: Circle())
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(isSendingProof)
-        .accessibilityLabel(sendProofAccessibilityLabel)
-        .accessibilityIdentifier("analysis.pipeline.sendProofButton")
-    }
-
-    private var sendProofIconName: String {
-        if didSendProof {
-            return "paperplane.circle.fill"
-        }
-        if sendProofFailed {
-            return "exclamationmark.triangle.fill"
-        }
-        return "paperplane.fill"
-    }
-
-    private var sendProofColor: Color {
-        if didSendProof {
-            return AppTheme.successGreen
-        }
-        if sendProofFailed {
-            return AppTheme.warningYellow
-        }
-        return stage.tint
-    }
-
-    private var sendProofAccessibilityLabel: String {
-        if isSendingProof {
-            return "Sending upload proof"
-        }
-        if didSendProof {
-            return "Upload proof sent"
-        }
-        if sendProofFailed {
-            return "Upload proof failed"
-        }
-        return "Send upload proof"
     }
 
     private var cancelButton: some View {
