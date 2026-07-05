@@ -4,7 +4,7 @@ Status: blocked on Apple account certificate/provisioning state during TestFligh
 
 ## Confirmed State
 
-- `main` is at merge commit `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
+- Build `44` launch proof baseline is merge commit `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #43 is merged and the integration workstream is complete on `main`.
 - PR #46 and PR #47 hid launch testing/proof UI, kept the Settings Formspree support box, and auto-dismiss the Settings support banners.
 - PR #48 bumped the next iOS TestFlight build to `1.0.0 (44)` because build `43` was already uploaded.

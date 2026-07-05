@@ -7,7 +7,7 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 ## Current Launch Posture
 
 - PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`; the enhancement integration workstream is complete on `main`.
-- Current `main` is `4540381752db2eb5ac22442c8f49971e0d49f6cb` with launch testing/proof UI hidden, Settings Formspree support retained, and the next iOS TestFlight build bumped to `44`.
+- Build `44` launch proof baseline is `4540381752db2eb5ac22442c8f49971e0d49f6cb`, with launch testing/proof UI hidden, Settings Formspree support retained, and the next iOS TestFlight build bumped to `44`.
 - Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, deterministic Worker render smoke passed, build `44` archive passed, and TestFlight upload is blocked by Apple certificate/provisioning state.
 - Remaining beta blocker: the Apple account holder must clear the certificate limit / provisioning issue for bundle ID `atrak.charlie.hoopsclips`, then rerun the upload workflow. See `TESTFLIGHT_BLOCKER.md`.
 - Current public-safe fallback: iOS app with local import, review, export, save, and on-device analysis while public cloud gates stay locked.
@@ -23,11 +23,12 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 
 Last launch-gate verification: July 5, 2026.
 
-- `main`: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
+- Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #43: merged, `Integrate HoopClips enhancement workstream`.
 - PR #46: merged, hidden launch proof/testing UI.
 - PR #47: merged, Settings Formspree support banners auto-dismiss.
 - PR #48: merged, next TestFlight build bumped to `44`.
+- PR #49: merged, build `44` TestFlight blocker docs refreshed after archive/upload proof.
 - GitHub Actions on merged `main`:
   - `Cloud Edit Deploy Preflight` push run `28317247578`: success.
   - `iOS Internal TestFlight Upload` push/codecheck run `28317247560`: success.

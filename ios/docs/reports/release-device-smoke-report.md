@@ -3,7 +3,7 @@
 ## Active snapshot (2026-07-05)
 
 - Branch evidence source: `main`
-- Main commit: `4540381752db2eb5ac22442c8f49971e0d49f6cb`
+- Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`
 - PR #43: merged, integration complete.
 - PR #46 and PR #47: merged, launch proof/testing UI hidden and Settings Formspree support retained with auto-dismiss banners.
 - PR #48: merged, next TestFlight build bumped to `1.0.0 (44)`.
