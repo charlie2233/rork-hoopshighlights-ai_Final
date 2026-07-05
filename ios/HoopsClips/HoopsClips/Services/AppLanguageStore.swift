@@ -622,7 +622,7 @@ extension AppLanguage {
         .rookieGuideSettingsTitle: "Tune your setup",
         .rookieGuideSettingsBody: "Change language, replay this guide, adjust defaults, and send feedback from Settings.",
         .rookieGuideSettingsTip: "Replay the guide anytime from Settings.",
-        .settingsDeveloperFootnote: "Developer-only launch diagnostics are hidden from production users."
+        .settingsDeveloperFootnote: "Support messages include safe app status only, never private video links.",
     ]
 
     private static let chineseText: [AppTextKey: String] = [
@@ -890,7 +890,7 @@ extension AppLanguage {
         .rookieGuideSettingsTitle: "调整设置",
         .rookieGuideSettingsBody: "在设置里切换语言、重看教程、调整默认值，也可以发送反馈。",
         .rookieGuideSettingsTip: "以后随时可以从设置重看教程。",
-        .settingsDeveloperFootnote: "开发者发布诊断信息已对正式用户隐藏。"
+        .settingsDeveloperFootnote: "支持消息只包含安全的 App 状态，不包含私密视频链接。",
     ]
 
     private static let spanishText: [AppTextKey: String] = [
@@ -1158,7 +1158,7 @@ extension AppLanguage {
         .rookieGuideSettingsTitle: "Ajusta la app",
         .rookieGuideSettingsBody: "Cambia idioma, repite esta guía, ajusta valores por defecto y envía feedback desde Settings.",
         .rookieGuideSettingsTip: "Puedes repetir la guía desde Settings cuando quieras.",
-        .settingsDeveloperFootnote: "Los diagnósticos de lanzamiento para desarrolladores están ocultos para usuarios de producción."
+        .settingsDeveloperFootnote: "Los mensajes de soporte solo incluyen estado seguro de la app, nunca enlaces privados de vídeo.",
     ]
 
     private static let frenchText: [AppTextKey: String] = [
@@ -1426,6 +1426,6 @@ extension AppLanguage {
         .rookieGuideSettingsTitle: "Règle ton app",
         .rookieGuideSettingsBody: "Change la langue, relance ce guide, ajuste les valeurs par défaut et envoie un retour depuis Réglages.",
         .rookieGuideSettingsTip: "Tu peux revoir le guide depuis Réglages quand tu veux.",
-        .settingsDeveloperFootnote: "Les diagnostics de lancement réservés aux développeurs sont masqués pour les utilisateurs en production."
+        .settingsDeveloperFootnote: "Les messages au support incluent seulement l'état sûr de l'app, jamais de liens vidéo privés.",
     ]
 }

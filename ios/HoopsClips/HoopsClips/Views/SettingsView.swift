@@ -3252,8 +3252,8 @@ struct SettingsView: View {
 
     private func prefillStabilityFeedback(_ stabilitySummary: String) {
         feedbackType = .bug
-        let prefix = "The app quit unexpectedly during testing."
-        let diagnosticLine = "Diagnostics: \(stabilitySummary)"
+        let prefix = "The app quit unexpectedly."
+        let diagnosticLine = "App status: \(stabilitySummary)"
         let current = feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         let separator = current.isEmpty ? "" : "\n\n"
         feedbackMessage = String((current + separator + prefix + "\n" + diagnosticLine).prefix(1200))
