@@ -1,19 +1,23 @@
 # Release Device Smoke Report
 
-## Active snapshot (2026-06-28)
+## Active snapshot (2026-07-05)
 
 - Branch evidence source: `main`
-- Main commit: `449cd0907f62dd728741fb43a81e4f9e3815a4ff`
+- Main commit: `4540381752db2eb5ac22442c8f49971e0d49f6cb`
 - PR #43: merged, integration complete.
+- PR #46 and PR #47: merged, launch proof/testing UI hidden and Settings Formspree support retained with auto-dismiss banners.
+- PR #48: merged, next TestFlight build bumped to `1.0.0 (44)`.
 - Staging deploy: passed in `Cloud Edit Deploy Preflight` run `28317412159`.
 - Live Worker/direct editing version proof: passed for the merged SHA.
 - Deterministic Worker render smoke: passed and produced a valid H.264/AAC MP4.
-- iOS signed archive/TestFlight: blocked in `iOS Internal TestFlight Upload` run `28317649241`.
-- Current blocker: Apple Developer Program License Agreement/provisioning state for `atrak.charlie.hoopsclips`.
+- iOS build `43` upload: succeeded in `iOS Internal TestFlight Upload` run `28470081179`.
+- iOS build `44` archive: succeeded in `iOS Internal TestFlight Upload` run `28756536677`.
+- iOS build `44` upload: blocked in `iOS Internal TestFlight Upload` run `28756673502`.
+- Current blocker: Apple certificate limit/provisioning state for `atrak.charlie.hoopsclips`.
 - Handoff: `TESTFLIGHT_BLOCKER.md`
 - Real-basketball TestFlight checklist: `docs/phase_beta_launch_gates_after_pr43.md`
 
-Installed TestFlight smoke remains unproven until the account holder repairs Apple license/provisioning, CI creates/uploads the internal build, and a trusted iPhone runs the real-basketball flow from upload through render, download, save to Photos, and share/open export.
+Installed build `44` TestFlight smoke remains unproven until the account holder repairs Apple certificate/provisioning state, CI uploads the internal build, and a trusted iPhone runs the real-basketball flow from upload through render, download, save to Photos, and share/open export.
 
 ## Active snapshot (2026-06-03)
 - Branch: `codex/phase-launch-proof-next`

@@ -7,8 +7,9 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 ## Current Launch Posture
 
 - PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`; the enhancement integration workstream is complete on `main`.
-- Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, and deterministic Worker render smoke passed for the merged SHA.
-- Remaining beta blocker: iOS signing/TestFlight archive is blocked by Apple Developer account license/provisioning state, not by cloud integration code. See `TESTFLIGHT_BLOCKER.md`.
+- Current `main` is `4540381752db2eb5ac22442c8f49971e0d49f6cb` with launch testing/proof UI hidden, Settings Formspree support retained, and the next iOS TestFlight build bumped to `44`.
+- Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, deterministic Worker render smoke passed, build `44` archive passed, and TestFlight upload is blocked by Apple certificate/provisioning state.
+- Remaining beta blocker: the Apple account holder must clear the certificate limit / provisioning issue for bundle ID `atrak.charlie.hoopsclips`, then rerun the upload workflow. See `TESTFLIGHT_BLOCKER.md`.
 - Current public-safe fallback: iOS app with local import, review, export, save, and on-device analysis while public cloud gates stay locked.
 - Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
 - Cloud ML/rendering path: available to internal staging/TestFlight only after signing succeeds; gated off for public launch until the cutover rules below are satisfied.
@@ -20,21 +21,26 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 
 ## Latest Verified State
 
-Last launch-gate verification: June 28, 2026.
+Last launch-gate verification: July 5, 2026.
 
-- `main`: `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
+- `main`: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #43: merged, `Integrate HoopClips enhancement workstream`.
+- PR #46: merged, hidden launch proof/testing UI.
+- PR #47: merged, Settings Formspree support banners auto-dismiss.
+- PR #48: merged, next TestFlight build bumped to `44`.
 - GitHub Actions on merged `main`:
   - `Cloud Edit Deploy Preflight` push run `28317247578`: success.
   - `iOS Internal TestFlight Upload` push/codecheck run `28317247560`: success.
   - `Cloud Edit Deploy Preflight` credential-check run `28317383878`: success.
   - `Cloud Edit Deploy Preflight` deploy run `28317412159`: success.
-  - `iOS Internal TestFlight Upload` archive run `28317649241`: failed during signed archive because Apple Developer Program license/provisioning must be repaired.
+  - `iOS Internal TestFlight Upload` upload run `28470081179`: success for build `43`.
+  - `iOS Internal TestFlight Upload` archive run `28756536677`: success for build `44`.
+  - `iOS Internal TestFlight Upload` upload run `28756673502`: failed during signed archive because Apple certificate limit/provisioning must be repaired.
 - Live staging version proof: Worker `/v1/editing/version` and direct editing `/version` reported the merged SHA and required AI Edit/GPT feature flags.
 - Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
 - Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.
 
-Known beta launch blocker: the Apple account holder must accept the current Apple Developer Program License Agreement, verify App Store Connect agreements, and ensure valid provisioning for bundle ID `atrak.charlie.hoopsclips`. After that, rerun the archive/upload workflow and complete the real-basketball TestFlight smoke checklist.
+Known beta launch blocker: the Apple account holder must clear the Apple certificate limit and ensure valid provisioning for bundle ID `atrak.charlie.hoopsclips`. After that, rerun the upload workflow and complete the real-basketball TestFlight smoke checklist.
 
 ## Repo Layout
 
@@ -44,7 +50,7 @@ Known beta launch blocker: the Apple account holder must accept the current Appl
 - `docs/video_editing_repo_audit.md` - current repo audit for the cloud editing pivot.
 - `docs/phase_beta_launch_gates_after_pr43.md` - post-merge beta launch gate report and real-basketball TestFlight smoke checklist.
 - `skills/hoopclips-ai-edit-agent/SKILL.md` - repo-local Codex skill for cloud-backend edit-agent work.
-- `TESTFLIGHT_BLOCKER.md` - Apple account/license/provisioning blocker handoff.
+- `TESTFLIGHT_BLOCKER.md` - Apple account certificate/provisioning blocker handoff.
 - `ios/docs/checklists/public-launch-cloud-gated.md` - public launch checklist.
 - `ios/docs/runbooks/public-launch-cloud-gated.md` - launch-day support and fallback runbook.
 - `ios/docs/runbooks/firebase-auth-setup.md` - Firebase email/password auth setup.
@@ -135,8 +141,8 @@ gh run watch "$run_id" --exit-status
 Before App Store submission:
 
 - Confirm GitHub `production` secrets are present for signing, RevenueCat, Google, Firebase auth, and telemetry.
-- Resolve the Apple account/license/provisioning blocker in `TESTFLIGHT_BLOCKER.md`.
-- Rerun the internal archive/upload workflow from `main` after Apple provisioning is repaired.
+- Resolve the Apple account certificate/provisioning blocker in `TESTFLIGHT_BLOCKER.md`.
+- Rerun the internal upload workflow from `main` after Apple provisioning is repaired.
 - Complete the real-basketball TestFlight smoke checklist in `docs/phase_beta_launch_gates_after_pr43.md`.
 - Confirm Firebase Authentication has Email/Password enabled and the App Review account works in Release.
 - Confirm `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` resolve in the Release build.
