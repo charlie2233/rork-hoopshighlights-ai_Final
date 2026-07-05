@@ -1,17 +1,20 @@
 # Beta Launch Gate Status After PR #43
 
-Date: 2026-06-28
+Date: 2026-07-05
 
 ## Summary
 
 PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`. The enhancement integration workstream is complete on `main`; do not redo that integration.
 
-The remaining beta launch blocker is iOS signing/TestFlight account state. The cloud integration, staging deploy, live version proof, and deterministic Worker render path are proven for the merged SHA.
+Current `main` is `4540381752db2eb5ac22442c8f49971e0d49f6cb` after the launch UI cleanup and build `44` bump. The remaining beta launch blocker is Apple certificate/provisioning state during TestFlight upload. The cloud integration, staging deploy, live version proof, deterministic Worker render path, and build `44` archive are proven.
 
 ## Confirmed Main State
 
 - PR #43: merged at `2026-06-28T09:00:46Z`.
-- Merge commit: `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
+- Integration merge commit: `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
+- Current main commit: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
+- PR #46 and PR #47: merged; launch proof/testing UI hidden, Settings Formspree support retained, and Settings support banners auto-dismiss.
+- PR #48: merged; next TestFlight build bumped to `1.0.0 (44)`.
 - Branch posture: `main` contains the integration; follow-up work should stay scoped to launch gates, docs, signing, and smoke proof.
 
 ## GitHub Actions State
@@ -20,7 +23,9 @@ The remaining beta launch blocker is iOS signing/TestFlight account state. The c
 - `iOS Internal TestFlight Upload` push/codecheck run `28317247560`: success on `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
 - `Cloud Edit Deploy Preflight` credential-check run `28317383878`: success on `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
 - `Cloud Edit Deploy Preflight` deploy run `28317412159`: success on `449cd0907f62dd728741fb43a81e4f9e3815a4ff`.
-- `iOS Internal TestFlight Upload` archive run `28317649241`: failure during signed archive because Apple Developer account license/provisioning is not ready.
+- `iOS Internal TestFlight Upload` upload run `28470081179`: success for build `43`.
+- `iOS Internal TestFlight Upload` archive run `28756536677`: success for build `44` on `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
+- `iOS Internal TestFlight Upload` upload run `28756673502`: failed during signed archive because Apple certificate limit/provisioning is not ready on the fresh upload runner.
 
 ## Staging Deploy And Version Proof
 
@@ -53,10 +58,12 @@ Reasoning:
 
 ## iOS Signing/TestFlight Blocker
 
-The archive run `28317649241` failed after CI materialized the required non-secret and secret inputs. The failure is Apple account state:
+Build `44` archive run `28756536677` passed and verified bundle ID `atrak.charlie.hoopsclips`, version `1.0.0`, build `44`, environment `internal_staging`, and cloud launch mode `internal_only`.
 
-- Apple Developer Program License Agreement update required.
-- No provisioning profile available for `atrak.charlie.hoopsclips`.
+Build `44` upload run `28756673502` then failed while re-archiving on a fresh runner after CI materialized the required non-secret and secret inputs. The failure is Apple account signing state:
+
+- Apple account has reached the maximum number of certificates and requires choosing a certificate to revoke.
+- No matching iOS App Development provisioning profile was available for bundle ID `atrak.charlie.hoopsclips`.
 
 Use `TESTFLIGHT_BLOCKER.md` as the account-holder handoff.
 
@@ -87,17 +94,10 @@ Run this only after the archive/upload workflow succeeds and App Store Connect f
 
 ## After Apple Repair
 
-Rerun archive:
-
-```bash
-gh workflow run ios-testflight-upload.yml --ref main -f operation=archive
-```
-
-If archive passes, rerun upload:
+Build `44` already has a passing archive-only run. After the Apple certificate/provisioning issue is repaired, rerun upload:
 
 ```bash
 gh workflow run ios-testflight-upload.yml --ref main -f operation=upload
 ```
 
 Then complete the real-basketball TestFlight smoke checklist above and update `ios/docs/reports/release-device-smoke-report.md` with the result.
-
