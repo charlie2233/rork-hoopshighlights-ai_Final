@@ -2841,7 +2841,7 @@ struct AIEditView: View {
         ]
 
         if hasStartedAIEditJob {
-            summary.append("job proof")
+            summary.append("job ready")
         }
         if activeWorkReceipt != nil {
             summary.append("receipt")

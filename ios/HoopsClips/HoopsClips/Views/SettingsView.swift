@@ -450,8 +450,12 @@ struct SettingsView: View {
     }
 
     private var shouldShowSmokeProofCard: Bool {
-        shouldSurfaceSmokeProofCard
+#if HOOPS_ENABLE_INTERNAL_SUPPORT_TOOLS
+        return shouldSurfaceSmokeProofCard
             && (AppConstants.environmentName != "production" || AppConstants.cloudLaunchMode == .internalOnly)
+#else
+        return false
+#endif
     }
 
     private var hasSettingsUploadProofReady: Bool {
@@ -1141,7 +1145,7 @@ struct SettingsView: View {
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Proof retry queued")
+                    Text("Support retry queued")
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.white)
                     Text(compactUploadStatusDetail(retrySummary))
@@ -1492,7 +1496,7 @@ struct SettingsView: View {
 
     private var testFlightSmokeChecklistText: String {
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
-        TestFlightSmokeChecklistCopy.checklist(
+        return TestFlightSmokeChecklistCopy.checklist(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             appVersion: appVersionString,
             build: appBuildNumber,
@@ -3165,7 +3169,7 @@ struct SettingsView: View {
             return
         }
 
-        guard let endpoint = URL(string: "https://formspree.io/f/xlgwzrdk") else {
+        guard let endpoint = URL(string: "https://formspree.io/f/mbdzrwbo") else {
             feedbackBanner = FeedbackBanner(
                 message: languageStore.text(.settingsFeedbackConfigError),
                 icon: "xmark.octagon.fill",
