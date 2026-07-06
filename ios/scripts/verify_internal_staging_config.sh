@@ -10,7 +10,7 @@ trap 'rm -f "$SETTINGS_FILE"' EXIT
 
 xcodebuild \
   -project "$PROJECT_PATH" \
-  -scheme HoopsClips \
+  -target HoopsClips \
   -configuration Release \
   -destination 'generic/platform=iOS' \
   -xcconfig "$XCCONFIG_PATH" \
