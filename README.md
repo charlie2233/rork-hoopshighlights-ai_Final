@@ -37,6 +37,7 @@ Last launch-gate verification: July 5, 2026.
   - `iOS Internal TestFlight Upload` upload run `28470081179`: success for build `43`.
   - `iOS Internal TestFlight Upload` archive run `28756536677`: success for build `44`.
   - `iOS Internal TestFlight Upload` upload run `28756673502`: failed during signed archive because Apple certificate limit/provisioning must be repaired.
+  - `iOS Internal TestFlight Upload` upload rerun `28764285946`: failed the same signed archive gate because Apple certificate limit/provisioning still must be repaired.
 - Live staging version proof: Worker `/v1/editing/version` and direct editing `/version` reported the merged SHA and required AI Edit/GPT feature flags.
 - Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
 - Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.

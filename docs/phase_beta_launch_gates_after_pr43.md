@@ -26,6 +26,7 @@ Build `44` launch proof baseline is `4540381752db2eb5ac22442c8f49971e0d49f6cb` a
 - `iOS Internal TestFlight Upload` upload run `28470081179`: success for build `43`.
 - `iOS Internal TestFlight Upload` archive run `28756536677`: success for build `44` on `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - `iOS Internal TestFlight Upload` upload run `28756673502`: failed during signed archive because Apple certificate limit/provisioning is not ready on the fresh upload runner.
+- `iOS Internal TestFlight Upload` upload rerun `28764285946`: failed the same signed archive gate because Apple certificate limit/provisioning is still not ready.
 
 ## Staging Deploy And Version Proof
 
@@ -60,7 +61,7 @@ Reasoning:
 
 Build `44` archive run `28756536677` passed and verified bundle ID `atrak.charlie.hoopsclips`, version `1.0.0`, build `44`, environment `internal_staging`, and cloud launch mode `internal_only`.
 
-Build `44` upload run `28756673502` then failed while re-archiving on a fresh runner after CI materialized the required non-secret and secret inputs. The failure is Apple account signing state:
+Build `44` upload run `28756673502`, then upload rerun `28764285946`, failed while re-archiving on a fresh runner after CI materialized the required non-secret and secret inputs. The failure is Apple account signing state:
 
 - Apple account has reached the maximum number of certificates and requires choosing a certificate to revoke.
 - No matching iOS App Development provisioning profile was available for bundle ID `atrak.charlie.hoopsclips`.
