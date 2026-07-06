@@ -35,6 +35,20 @@ require_exact() {
   printf '%s=expected\n' "$key"
 }
 
+require_not_exact() {
+  local key="$1"
+  local rejected="$2"
+  local message="$3"
+  local value
+  value="$(read_setting "$key")"
+  value="$(printf '%s' "$value" | sed 's#/\$()/#//#g')"
+  if [[ "$value" == "$rejected" ]]; then
+    printf 'Rejected %s=%s. %s\n' "$key" "$rejected" "$message" >&2
+    exit 1
+  fi
+  printf '%s=not-%s\n' "$key" "$rejected"
+}
+
 require_exact "HOOPS_APP_ENV" "internal_staging"
 require_exact "HOOPS_CLOUD_LAUNCH_MODE" "internal_only"
 require_exact "HOOPS_CLOUD_ANALYSIS_BASE_URL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
@@ -43,6 +57,7 @@ require_exact "PRODUCT_BUNDLE_IDENTIFIER" "atrak.charlie.hoopsclips"
 require_exact "MARKETING_VERSION" "1.0.0"
 require_exact "CURRENT_PROJECT_VERSION" "44"
 require_exact "INFOPLIST_FILE" "HoopsClips/App-Info.plist"
-require_exact "CODE_SIGN_IDENTITY" "Apple Distribution"
+require_exact "CODE_SIGN_STYLE" "Automatic"
+require_not_exact "CODE_SIGN_IDENTITY" "Apple Distribution" "Automatic signing archives fail when a manual distribution identity is forced without a matching manual profile."
 
 printf 'Internal staging Release config is explicit and cloud-enabled for staging only.\n'

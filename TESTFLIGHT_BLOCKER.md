@@ -15,6 +15,7 @@ Status: blocked on Apple account certificate/provisioning state during TestFligh
 - Build `44` signed archive passed in GitHub Actions run `28756536677`.
 - Build `44` upload failed in GitHub Actions run `28756673502` while re-archiving on a fresh runner.
 - Build `44` upload rerun `28764285946` failed at the same signed archive gate.
+- Follow-up signing-scope experiments in runs `28765082606` and `28765646576` proved that forcing `Apple Distribution` manually conflicts with the current automatic-signing workflow and should not be used without a manual provisioning profile.
 
 The build `44` archive job reached signing, created the archive, and verified:
 
@@ -24,7 +25,7 @@ The build `44` archive job reached signing, created the archive, and verified:
 - environment: `internal_staging`
 - launch mode: `internal_only`
 
-The latest build `44` upload rerun reached signing after secrets and App Store Connect API key materialization. It failed with:
+The last clean automatic-signing build `44` upload rerun reached signing after secrets and App Store Connect API key materialization. It failed with:
 
 - Apple account has reached the maximum number of certificates and requires choosing a certificate to revoke.
 - No matching iOS App Development provisioning profile was available for bundle ID `atrak.charlie.hoopsclips`.
