@@ -12,7 +12,7 @@
 - Deterministic Worker render smoke: passed and produced a valid H.264/AAC MP4.
 - iOS build `43` upload: succeeded in `iOS Internal TestFlight Upload` run `28470081179`.
 - iOS build `44` archive: succeeded in `iOS Internal TestFlight Upload` run `28756536677`.
-- iOS build `44` upload: blocked in `iOS Internal TestFlight Upload` run `28756673502`.
+- iOS build `44` upload: blocked in `iOS Internal TestFlight Upload` runs `28756673502` and `28764285946`.
 - Current blocker: Apple certificate limit/provisioning state for `atrak.charlie.hoopsclips`.
 - Handoff: `TESTFLIGHT_BLOCKER.md`
 - Real-basketball TestFlight checklist: `docs/phase_beta_launch_gates_after_pr43.md`
