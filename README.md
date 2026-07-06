@@ -21,7 +21,7 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 
 ## Latest Verified State
 
-Last launch-gate verification: July 5, 2026.
+Last launch-gate verification: July 6, 2026.
 
 - Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #43: merged, `Integrate HoopClips enhancement workstream`.
@@ -38,6 +38,7 @@ Last launch-gate verification: July 5, 2026.
   - `iOS Internal TestFlight Upload` archive run `28756536677`: success for build `44`.
   - `iOS Internal TestFlight Upload` upload run `28756673502`: failed during signed archive because Apple certificate limit/provisioning must be repaired.
   - `iOS Internal TestFlight Upload` upload rerun `28764285946`: failed the same signed archive gate because Apple certificate limit/provisioning still must be repaired.
+  - `iOS Internal TestFlight Upload` corrected automatic-signing upload rerun `28765926589`: failed the same signed archive gate because Apple certificate limit/provisioning still must be repaired.
 - Live staging version proof: Worker `/v1/editing/version` and direct editing `/version` reported the merged SHA and required AI Edit/GPT feature flags.
 - Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
 - Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.
