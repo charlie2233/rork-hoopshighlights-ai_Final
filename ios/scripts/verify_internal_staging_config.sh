@@ -12,14 +12,14 @@ xcodebuild \
   -project "$PROJECT_PATH" \
   -scheme HoopsClips \
   -configuration Release \
-  -destination 'generic/platform=iOS Simulator' \
+  -destination 'generic/platform=iOS' \
   -xcconfig "$XCCONFIG_PATH" \
   CODE_SIGNING_ALLOWED=NO \
   -showBuildSettings > "$SETTINGS_FILE"
 
 read_setting() {
   local key="$1"
-  awk -F' = ' -v wanted="$key" '$1 ~ "^[[:space:]]*" wanted "$" { print $2; found=1; exit } END { if (!found) print "" }' "$SETTINGS_FILE"
+  awk -F' = ' -v wanted="$key" '$1 ~ "^[[:space:]]*" wanted "$" && $2 != "" { print $2; found=1; exit } END { if (!found) print "" }' "$SETTINGS_FILE"
 }
 
 require_exact() {
@@ -43,5 +43,6 @@ require_exact "PRODUCT_BUNDLE_IDENTIFIER" "atrak.charlie.hoopsclips"
 require_exact "MARKETING_VERSION" "1.0.0"
 require_exact "CURRENT_PROJECT_VERSION" "44"
 require_exact "INFOPLIST_FILE" "HoopsClips/App-Info.plist"
+require_exact "CODE_SIGN_IDENTITY" "Apple Distribution"
 
 printf 'Internal staging Release config is explicit and cloud-enabled for staging only.\n'

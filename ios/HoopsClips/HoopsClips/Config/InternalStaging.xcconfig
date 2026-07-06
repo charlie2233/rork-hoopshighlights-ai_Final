@@ -8,3 +8,8 @@ HOOPS_APP_ENV = internal_staging
 HOOPS_CLOUD_LAUNCH_MODE = internal_only
 HOOPS_CLOUD_ANALYSIS_BASE_URL = https:/$()/hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
 HOOPS_CLOUD_EDIT_BASE_URL = https:/$()/hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+
+// Internal TestFlight archives must request distribution signing during the
+// archive phase; otherwise automatic signing asks App Store Connect for an
+// iOS App Development profile and hits the certificate/profile gate.
+CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
