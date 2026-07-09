@@ -44,7 +44,7 @@ enum AIEditQuickPromptLibrary {
         AIEditQuickPrompt(
             id: "recruiting",
             title: "Recruit",
-            subtitle: "Clean full-play proof",
+            subtitle: "Clean full-play reel",
             prompt: "Recruiting reel: full plays, clear outcomes, scoring, assists, defense, hustle, no unclear clips.",
             icon: "star.circle.fill"
         ),
