@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var feedbackMessage = ""
     @State private var isSubmittingFeedback = false
     @State private var feedbackBanner: FeedbackBanner?
+    @State private var feedbackBannerDismissTask: Task<Void, Never>?
     @State private var expandedFAQIDs: Set<String> = []
     @State private var buildSummaryCopied = false
     @State private var testFlightChecklistCopied = false
@@ -2677,7 +2678,7 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 Button {
                     feedbackMessage = ""
-                    feedbackBanner = nil
+                    clearFeedbackBanner()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "eraser.fill")
@@ -3146,6 +3147,33 @@ struct SettingsView: View {
         return isEmailValidOrEmpty(contactEmail)
     }
 
+    @MainActor
+    private func clearFeedbackBanner() {
+        feedbackBannerDismissTask?.cancel()
+        feedbackBannerDismissTask = nil
+        feedbackBanner = nil
+    }
+
+    @MainActor
+    private func showFeedbackBanner(message: String, icon: String, tint: Color) {
+        let banner = FeedbackBanner(message: message, icon: icon, tint: tint)
+        let bannerID = banner.id
+
+        feedbackBanner = banner
+        feedbackBannerDismissTask?.cancel()
+        feedbackBannerDismissTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 4_000_000_000)
+            } catch {
+                return
+            }
+
+            guard feedbackBanner?.id == bannerID else { return }
+            feedbackBanner = nil
+            feedbackBannerDismissTask = nil
+        }
+    }
+
     private func faqBinding(for id: String) -> Binding<Bool> {
         Binding {
             expandedFAQIDs.contains(id)
@@ -3161,7 +3189,7 @@ struct SettingsView: View {
     @MainActor
     private func submitFeedback() async {
         guard canSubmitFeedback else {
-            feedbackBanner = FeedbackBanner(
+            showFeedbackBanner(
                 message: languageStore.text(.settingsFeedbackValidationMessage),
                 icon: "exclamationmark.triangle.fill",
                 tint: AppTheme.dangerRed
@@ -3170,7 +3198,7 @@ struct SettingsView: View {
         }
 
         guard let endpoint = URL(string: "https://formspree.io/f/mbdzrwbo") else {
-            feedbackBanner = FeedbackBanner(
+            showFeedbackBanner(
                 message: languageStore.text(.settingsFeedbackConfigError),
                 icon: "xmark.octagon.fill",
                 tint: AppTheme.dangerRed
@@ -3179,7 +3207,7 @@ struct SettingsView: View {
         }
 
         isSubmittingFeedback = true
-        feedbackBanner = nil
+        clearFeedbackBanner()
         defer { isSubmittingFeedback = false }
 
         let trimmedMessage = String(
@@ -3217,7 +3245,7 @@ struct SettingsView: View {
             guard (200..<300).contains(http.statusCode) else {
                 let envelope = try? JSONDecoder().decode(FormspreeErrorEnvelope.self, from: data)
                 let serverMessage = envelope?.errors?.compactMap(\.message).first
-                feedbackBanner = FeedbackBanner(
+                showFeedbackBanner(
                     message: serverMessage ?? languageStore.text(.settingsFeedbackSendFailure),
                     icon: "wifi.exclamationmark",
                     tint: AppTheme.dangerRed
@@ -3225,14 +3253,14 @@ struct SettingsView: View {
                 return
             }
 
-            feedbackBanner = FeedbackBanner(
+            showFeedbackBanner(
                 message: languageStore.text(.settingsFeedbackSentThanks),
                 icon: "checkmark.circle.fill",
                 tint: AppTheme.successGreen
             )
             feedbackMessage = ""
         } catch {
-            feedbackBanner = FeedbackBanner(
+            showFeedbackBanner(
                 message: languageStore.text(.settingsFeedbackNetworkError),
                 icon: "wifi.exclamationmark",
                 tint: AppTheme.dangerRed
