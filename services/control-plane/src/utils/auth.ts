@@ -1,6 +1,6 @@
 export function isSharedSecretAuthorized(actual: string | null, expected: string | undefined): boolean {
   if (!expected) {
-    return true;
+    return false;
   }
   if (!actual) {
     return false;

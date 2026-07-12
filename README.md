@@ -10,18 +10,21 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 - Build `44` launch proof baseline is `4540381752db2eb5ac22442c8f49971e0d49f6cb`, with launch testing/proof UI hidden, Settings Formspree support retained, and the next iOS TestFlight build bumped to `44`.
 - Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, deterministic Worker render smoke passed, build `44` archive passed, and TestFlight upload is blocked by Apple certificate/provisioning state.
 - Remaining beta blocker: the Apple account holder must clear the certificate limit / provisioning issue for bundle ID `atrak.charlie.hoopsclips`, then rerun the upload workflow. See `TESTFLIGHT_BLOCKER.md`.
-- Current public-safe fallback: iOS app with local import, review, export, save, and on-device analysis while public cloud gates stay locked.
+- Public submission posture: no on-device analysis fallback is approved; Release requires the production cloud analysis, edit-planning, and rendering gates to pass.
 - Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
 - Cloud ML/rendering path: available to internal staging/TestFlight only after signing succeeds; gated off for public launch until the cutover rules below are satisfied.
 - Release bundle ID: `atrak.charlie.hoopsclips`.
 - Internal staging cloud mode: `HOOPS_CLOUD_LAUNCH_MODE = internal_only`.
 - Internal staging cloud base URL: `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`.
 - Release email/password auth: Firebase Auth via `HOOPS_FIREBASE_AUTH_API_KEY`.
+- Release auth UI excludes local demo-code phone verification and guest-account linking; those helpers are Debug-only until a real provider-backed flow exists.
+- Automatic Formspree stability/upload diagnostics are limited to Debug and `internal_only` builds; the user-submitted Settings support form remains available.
+- The app bundle includes `PrivacyInfo.xcprivacy`, and the TestFlight archive workflow verifies that it is present and valid.
 - Phase 4h: labeling-only; no retrain, smoke, medium batch, or threshold changes until confirmed labels land.
 
 ## Latest Verified State
 
-Last launch-gate verification: July 6, 2026.
+Last launch-gate verification: July 11, 2026.
 
 - Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #43: merged, `Integrate HoopClips enhancement workstream`.
@@ -30,8 +33,8 @@ Last launch-gate verification: July 6, 2026.
 - PR #48: merged, next TestFlight build bumped to `44`.
 - PR #49: merged, build `44` TestFlight blocker docs refreshed after archive/upload proof.
 - GitHub Actions on merged `main`:
-  - `Cloud Edit Deploy Preflight` push run `28317247578`: success.
-  - `iOS Internal TestFlight Upload` push/codecheck run `28317247560`: success.
+  - `Cloud Edit Deploy Preflight` push run `28992814533` on current `main` `725f6720407a2c295eed316e66437deb77442c3a`: success.
+  - `iOS Internal TestFlight Upload` push/codecheck run `28992814540` on current `main`: success; this is unsigned test compilation, not a TestFlight upload.
   - `Cloud Edit Deploy Preflight` credential-check run `28317383878`: success.
   - `Cloud Edit Deploy Preflight` deploy run `28317412159`: success.
   - `iOS Internal TestFlight Upload` upload run `28470081179`: success for build `43`.

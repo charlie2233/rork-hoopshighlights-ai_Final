@@ -2,6 +2,14 @@ import Testing
 @testable import HoopsClips
 
 struct LaunchTelemetryTests {
+    @Test
+    func automaticRemoteDiagnosticsStayInternalOnly() {
+        #expect(LaunchTelemetry.shouldSendAutomaticRemoteDiagnostics(isDebug: true, cloudLaunchMode: .disabled))
+        #expect(LaunchTelemetry.shouldSendAutomaticRemoteDiagnostics(isDebug: false, cloudLaunchMode: .internalOnly))
+        #expect(!LaunchTelemetry.shouldSendAutomaticRemoteDiagnostics(isDebug: false, cloudLaunchMode: .enabled))
+        #expect(!LaunchTelemetry.shouldSendAutomaticRemoteDiagnostics(isDebug: false, cloudLaunchMode: .disabled))
+    }
+
     @Test func testAIEditFailureReasonRedactsURLsObjectKeysAndSignedQueryValues() {
         let rawValue = """
         render failed for uploads/25a101ba8d234fd98094bd112276161f/source.mp4 \

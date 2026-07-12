@@ -63,9 +63,18 @@ final class LaunchTelemetry {
         return "pending_retry_count=\(count) endpoint=formspree"
     }
 
+    private var allowsAutomaticRemoteDiagnostics: Bool {
+        Self.shouldSendAutomaticRemoteDiagnostics(
+            isDebug: runtimeConfig.isDebug,
+            cloudLaunchMode: runtimeConfig.cloudLaunchMode
+        )
+    }
+
     func configure() {
         recordPreviousSessionIfNeeded()
-        retryPendingCrashReportsIfNeeded()
+        if allowsAutomaticRemoteDiagnostics {
+            retryPendingCrashReportsIfNeeded()
+        }
         updateStabilitySnapshot(
             lifecycleState: "launching",
             screen: nil,
@@ -259,6 +268,11 @@ final class LaunchTelemetry {
 
     @discardableResult
     func sendAutomaticUploadStallProof(_ proofText: String) async -> Bool {
+        guard allowsAutomaticRemoteDiagnostics else {
+            logger.notice("Automatic remote upload diagnostics are disabled for this build.")
+            return false
+        }
+
         let snapshot = currentStabilitySnapshot()
         let queuedAt = Date()
         let diagnosis = CrashDiagnosis(
@@ -412,7 +426,16 @@ final class LaunchTelemetry {
         logger.error(
             "Previous HoopClips session may have ended unexpectedly; state=\(snapshot.lifecycleState, privacy: .public) screen=\(screen, privacy: .public) checkpoint=\(checkpoint, privacy: .public) memoryWarnings=\(snapshot.memoryWarningCount, privacy: .public)"
         )
-        enqueueUnexpectedExitReport(snapshot: snapshot, supportSummary: diagnosedSummary, diagnosis: diagnosis)
+        if allowsAutomaticRemoteDiagnostics {
+            enqueueUnexpectedExitReport(snapshot: snapshot, supportSummary: diagnosedSummary, diagnosis: diagnosis)
+        }
+    }
+
+    static func shouldSendAutomaticRemoteDiagnostics(
+        isDebug: Bool,
+        cloudLaunchMode: CloudLaunchMode
+    ) -> Bool {
+        isDebug || cloudLaunchMode == .internalOnly
     }
 
     static func stabilitySupportSummary(

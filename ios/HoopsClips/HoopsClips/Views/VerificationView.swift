@@ -94,7 +94,8 @@ struct VerificationView: View {
                 Spacer()
             }
 
-            if let code = authService.emailVerificationCode {
+            if authService.isDemoVerificationEnabled,
+               let code = authService.emailVerificationCode {
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle.fill")
                         .foregroundStyle(AppTheme.neonPurple)
@@ -163,7 +164,8 @@ struct VerificationView: View {
                 Spacer()
             }
 
-            if let code = authService.phoneVerificationCode {
+            if authService.isDemoVerificationEnabled,
+               let code = authService.phoneVerificationCode {
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle.fill")
                         .foregroundStyle(AppTheme.neonPurple)
