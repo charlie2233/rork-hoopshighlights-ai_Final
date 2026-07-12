@@ -42,12 +42,17 @@ final class AuthService {
     var phoneVerificationCode: String?
     var pendingEmailVerification: String?
     var pendingPhoneVerification: String?
+    let isDemoVerificationEnabled: Bool
 
     private let userDefaultsKey = "hoops_auth_user"
     private let emailAuthClient: FirebaseEmailAuthClient
 
-    init(emailAuthClient: FirebaseEmailAuthClient? = nil) {
+    init(
+        emailAuthClient: FirebaseEmailAuthClient? = nil,
+        isDemoVerificationEnabled: Bool? = nil
+    ) {
         self.emailAuthClient = emailAuthClient ?? FirebaseEmailAuthClient(apiKey: AppConstants.firebaseAuthAPIKey)
+        self.isDemoVerificationEnabled = isDemoVerificationEnabled ?? AppConstants.runtimeConfig.isDebug
         #if DEBUG
         if AIEditUISmokeConfig.isEnabled {
             setUser(Self.aiEditLiveSmokeUser)
@@ -157,12 +162,20 @@ final class AuthService {
     }
 
     func sendEmailVerificationCode(to email: String) {
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Email verification is not available in this build."
+            return
+        }
         let code = generateCode()
         emailVerificationCode = code
         pendingEmailVerification = email
     }
 
     func verifyEmail(code: String) -> Bool {
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Email verification is not available in this build."
+            return false
+        }
         guard let expected = emailVerificationCode, code == expected else {
             errorMessage = "Invalid verification code. Please try again."
             return false
@@ -184,6 +197,10 @@ final class AuthService {
     }
 
     func sendPhoneVerificationCode(to phone: String) {
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Phone sign-in is not available in this build."
+            return
+        }
         let code = generateCode()
         phoneVerificationCode = code
         pendingPhoneVerification = phone
@@ -193,6 +210,11 @@ final class AuthService {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Phone sign-in is not available in this build."
+            return
+        }
 
         guard !phoneNumber.isEmpty else {
             errorMessage = "Please enter your phone number."
@@ -222,6 +244,10 @@ final class AuthService {
     }
 
     func linkEmail(_ email: String) {
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Account linking is not available in this build."
+            return
+        }
         guard var user = currentUser else { return }
         user = AuthUser(
             id: user.id,
@@ -237,6 +263,10 @@ final class AuthService {
     }
 
     func linkPhone(_ phone: String) {
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Account linking is not available in this build."
+            return
+        }
         guard var user = currentUser else { return }
         user = AuthUser(
             id: user.id,
@@ -252,6 +282,10 @@ final class AuthService {
     }
 
     func verifyPhone(code: String) -> Bool {
+        guard isDemoVerificationEnabled else {
+            errorMessage = "Phone verification is not available in this build."
+            return false
+        }
         guard let expected = phoneVerificationCode, code == expected else {
             errorMessage = "Invalid verification code."
             return false

@@ -151,27 +151,31 @@ struct AuthView: View {
                 )
             }
 
-            Button {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion) { authMode = .phone }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "phone.fill")
-                        .font(.title3)
-                    Text(languageStore.text(.continueWithPhone))
-                        .font(.body.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
+            #if DEBUG
+            if authService.isDemoVerificationEnabled {
+                Button {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { authMode = .phone }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "phone.fill")
+                            .font(.title3)
+                        Text(languageStore.text(.continueWithPhone))
+                            .font(.body.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .padding(.vertical, 2)
+                    .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppTheme.cardBorder, lineWidth: 1)
+                    )
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 52)
-                .padding(.vertical, 2)
-                .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(AppTheme.cardBorder, lineWidth: 1)
-                )
             }
+            #endif
 
             Button {
                 authService.signInAnonymously()

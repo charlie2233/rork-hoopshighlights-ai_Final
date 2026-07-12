@@ -115,7 +115,7 @@ struct ContentView: View {
     }
 
     private var needsVerification: Bool {
-        guard authService.isAuthenticated else { return false }
+        guard authService.isAuthenticated, authService.isDemoVerificationEnabled else { return false }
         let hasPendingEmail = authService.pendingEmailVerification != nil
         let hasPendingPhone = authService.pendingPhoneVerification != nil
         return hasPendingEmail || hasPendingPhone

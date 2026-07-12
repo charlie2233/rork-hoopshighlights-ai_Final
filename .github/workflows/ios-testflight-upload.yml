@@ -37,7 +37,9 @@ jobs:
         run: bash ios/scripts/verify_internal_staging_config.sh
 
       - name: Validate internal TestFlight export options
-        run: plutil -lint ios/exportOptions.testflight-internal.plist
+        run: |
+          plutil -lint ios/exportOptions.testflight-internal.plist
+          plutil -lint ios/HoopsClips/HoopsClips/PrivacyInfo.xcprivacy
 
       - name: Build Debug tests without signing
         run: |
@@ -173,6 +175,7 @@ jobs:
           set -euo pipefail
           archive_plist="$ARCHIVE_PATH/Info.plist"
           app_plist="$ARCHIVE_PATH/Products/Applications/HoopsClips.app/Info.plist"
+          privacy_manifest="$ARCHIVE_PATH/Products/Applications/HoopsClips.app/PrivacyInfo.xcprivacy"
 
           require_archive_value() {
             local key="$1"
@@ -205,6 +208,13 @@ jobs:
           require_app_value "HOOPSCloudLaunchMode" "internal_only"
           require_app_value "HOOPSCloudAnalysisBaseURL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
           require_app_value "HOOPSCloudEditBaseURL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
+
+          if [[ ! -f "$privacy_manifest" ]]; then
+            echo "::error::Archive is missing HoopsClips.app/PrivacyInfo.xcprivacy"
+            exit 1
+          fi
+          plutil -lint "$privacy_manifest"
+          echo "PrivacyInfo.xcprivacy=present-and-valid"
 
       - name: Upload to internal TestFlight
         if: inputs.operation == 'upload'

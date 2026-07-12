@@ -65,6 +65,7 @@ Then complete the real-basketball TestFlight smoke checklist in `docs/phase_beta
 - App environment: `internal_staging`.
 - Cloud launch mode: `internal_only`.
 - Cloud analysis/edit base URL: `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`.
+- App-owned `PrivacyInfo.xcprivacy`: present at the app-bundle root and valid.
 
 ## Expected Passing Upload Evidence
 
