@@ -1,10 +1,10 @@
 # TestFlight Signing Incident
 
-Status: resolved on July 13, 2026. Build `1.0.0 (44)` was uploaded successfully and App Store Connect reports it as `VALID` and `IN_BETA_TESTING`.
+Status: resolved on July 13, 2026. Builds `1.0.0 (44)` and `1.0.0 (45)` were uploaded successfully; App Store Connect reports build `45` as `VALID` and `IN_BETA_TESTING`.
 
-This file is retained as the non-secret incident record and rerun guide. Apple signing is no longer the blocker; the remaining beta path is build `45` upload, its compatible Worker deploy, and installed real-basketball TestFlight smoke.
+This file is retained as the non-secret incident record and rerun guide. Apple signing, build `45` upload, and its compatible Worker deploy are complete. The remaining beta path is installed real-basketball TestFlight smoke.
 
-Build `45` is the next upload candidate because it adds install-bound analysis polling and cancellation. The strict Worker must not be deployed before build `45` is available to internal testers; build `44` does not send `installId` on its legacy analysis poll request.
+Build `45` adds install-bound analysis polling and cancellation. It was made available to internal testers before the strict Worker was deployed, so build `44` was not cut over underneath an incompatible client.
 
 ## Resolution Evidence
 
@@ -19,6 +19,11 @@ Build `45` is the next upload candidate because it adds install-bound analysis p
 - App Store Connect build `1.0.0 (44)`: `VALID`, `IN_BETA_TESTING`, not expired, minimum iOS `17.0`, and no non-exempt encryption declaration required.
 - The one development certificate created by the successful ephemeral runner was revoked after upload.
 - PR #59 merged at `45c383a91d6b8223a33032593a839e72e041b955`. Its archive-only run `29309860620` passed signed archive/metadata checks, intentionally skipped upload, and revoked the runner-owned development certificate through the new serial-bound cleanup.
+- PR #60 merged at `51df354cf945069ef55a13f5f0ec50a3065fc53c` with install-bound analysis ownership and build `45` compatibility.
+- Upload run `29311514901`: passed signed archive, metadata/privacy verification, build `45` upload, and serial-bound runner certificate cleanup.
+- App Store Connect build `1.0.0 (45)`: `VALID`, `IN_BETA_TESTING`, not expired, minimum iOS `17.0`, and no non-exempt encryption declaration required.
+- Strict staging deploy run `29312118314`: passed Worker and direct editing deployment/version proof at the PR #60 merge SHA.
+- Live ownership smoke passed: missing ownership was rejected with `400`, mismatched ownership with `403`, and only the matching install could read and cancel its analysis job.
 
 No certificate contents, private keys, API key contents, provisioning profile contents, passwords, or tokens belong in this file.
 
@@ -60,4 +65,4 @@ Expected passing evidence:
 
 ## Remaining TestFlight Work
 
-Upload build `45`, wait until App Store Connect reports it ready for internal testing, deploy the matching strict staging Worker, and complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
+Install build `45` from TestFlight and complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
