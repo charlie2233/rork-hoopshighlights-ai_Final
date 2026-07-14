@@ -41,24 +41,33 @@ jobs:
           plutil -lint ios/exportOptions.testflight-internal.plist
           plutil -lint ios/HoopsClips/HoopsClips/PrivacyInfo.xcprivacy
 
-      - name: Build Debug tests without signing
+      - name: Run focused Debug simulator tests without signing
         run: |
           set -euo pipefail
-          xcodebuild build-for-testing \
+          result_bundle="$RUNNER_TEMP/hoopclips-focused-tests.xcresult"
+          xcodebuild test \
             -project ios/HoopsClips.xcodeproj \
             -scheme HoopsClips \
             -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
+            -destination-timeout 120 \
             -derivedDataPath "$RUNNER_TEMP/hoopclips-codecheck-derived" \
+            -resultBundlePath "$result_bundle" \
+            -only-testing:HoopsClipsTests/AuthServiceTests \
+            -only-testing:HoopsClipsTests/LaunchTelemetryTests \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             -skipPackagePluginValidation
+
+          xcrun xcresulttool get test-results summary --path "$result_bundle" \
+            | jq -e '.totalTestCount == 6 and .passedTests == 6 and .failedTests == 0 and .skippedTests == 0'
 
       - name: Print codecheck summary
         run: |
           set -euo pipefail
           cat <<'SUMMARY'
           No-secret codecheck completed.
-          This proves internal staging build settings, export-options syntax, and unsigned Debug test compilation only.
+          This proves internal staging build settings, export-options syntax, and six focused unsigned Debug simulator tests.
           It does not create a signed archive, upload to App Store Connect, or prove installed TestFlight smoke.
           SUMMARY
 
@@ -67,6 +76,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'
     runs-on: macos-26
     environment: staging
+    concurrency:
+      group: hoopclips-ios-automatic-signing
+      cancel-in-progress: false
     env:
       OPERATION: ${{ inputs.operation }}
       HOOPS_DEVELOPMENT_TEAM: ${{ secrets.HOOPS_DEVELOPMENT_TEAM }}
@@ -149,6 +161,17 @@ jobs:
           echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
           echo "App Store Connect API key materialized"
 
+      - name: Verify automatic signing certificate capacity
+        run: |
+          set -euo pipefail
+          snapshot_path="$RUNNER_TEMP/app-store-connect-certificates-before.json"
+          python3 scripts/app_store_connect_certificates.py snapshot \
+            --key-path "$ASC_KEY_PATH" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output "$snapshot_path"
+          echo "ASC_CERTIFICATE_SNAPSHOT=$snapshot_path" >> "$GITHUB_ENV"
+
       - name: Build signed internal staging archive
         run: |
           set -euo pipefail
@@ -216,6 +239,25 @@ jobs:
           plutil -lint "$privacy_manifest"
           echo "PrivacyInfo.xcprivacy=present-and-valid"
 
+      - name: Capture archive signing certificate serial
+        run: |
+          set -euo pipefail
+          certificate_dir="$RUNNER_TEMP/archive-signing-certificate"
+          app_path="$ARCHIVE_PATH/Products/Applications/HoopsClips.app"
+          rm -rf "$certificate_dir"
+          mkdir -p "$certificate_dir"
+          (
+            cd "$certificate_dir"
+            codesign -d --extract-certificates "$app_path"
+          )
+          certificate_serial="$(openssl x509 -inform DER -in "$certificate_dir/codesign0" -noout -serial | sed -E 's/^serial=//I')"
+          if [[ -z "$certificate_serial" ]]; then
+            echo "::error::Could not read the archive signing certificate serial."
+            exit 1
+          fi
+          echo "ASC_ARCHIVE_CERTIFICATE_SERIAL=$certificate_serial" >> "$GITHUB_ENV"
+          echo "Archive signing certificate serial captured"
+
       - name: Upload to internal TestFlight
         if: inputs.operation == 'upload'
         run: |
@@ -240,6 +282,30 @@ jobs:
           else
             echo "Archive/preflight operation completed; no App Store Connect upload was attempted."
           fi
+
+      - name: Revoke this runner's automatic signing certificate
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -z "${ASC_KEY_PATH:-}" || ! -f "$ASC_KEY_PATH" ]]; then
+            echo "App Store Connect API key is unavailable; certificate cleanup skipped."
+            exit 0
+          fi
+          if [[ -z "${ASC_CERTIFICATE_SNAPSHOT:-}" || ! -f "$ASC_CERTIFICATE_SNAPSHOT" ]]; then
+            echo "Certificate snapshot is unavailable; certificate cleanup skipped."
+            exit 0
+          fi
+          cleanup_args=(
+            cleanup
+            --key-path "$ASC_KEY_PATH"
+            --key-id "$APP_STORE_CONNECT_KEY_ID"
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID"
+            --snapshot "$ASC_CERTIFICATE_SNAPSHOT"
+          )
+          if [[ -n "${ASC_ARCHIVE_CERTIFICATE_SERIAL:-}" ]]; then
+            cleanup_args+=(--certificate-serial "$ASC_ARCHIVE_CERTIFICATE_SERIAL")
+          fi
+          python3 scripts/app_store_connect_certificates.py "${cleanup_args[@]}"
 
       - name: Remove App Store Connect API key
         if: always()

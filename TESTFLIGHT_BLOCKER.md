@@ -1,75 +1,60 @@
-# TestFlight Blocker
+# TestFlight Signing Incident
 
-Status: blocked on Apple account certificate/provisioning state during TestFlight upload, not on the PR #43 cloud integration or the launch UI cleanup.
+Status: resolved on July 13, 2026. Build `1.0.0 (44)` was uploaded successfully and App Store Connect reports it as `VALID` and `IN_BETA_TESTING`.
 
-## Confirmed State
+This file is retained as the non-secret incident record and rerun guide. The remaining beta gate is installed real-basketball TestFlight smoke, not Apple signing.
 
-- Build `44` launch proof baseline is merge commit `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
-- PR #43 is merged and the integration workstream is complete on `main`.
-- PR #46 and PR #47 hid launch testing/proof UI, kept the Settings Formspree support box, and auto-dismiss the Settings support banners.
-- PR #48 bumped the next iOS TestFlight build to `1.0.0 (44)` because build `43` was already uploaded.
-- Staging deploy proof passed in GitHub Actions run `28317412159`.
-- Live Worker/direct editing version proof passed for the merged SHA.
-- Deterministic Worker render smoke passed and produced a valid MP4.
-- Previous TestFlight upload for build `43` succeeded in GitHub Actions run `28470081179`.
-- Build `44` signed archive passed in GitHub Actions run `28756536677`.
-- Build `44` upload failed in GitHub Actions run `28756673502` while re-archiving on a fresh runner.
-- Build `44` upload rerun `28764285946` failed at the same signed archive gate.
-- Follow-up signing-scope experiments in runs `28765082606` and `28765646576` proved that forcing `Apple Distribution` manually conflicts with the current automatic-signing workflow and should not be used without a manual provisioning profile.
-- Corrected automatic-signing upload rerun `28765926589` failed at the same Apple account certificate/provisioning gate.
+## Resolution Evidence
 
-The build `44` archive job reached signing, created the archive, and verified:
+- PR #43 remains merged; the enhancement integration workstream was not redone.
+- Current merged launch-hardening baseline: `7a0af43cc21acbe57fa7ba28b4efe9764c3e397e`.
+- Staging deploy, live Worker/direct editing version proof, and deterministic Worker render smoke remain passed.
+- Build `44` signed archive run `28756536677`: passed.
+- Upload diagnostic run `29297858325`: failed at signing with the certificate-capacity and missing-profile errors.
+- Apple API inspection found ten stale `Apple Development: Created via API` certificates left by earlier ephemeral CI runners. Their private keys no longer existed after those runners ended.
+- The ten stale CI development certificates were revoked while the existing distribution certificate was preserved.
+- Upload run `29298033420`: passed the signed archive, archive metadata/privacy checks, and `Upload to internal TestFlight`.
+- App Store Connect build `1.0.0 (44)`: `VALID`, `IN_BETA_TESTING`, not expired, minimum iOS `17.0`, and no non-exempt encryption declaration required.
+- The one development certificate created by the successful ephemeral runner was revoked after upload.
 
-- bundle ID: `atrak.charlie.hoopsclips`
-- version: `1.0.0`
-- build: `44`
-- environment: `internal_staging`
-- launch mode: `internal_only`
+No certificate contents, private keys, API key contents, provisioning profile contents, passwords, or tokens belong in this file.
 
-The latest corrected automatic-signing build `44` upload rerun reached signing after secrets and App Store Connect API key materialization. It failed with:
+## Root Cause
 
-- Apple account has reached the maximum number of certificates and requires choosing a certificate to revoke.
-- No matching iOS App Development provisioning profile was available for bundle ID `atrak.charlie.hoopsclips`.
+The automatic-signing workflow used a fresh GitHub-hosted runner for every archive. Xcode created a new development certificate through the App Store Connect API, but the certificate's private key disappeared with the runner. Repeated archive attempts accumulated ten unusable API-created development certificates and exhausted the account limit.
 
-## Required Account Holder Actions
+Revoking only the local Mac's development certificate did not remove those CI-created certificates. That is why the first July 13 retry still returned:
 
-1. Sign in to the Apple Developer account at `https://developer.apple.com/account/`.
-2. Revoke unused/expired Apple Development or iOS Development certificates until CI automatic signing can create or use a valid certificate again.
-3. Sign in to App Store Connect at `https://appstoreconnect.apple.com/agreements/`.
-4. Verify Agreements, Tax, and Banking are current enough for TestFlight/App Store Connect operations.
-5. Verify the App ID / bundle ID `atrak.charlie.hoopsclips` exists for the team.
-6. Verify the App ID capabilities match the Xcode project and provisioning expectations.
-7. Ensure valid signing/provisioning can be created for `atrak.charlie.hoopsclips` from the GitHub Actions runner.
-8. Ensure the App Store Connect API key and team membership used by CI can perform automatic signing and TestFlight upload.
+- `Choose a certificate to revoke. Your account has reached the maximum number of certificates.`
+- `No profiles for 'atrak.charlie.hoopsclips' were found.`
 
-Do not paste private keys, API key contents, provisioning profile contents, or token values into chat or docs. Only report non-secret status and error lines.
+## Recurrence Prevention
 
-## Rerun Command After Repair
+The signed workflow now serializes automatic-signing jobs and refuses to start Xcode while any preexisting API-created development certificate needs reconciliation. It records the runner's local certificate serials before signing, then its `always()` cleanup step revokes only a matching API certificate whose serial was newly installed on that runner or extracted from that runner's archive. It refuses to delete more than one.
 
-From the repository:
+If a runner disappears before cleanup, the leaked certificate causes the next signed run to stop before creating another certificate. The operator must then reconcile that single non-secret certificate record through Apple before retrying. This fail-closed path prevents another silent certificate buildup without deleting a same-named certificate created by another repository or manual Xcode session.
+
+The workflow preserves the distribution certificate and never prints or commits private material.
+
+## Future Rerun Command
+
+Use this only when a later build needs to be uploaded:
 
 ```bash
 gh workflow run ios-testflight-upload.yml --ref main -f operation=upload
 ```
 
-Build `44` already has a passing archive-only run (`28756536677`). The upload operation re-archives on a fresh runner, so the next useful gate after Apple certificate/provisioning repair is `operation=upload`.
+Expected passing evidence:
 
-Then complete the real-basketball TestFlight smoke checklist in `docs/phase_beta_launch_gates_after_pr43.md`.
+- `Build signed internal staging archive`: success.
+- Bundle ID: `atrak.charlie.hoopsclips`.
+- Version/build: the values expected by the workflow.
+- Environment: `internal_staging`.
+- Launch mode: `internal_only`.
+- App-owned `PrivacyInfo.xcprivacy`: present and valid at the app-bundle root.
+- `Upload to internal TestFlight`: success for `operation=upload`.
+- `Revoke this runner's automatic signing certificate`: success with zero or one serial-matched certificate revoked.
 
-## Expected Passing Archive Evidence
+## Remaining TestFlight Work
 
-- `Build internal staging TestFlight archive`: success.
-- Archive bundle ID: `atrak.charlie.hoopsclips`.
-- Archive version: `1.0.0`.
-- Archive build: `44`.
-- App environment: `internal_staging`.
-- Cloud launch mode: `internal_only`.
-- Cloud analysis/edit base URL: `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`.
-- App-owned `PrivacyInfo.xcprivacy`: present at the app-bundle root and valid.
-
-## Expected Passing Upload Evidence
-
-- `Build internal staging TestFlight archive`: success.
-- `Upload to internal TestFlight`: success.
-- Log includes `Upload succeeded` and `Internal TestFlight upload command completed`.
-- App Store Connect shows build `1.0.0 (44)` processing or available for internal TestFlight.
+Install build `44` from TestFlight and complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
