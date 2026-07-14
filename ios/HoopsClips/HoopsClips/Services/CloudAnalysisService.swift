@@ -828,6 +828,7 @@ struct CloudAnalysisService {
             return try await pollJob(
                 baseURL: baseURL,
                 jobID: job.jobId,
+                installID: installID,
                 sourceObjectKey: job.storageKey,
                 initialPollAfterSeconds: job.pollAfterSeconds,
                 progress: progress
@@ -871,6 +872,7 @@ struct CloudAnalysisService {
         return try await pollJob(
             baseURL: baseURL,
             jobID: job.jobId,
+            installID: installID,
             sourceObjectKey: job.sourceObjectKey,
             initialPollAfterSeconds: job.pollAfterSeconds,
             progress: progress
@@ -1025,6 +1027,7 @@ struct CloudAnalysisService {
             return try await pollJob(
                 baseURL: baseURL,
                 jobID: job.jobId,
+                installID: installID,
                 sourceObjectKey: job.storageKey,
                 initialPollAfterSeconds: job.pollAfterSeconds,
                 progress: progress
@@ -1043,6 +1046,7 @@ struct CloudAnalysisService {
         return try await pollJob(
             baseURL: baseURL,
             jobID: preparedJob.job.jobId,
+            installID: installID,
             sourceObjectKey: preparedJob.job.sourceObjectKey,
             initialPollAfterSeconds: preparedJob.job.pollAfterSeconds,
             progress: progress
@@ -1051,6 +1055,7 @@ struct CloudAnalysisService {
 
     func resumeAnalysisJob(
         jobID: String,
+        installID: String,
         sourceObjectKey: String?,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
@@ -1062,6 +1067,7 @@ struct CloudAnalysisService {
         return try await pollJob(
             baseURL: baseURL,
             jobID: jobID,
+            installID: installID,
             sourceObjectKey: sourceObjectKey,
             initialPollAfterSeconds: 1,
             progress: progress
@@ -1302,6 +1308,7 @@ struct CloudAnalysisService {
                 let result = try await pollJob(
                     baseURL: baseURL,
                     jobID: job.jobId,
+                    installID: installID,
                     sourceObjectKey: job.storageKey,
                     initialPollAfterSeconds: job.pollAfterSeconds,
                     progress: progress
@@ -1339,6 +1346,7 @@ struct CloudAnalysisService {
             let result = try await pollJob(
                 baseURL: baseURL,
                 jobID: manifest.jobID,
+                installID: installID,
                 sourceObjectKey: manifest.sourceObjectKey,
                 initialPollAfterSeconds: manifest.pollAfterSeconds,
                 progress: progress
@@ -3358,6 +3366,7 @@ struct CloudAnalysisService {
     private func pollJob(
         baseURL: URL,
         jobID: String,
+        installID: String,
         sourceObjectKey: String?,
         initialPollAfterSeconds: Int,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
@@ -3369,7 +3378,15 @@ struct CloudAnalysisService {
         while DispatchTime.now().uptimeNanoseconds < deadline {
             try await Task.sleep(nanoseconds: UInt64(pollDelay) * 1_000_000_000)
 
-            let request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)"))
+            var components = URLComponents(
+                url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)"),
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [URLQueryItem(name: "installId", value: installID)]
+            guard let pollURL = components?.url else {
+                throw CloudAnalysisError.invalidResponse
+            }
+            let request = URLRequest(url: pollURL)
             let (data, response) = try await session.data(for: request)
             let job: CloudAnalysisJobResponse = try decodeResponse(
                 data: data,

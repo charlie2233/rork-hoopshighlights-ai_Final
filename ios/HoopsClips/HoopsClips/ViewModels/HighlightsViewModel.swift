@@ -653,6 +653,7 @@ final class HighlightsViewModel {
         do {
             let result = try await cloudAnalysisService.resumeAnalysisJob(
                 jobID: jobID,
+                installID: installID,
                 sourceObjectKey: sourceObjectKey
             ) { [weak service = analysisService] progress, status in
                 service?.updateExternalAnalysis(progress: progress, status: status)

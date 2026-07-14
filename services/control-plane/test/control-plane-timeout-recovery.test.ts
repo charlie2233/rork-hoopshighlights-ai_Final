@@ -96,7 +96,7 @@ test("stale processing jobs are re-queued and complete on the next accepted atte
   const recoveryResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{
@@ -154,7 +154,7 @@ test("stale processing jobs are re-queued and complete on the next accepted atte
   const finalResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   const finalJson = await parseJsonResponse<{
     status: string;
@@ -236,7 +236,7 @@ test("fresh inference heartbeats keep long-running processing jobs alive", async
   const recoveryResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{
@@ -337,7 +337,7 @@ test("fresh processing callbacks keep long-running processing jobs alive", async
   const recoveryResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{
@@ -418,7 +418,7 @@ test("selected-team editing jobs use the longer selected-team processing timeout
   const recoveryResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{
@@ -579,7 +579,7 @@ test("exhausted stale processing retries fail terminally with a timeout reason",
   const recoveryResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{

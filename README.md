@@ -9,7 +9,8 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 - PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`; the enhancement integration workstream is complete on `main`.
 - Build `44` launch proof baseline is `4540381752db2eb5ac22442c8f49971e0d49f6cb`, with launch testing/proof UI hidden, Settings Formspree support retained, and the next iOS TestFlight build bumped to `44`.
 - Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, deterministic Worker render smoke passed, and build `44` uploaded successfully to internal TestFlight. App Store Connect reports the build as `VALID`.
-- Remaining beta verification: install build `44` on a trusted iPhone and complete the real-basketball TestFlight smoke. The previous Apple certificate-capacity incident is resolved and documented in `TESTFLIGHT_BLOCKER.md`.
+- Build `45` is the ownership-hardening candidate: iOS sends its scoped `installId` on analysis polling and the Worker rejects missing or mismatched ownership on analysis job reads and cancellation. Upload build `45` before deploying the strict Worker so build `44` is not cut over underneath an incompatible client.
+- Remaining beta verification: upload and install build `45`, deploy the matching strict staging Worker, then complete the real-basketball TestFlight smoke. The previous Apple certificate-capacity incident is resolved and documented in `TESTFLIGHT_BLOCKER.md`.
 - Public submission posture: no on-device analysis fallback is approved; Release requires the production cloud analysis, edit-planning, and rendering gates to pass.
 - Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
 - Cloud ML/rendering path: available to internal staging/TestFlight; gated off for public launch until the cutover rules below are satisfied.
@@ -33,9 +34,13 @@ Last launch-gate verification: July 13, 2026.
 - PR #48: merged, next TestFlight build bumped to `44`.
 - PR #49: merged, build `44` TestFlight blocker docs refreshed after archive/upload proof.
 - PR #58: merged, launch privacy/auth/telemetry hardening and Worker dependency cleanup.
+- PR #59: merged at `45c383a91d6b8223a33032593a839e72e041b955`, focused iOS tests and serial-bound automatic-signing certificate cleanup.
 - GitHub Actions on merged `main`:
-  - `Cloud Edit Deploy Preflight` push run `29181429497` on current `main` `7a0af43cc21acbe57fa7ba28b4efe9764c3e397e`: success.
-  - `iOS Internal TestFlight Upload` push/codecheck run `29181429487` on current `main`: success; this is unsigned test compilation, not a TestFlight upload.
+  - `Cloud Edit Deploy Preflight` push run `29309388677` on merged `main` `45c383a91d6b8223a33032593a839e72e041b955`: success.
+  - `iOS Internal TestFlight Upload` push/codecheck run `29309388686` on merged `main`: success; all six focused tests passed.
+  - `iOS Internal TestFlight Upload` archive-only run `29309860620`: success for build `44`; upload was intentionally skipped and the runner-owned signing certificate was revoked.
+  - `Cloud Edit Deploy Preflight` push run `29181429497` on the earlier PR #58 baseline `7a0af43cc21acbe57fa7ba28b4efe9764c3e397e`: success.
+  - `iOS Internal TestFlight Upload` push/codecheck run `29181429487` on that PR #58 baseline: success; this is unsigned test compilation, not a TestFlight upload.
   - `Cloud Edit Deploy Preflight` credential-check run `28317383878`: success.
   - `Cloud Edit Deploy Preflight` deploy run `28317412159`: success.
   - `iOS Internal TestFlight Upload` upload run `28470081179`: success for build `43`.
@@ -50,7 +55,7 @@ Last launch-gate verification: July 13, 2026.
 - Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
 - Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.
 
-Known beta launch gate: build `44` must be installed from TestFlight and exercised with real basketball footage using the checklist below. Public launch remains separately gated by production identity/authorization, job ownership and quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
+Known beta launch gate: publish build `45`, deploy its compatible ownership-enforcing staging Worker, then exercise that build with real basketball footage using the checklist below. Public launch remains separately gated by production identity and quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
 
 ## Repo Layout
 

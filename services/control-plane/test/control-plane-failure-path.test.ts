@@ -62,7 +62,11 @@ test("control plane failure path keeps the job failed and exposes failureReason"
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "failed");
   assert.equal(callbackJson.failureReason, "GPU worker timed out.");
 
-  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  const finalResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
+  );
   const finalJson = await parseJsonResponse<{
     status: string;
     failureReason: string | null;

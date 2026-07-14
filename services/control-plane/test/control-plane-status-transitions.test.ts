@@ -40,7 +40,7 @@ test("legacy /api/ai analyze and result aliases use the cloud job contract", asy
   const resultResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/api/ai/result/${createJson.jobId}`,
+    `/api/ai/result/${createJson.jobId}?installId=install-legacy-api`,
     undefined,
     { "x-trace-id": "trace-legacy-api-result" },
   );
@@ -257,7 +257,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   const finalResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
   );
   assert.equal(finalResponse.status, 200);
   const finalJson = await parseJsonResponse<{
@@ -451,7 +451,7 @@ test("control plane preserves selected team intent through queued inference", as
   const finalResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-team`,
   );
   assert.equal(finalResponse.status, 200);
   const finalJson = await parseJsonResponse<{
@@ -657,7 +657,7 @@ test("control plane routes selected-team analysis directly to editing provider",
   const finalResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-editing-fallback`,
   );
   assert.equal(finalResponse.status, 200);
   const finalJson = await parseJsonResponse<{
@@ -1472,7 +1472,7 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
   const finalResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-legacy-team`,
   );
   const finalJson = await parseJsonResponse<{
     results: {

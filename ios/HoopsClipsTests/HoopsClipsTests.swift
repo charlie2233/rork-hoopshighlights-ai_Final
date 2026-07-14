@@ -1464,6 +1464,8 @@ struct HoopsClipsTests {
             }
 
             if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_team_scan" {
+                let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+                #expect(queryItems?.first(where: { $0.name == "installId" })?.value == "install-123456")
                 return try cloudAnalysisJSONResponse(for: request, body: """
                 {
                   "jobId": "job_team_scan",
@@ -1600,6 +1602,8 @@ struct HoopsClipsTests {
             }
 
             if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_team_scan_all" {
+                let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+                #expect(queryItems?.first(where: { $0.name == "installId" })?.value == "install-123456")
                 return try cloudAnalysisJSONResponse(for: request, body: """
                 {
                   "jobId": "job_team_scan_all",

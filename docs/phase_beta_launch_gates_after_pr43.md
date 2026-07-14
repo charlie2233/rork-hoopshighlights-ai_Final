@@ -6,7 +6,7 @@ Date: 2026-07-13
 
 PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`. The enhancement integration workstream is complete on `main`; do not redo that integration.
 
-Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; the current merged launch-hardening baseline is `7a0af43cc21acbe57fa7ba28b4efe9764c3e397e`. The cloud integration, staging deploy, live version proof, deterministic Worker render path, signed archive, and build `44` TestFlight upload are proven. The remaining beta gate is installed real-basketball smoke.
+Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; the current merged signing-lifecycle baseline is `45c383a91d6b8223a33032593a839e72e041b955`. The cloud integration, staging deploy, live version proof, deterministic Worker render path, signed archive, and build `44` TestFlight upload are proven. Build `45` is the next candidate because it pairs install-bound analysis polling with strict Worker ownership checks. Upload build `45` before deploying that Worker change, then run installed real-basketball smoke on build `45`.
 
 ## Confirmed Main State
 
@@ -16,6 +16,7 @@ Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; the
 - PR #46 and PR #47: merged; launch proof/testing UI hidden, Settings Formspree support retained, and Settings support banners auto-dismiss.
 - PR #48: merged; next TestFlight build bumped to `1.0.0 (44)`.
 - PR #58: merged; launch privacy/auth/telemetry hardening and Worker dependency cleanup.
+- PR #59: merged; focused iOS tests and serial-bound automatic-signing certificate cleanup.
 - Branch posture: `main` contains the integration; follow-up work should stay scoped to launch gates, docs, signing, and smoke proof.
 
 ## GitHub Actions State
@@ -31,6 +32,8 @@ Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; the
 - `iOS Internal TestFlight Upload` diagnostic upload run `29297858325`: confirmed the certificate-capacity failure after the account holder's local certificate revocation.
 - `iOS Internal TestFlight Upload` upload run `29298033420`: success for build `44` on `7a0af43cc21acbe57fa7ba28b4efe9764c3e397e`.
 - App Store Connect build `1.0.0 (44)`: `VALID` with internal state `IN_BETA_TESTING`.
+- `iOS Internal TestFlight Upload` push/codecheck run `29309388686`: success on merged `main` `45c383a91d6b8223a33032593a839e72e041b955`; six focused tests passed.
+- `iOS Internal TestFlight Upload` archive-only run `29309860620`: success for build `44`; upload was intentionally skipped and runner-owned certificate cleanup passed.
 
 ## Staging Deploy And Version Proof
 
@@ -73,7 +76,7 @@ Use `TESTFLIGHT_BLOCKER.md` as the resolved incident record and future rerun gui
 
 ## Real-Basketball TestFlight Smoke Checklist
 
-Run this against internal TestFlight build `1.0.0 (44)`, which has uploaded and finished processing successfully.
+Run this against internal TestFlight build `1.0.0 (45)` after it has uploaded, finished processing, and the matching ownership-enforcing staging Worker has been deployed.
 
 1. Install the latest internal TestFlight build on a trusted iPhone.
 2. Confirm the build is for merge SHA `449cd0907f62dd728741fb43a81e4f9e3815a4ff` or a documented later launch-gate SHA.
@@ -98,4 +101,4 @@ Run this against internal TestFlight build `1.0.0 (44)`, which has uploaded and 
 
 ## Next Gate
 
-Install build `44`, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. A new upload is unnecessary unless the build itself changes.
+Merge the build `45` ownership follow-up, upload build `45`, wait for internal-testing availability, deploy the matching strict staging Worker, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result.

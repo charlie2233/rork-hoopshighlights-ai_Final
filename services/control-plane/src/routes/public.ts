@@ -202,11 +202,24 @@ export async function routePublicRequest(
   }
 
   if (request.method === "GET") {
-    return handleGetJob(env, ctx, requestId, jobMatch.jobId);
+    return handleGetJob(
+      env,
+      ctx,
+      requestId,
+      runtime.schemaVersion,
+      jobMatch.jobId,
+      url.searchParams.get("installId")
+    );
   }
 
   if (request.method === "DELETE") {
-    return handleCancelJob(env, requestId, jobMatch.jobId);
+    return handleCancelJob(
+      env,
+      requestId,
+      runtime.schemaVersion,
+      jobMatch.jobId,
+      url.searchParams.get("installId")
+    );
   }
 
   return null;
@@ -1096,13 +1109,36 @@ async function requestTeamScanProvider(
   }
 }
 
-async function handleGetJob(env: Env, ctx: ExecutionContext, requestId: string, jobId: string): Promise<Response> {
+async function getOwnedAnalysisJob(
+  env: Env,
+  requestId: string,
+  schemaVersion: string,
+  jobId: string,
+  rawInstallId: string | null
+): Promise<JobRecord | Response> {
+  if (!rawInstallId || rawInstallId.trim().length === 0) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: "installId is required.",
+        failureReason: "installId is required."
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+  const installId = rawInstallId;
+
   const job = await getJobSnapshot(env, jobId);
   if (!job) {
     return jsonResponse(
       {
         requestId,
-        schemaVersion: null,
+        schemaVersion,
         confidence: null,
         modelVersion: null,
         errorCode: "job_not_found",
@@ -1114,7 +1150,39 @@ async function handleGetJob(env: Env, ctx: ExecutionContext, requestId: string, 
     );
   }
 
-  const recoveredJob = await recoverStaleProcessingJob(env, ctx, job, requestId, "poll");
+  if (job.installId !== installId) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "install_mismatch",
+        errorMessage: "Install ID does not own this analysis job.",
+        failureReason: "Install ID does not own this analysis job."
+      },
+      { status: 403 },
+      requestId
+    );
+  }
+
+  return job;
+}
+
+async function handleGetJob(
+  env: Env,
+  ctx: ExecutionContext,
+  requestId: string,
+  schemaVersion: string,
+  jobId: string,
+  installId: string | null
+): Promise<Response> {
+  const jobOrResponse = await getOwnedAnalysisJob(env, requestId, schemaVersion, jobId, installId);
+  if (jobOrResponse instanceof Response) {
+    return jobOrResponse;
+  }
+
+  const recoveredJob = await recoverStaleProcessingJob(env, ctx, jobOrResponse, requestId, "poll");
   const hydrated = await hydrateResultIfNeeded(env, recoveredJob);
   console.info(
     JSON.stringify({
@@ -1130,13 +1198,24 @@ async function handleGetJob(env: Env, ctx: ExecutionContext, requestId: string, 
   return jsonResponse(toCloudAnalysisJobResponse(hydrated, requestId, hydrated.schemaVersion), { status: 200 }, requestId);
 }
 
-async function handleCancelJob(env: Env, requestId: string, jobId: string): Promise<Response> {
+async function handleCancelJob(
+  env: Env,
+  requestId: string,
+  schemaVersion: string,
+  jobId: string,
+  installId: string | null
+): Promise<Response> {
+  const jobOrResponse = await getOwnedAnalysisJob(env, requestId, schemaVersion, jobId, installId);
+  if (jobOrResponse instanceof Response) {
+    return jobOrResponse;
+  }
+
   const deleted = await deleteJobState(env, jobId);
   if (!deleted) {
     return jsonResponse(
       {
         requestId,
-        schemaVersion: null,
+        schemaVersion,
         confidence: null,
         modelVersion: null,
         errorCode: "job_not_found",
