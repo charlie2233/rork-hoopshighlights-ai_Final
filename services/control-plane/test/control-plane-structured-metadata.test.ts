@@ -103,7 +103,7 @@ test("structured teacher metadata stays additive in the callback contract", asyn
   const jobResponse = await invokePublicRoute(
     harness,
     "GET",
-    `/jobs/${createJson.jobId}`,
+    `/jobs/${createJson.jobId}?installId=install-local-001`,
     undefined,
     { "x-trace-id": "trace-structured-metadata-poll" }
   );

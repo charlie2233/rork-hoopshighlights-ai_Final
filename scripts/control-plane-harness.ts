@@ -710,12 +710,14 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
                 { status: 404 },
               );
             }
+            const deletedAt = new Date().toISOString();
             const updated: JobRecord = {
               ...job,
-              status: "expired",
+              status: "cancelled",
               failureReason: "Job deleted by caller.",
-              finishedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+              cancelledAt: deletedAt,
+              finishedAt: deletedAt,
+              updatedAt: deletedAt,
             };
             state.jobs.set(jobId, updated);
             state.events.push({

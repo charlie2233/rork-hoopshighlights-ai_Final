@@ -57,7 +57,11 @@ test("control plane keeps asset aliases while preserving redacted public storage
   assert.equal(controlPlane.state.inferenceDispatches[0]?.body.assetId, createJson.assetId);
   assert.equal(controlPlane.state.inferenceDispatches[0]?.body.storageKey, createJson.sourceObjectKey);
 
-  const pollResponse = await invokePublicRoute(controlPlane, "GET", `/jobs/${createJson.jobId}`);
+  const pollResponse = await invokePublicRoute(
+    controlPlane,
+    "GET",
+    `/jobs/${createJson.jobId}?installId=install-asset-compat`,
+  );
   const pollJson = await parseJsonResponse<{ assetId: string; storageKey: string | null }>(pollResponse);
   assert.equal(pollJson.assetId, createJson.assetId);
   assert.equal(pollJson.storageKey, null);
