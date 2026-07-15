@@ -5,19 +5,19 @@ import UniformTypeIdentifiers
 
 private let cloudUploadSingleSourcePrefix = "single-source-"
 private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
-private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
+nonisolated private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
 private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
-private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudUpload.sourceOptimizationSummary.v1"
+nonisolated private let cloudUploadSourceOptimizationSummaryDefaultsKey = "hoopsclips.cloudUpload.sourceOptimizationSummary.v1"
 private let optimizedUploadSourceMaximumAge: TimeInterval = 24 * 60 * 60
 private let compactOptimizedUploadDurationSeconds: Double = 45 * 60
 private let compactOptimizedUploadFileSizeBytes: Int64 = 1_400 * 1_024 * 1_024
 private let optimizedUploadSourceTimeoutSeconds: UInt64 = 4 * 60
-private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
-private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
-private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 10 * 60
-private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
-private let cloudUploadStallProofThresholdSeconds: TimeInterval = 90
+nonisolated private let cloudUploadForegroundRequestTimeoutSeconds: TimeInterval = 2 * 60
+nonisolated private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterval = 2 * 60 * 60
+nonisolated private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 90
+nonisolated private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
+nonisolated private let cloudUploadStallProofThresholdSeconds: TimeInterval = 90
 private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
 private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5, 12, 30]
 
@@ -1511,7 +1511,7 @@ struct CloudAnalysisService {
         }
     }
 
-    private final class OptimizedUploadExportSessionBox: @unchecked Sendable {
+    nonisolated private final class OptimizedUploadExportSessionBox: @unchecked Sendable {
         let exporter: AVAssetExportSession
 
         init(_ exporter: AVAssetExportSession) {
@@ -1551,13 +1551,22 @@ struct CloudAnalysisService {
         fileSizeBytes: Int64
     ) async throws -> (url: URL, presetName: String, profile: String) {
         let asset = AVURLAsset(url: sourceURL)
-        let compatiblePresets = AVAssetExportSession.exportPresets(compatibleWith: asset)
         let preferCompactSource = duration >= compactOptimizedUploadDurationSeconds
             || fileSizeBytes >= compactOptimizedUploadFileSizeBytes
         let preferredPresets = preferCompactSource
             ? [AVAssetExportPreset960x540, AVAssetExportPreset1280x720, AVAssetExportPresetMediumQuality]
             : [AVAssetExportPreset1280x720, AVAssetExportPreset960x540, AVAssetExportPresetMediumQuality]
-        let preset = preferredPresets.first { compatiblePresets.contains($0) }
+        var preset: String?
+        for candidate in preferredPresets {
+            if await AVAssetExportSession.compatibility(
+                ofExportPreset: candidate,
+                with: asset,
+                outputFileType: .mp4
+            ) {
+                preset = candidate
+                break
+            }
+        }
         guard let preset,
               let exporter = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw CloudAnalysisError.invalidVideo
@@ -3257,7 +3266,7 @@ struct CloudAnalysisService {
         return result.isEmpty ? UUID().uuidString : result
     }
 
-    nonisolated private static func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
+    nonisolated static func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
         let configuration: URLSessionConfiguration
         if let backgroundIdentifier {
             configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
@@ -3449,7 +3458,7 @@ struct CloudAnalysisService {
                apiError?.errorCode == "upload_expired" {
                 throw CloudAnalysisError.backend(
                     code: "upload_expired",
-                    message: "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
+                    message: "Upload expired. Your selected video is ready for a fresh upload."
                 )
             }
             throw CloudAnalysisError.backend(
@@ -3740,11 +3749,11 @@ private extension URLSessionConfiguration {
         if isBackgroundTransfer {
             sessionSendsLaunchEvents = true
             isDiscretionary = false
-            timeoutIntervalForRequest = 10 * 60
-            timeoutIntervalForResource = 24 * 60 * 60
+            timeoutIntervalForRequest = cloudUploadBackgroundRequestTimeoutSeconds
+            timeoutIntervalForResource = cloudUploadBackgroundResourceTimeoutSeconds
         } else {
-            timeoutIntervalForRequest = 2 * 60
-            timeoutIntervalForResource = 2 * 60 * 60
+            timeoutIntervalForRequest = cloudUploadForegroundRequestTimeoutSeconds
+            timeoutIntervalForResource = cloudUploadForegroundResourceTimeoutSeconds
         }
     }
 }

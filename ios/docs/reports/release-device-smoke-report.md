@@ -1,5 +1,16 @@
 # Release Device Smoke Report
 
+## Active snapshot (2026-07-15)
+
+- Device: trusted physical iPhone with internal TestFlight `1.0.0 (45)` installed.
+- Source: real basketball video, 379.9 MB, split into forty-eight 8 MB upload parts.
+- Result: failed at upload; progress remained at 14%, so team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export were not reached.
+- Evidence: two parts completed while one active part remained idle. The app was backgrounded, and the 15-minute signed upload plan expired before the 10-minute request-idle timeout and retry sequence could recover.
+- Fix candidate: build `46` changes the background request-idle timeout to 90 seconds, preserving the existing retry/backoff policy while keeping its worst-case idle recovery inside the signed upload window.
+- Automated regression: the background upload configuration asserts a 90-second request timeout, 24-hour resource timeout, connectivity waiting, and non-discretionary transfer behavior.
+- Apple state: signing/provisioning is resolved and is not the blocker for this attempt.
+- Next gate: upload/install build `46`, rerun this real-basketball flow, and record every downstream step separately.
+
 ## Active snapshot (2026-07-05)
 
 - Branch evidence source: `main`

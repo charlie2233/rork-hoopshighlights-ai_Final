@@ -1323,7 +1323,7 @@ struct ContentView: View {
         if pendingManifest.contains("pending=true") {
             let message: String
             if pendingManifest.contains("uploadExpired=true") {
-                message = "Saved upload expired. Start again from Uploads."
+                message = "Saved upload expired. Your video is still selected; start a fresh upload."
             } else if pendingManifest.contains("resumeSafe=true") {
                 message = "Resuming saved upload..."
             } else {

@@ -685,7 +685,7 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
             case "empty_upload":
                 return "The server received an empty upload. Re-import the video from Photos or Files, stay on Wi-Fi, and retry."
             case "upload_expired":
-                return "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
+                return "Upload expired. Your selected video is ready for a fresh upload."
             default:
                 return message
             }

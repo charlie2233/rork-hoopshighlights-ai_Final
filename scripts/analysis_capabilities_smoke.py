@@ -22,6 +22,7 @@ REQUIRED_FIELDS = {
     "defaultPollAfterSeconds": int,
     "analysisMode": str,
 }
+SMOKE_USER_AGENT = "HoopClips-Capabilities-Smoke/1.0"
 
 
 class CapabilitySmokeError(Exception):
@@ -110,7 +111,10 @@ def request_json_response(
     payload: dict[str, Any] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
-    headers = {"accept": "application/json"}
+    headers = {
+        "accept": "application/json",
+        "user-agent": SMOKE_USER_AGENT,
+    }
     if body is not None:
         headers["content-type"] = "application/json"
     request = Request(url, method=method, data=body, headers=headers)
