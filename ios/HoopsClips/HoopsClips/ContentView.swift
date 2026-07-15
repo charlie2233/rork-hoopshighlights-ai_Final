@@ -265,8 +265,6 @@ struct ContentView: View {
             if shouldShowGlobalPipelineBanner {
                 VStack {
                     GlobalImportProgressBanner(
-                        message: pipelineStatusMessage,
-                        detailMessage: pipelineDetailMessage,
                         stage: pipelineStage,
                         canResumeUpload: canResumePipelineUpload,
                         onResumeUpload: resumePipelineUpload,
@@ -589,6 +587,7 @@ struct ContentView: View {
 
     private var shouldShowGlobalPipelineBanner: Bool {
         (viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing)
+            && activeTab != .player
             && activeTab != .review
             && !isRookieGuideVisible
     }
@@ -833,7 +832,6 @@ struct ContentView: View {
             persistentTabLayer(.player) {
                 UploadsWorkflowView(
                     viewModel: viewModel,
-                    selectedTab: $selectedTab,
                     onOpenHistory: {
                         showingHistorySheet = true
                     },
@@ -1735,50 +1733,35 @@ private struct ReviewUnavailableRecoveryCard: View {
 }
 
 private struct GlobalImportProgressBanner: View {
-    let message: String
-    let detailMessage: String?
     let stage: AnalysisPipelineStage
     let canResumeUpload: Bool
     let onResumeUpload: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(stage.tint.opacity(0.18))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: stage.iconName)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(stage.tint)
-                }
-                .accessibilityHidden(true)
-
-                Text(shortMessage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-
-                Spacer(minLength: 0)
-
-                if canResumeUpload {
-                    resumeButton
-                }
-                cancelButton
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(stage.tint.opacity(0.18))
+                    .frame(width: 28, height: 28)
+                Image(systemName: stage.iconName)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(stage.tint)
             }
+            .accessibilityHidden(true)
 
-            TinyAnalysisPipelineTracker(currentStage: stage)
+            Text(stage.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
 
-            if let detailMessage {
-                Text(detailMessage)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-                    .accessibilityIdentifier("analysis.pipeline.uploadDetail")
+            Spacer(minLength: 0)
+
+            if canResumeUpload {
+                resumeButton
             }
+            cancelButton
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
@@ -1802,13 +1785,8 @@ private struct GlobalImportProgressBanner: View {
         .shadow(color: stage.tint.opacity(0.16), radius: 18, x: 0, y: 9)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Import in progress")
-        .accessibilityValue(shortMessage)
+        .accessibilityValue(stage.title)
         .accessibilityIdentifier("global.importProgress.banner")
-    }
-
-    private var shortMessage: String {
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Importing video..." : trimmed
     }
 
     private var resumeButton: some View {
@@ -1828,12 +1806,11 @@ private struct GlobalImportProgressBanner: View {
 
     private var cancelButton: some View {
         Button(role: .cancel, action: onCancel) {
-            Text("Cancel")
-                .font(.caption2.weight(.bold))
+            Image(systemName: "xmark")
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(AppTheme.dangerRed.opacity(0.20), in: Capsule())
+                .frame(width: 28, height: 28)
+                .background(AppTheme.dangerRed.opacity(0.20), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(stage.cancelTitle)
@@ -1921,7 +1898,7 @@ private struct UploadRetryCard: View {
     }
 }
 
-private enum AnalysisPipelineStage: Int, CaseIterable {
+private enum AnalysisPipelineStage: Int {
     case uploading
     case analyzing
     case reviewReady
@@ -1966,54 +1943,6 @@ private enum AnalysisPipelineStage: Int, CaseIterable {
         case .reviewReady:
             return "checkmark.seal.fill"
         }
-    }
-}
-
-private struct TinyAnalysisPipelineTracker: View {
-    let currentStage: AnalysisPipelineStage
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(AnalysisPipelineStage.allCases, id: \.self) { stage in
-                pipelineChip(stage)
-
-                if stage != AnalysisPipelineStage.allCases.last {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(AppTheme.subtleText.opacity(0.58))
-                        .accessibilityHidden(true)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Progress pipeline")
-        .accessibilityValue(AnalysisPipelineStage.allCases.map(\.title).joined(separator: " to "))
-        .accessibilityIdentifier("analysis.pipeline.tracker")
-    }
-
-    private func pipelineChip(_ stage: AnalysisPipelineStage) -> some View {
-        let isCurrent = stage == currentStage
-        let isComplete = stage.rawValue < currentStage.rawValue
-        let foreground = isCurrent || isComplete ? Color.white : AppTheme.subtleText
-        let fill = isCurrent
-            ? stage.tint.opacity(0.30)
-            : (isComplete ? stage.tint.opacity(0.18) : Color.white.opacity(0.06))
-        let stroke = isCurrent
-            ? stage.tint.opacity(0.58)
-            : (isComplete ? stage.tint.opacity(0.34) : Color.white.opacity(0.08))
-
-        return Label(stage.title, systemImage: stage.iconName)
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(foreground)
-            .lineLimit(1)
-            .minimumScaleFactor(0.68)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(fill, in: Capsule())
-            .overlay {
-                Capsule().stroke(stroke, lineWidth: 1)
-            }
-            .labelStyle(.titleAndIcon)
     }
 }
 

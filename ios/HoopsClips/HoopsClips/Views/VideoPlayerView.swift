@@ -86,6 +86,7 @@ struct PreviewAudioStatusChip: View {
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
     var onOpenHistory: () -> Void = {}
+    var onOpenSettings: () -> Void = {}
     var onOpenReview: () -> Void = {}
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
@@ -150,8 +151,12 @@ struct VideoPlayerView: View {
                         }
 
                         if viewModel.isVideoLoaded {
-                            videoSection
-                            analysisSection
+                            if viewModel.analysisService.isAnalyzing {
+                                analysisSection
+                            } else {
+                                videoSection
+                                analysisSection
+                            }
                         } else {
                             importSection
                         }
@@ -161,12 +166,27 @@ struct VideoPlayerView: View {
                     .padding(.bottom, 100)
                 }
             }
+            .accessibilityIdentifier("uploads.screen")
             .navigationTitle(languageStore.text(.playerTitle))
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                if viewModel.isVideoLoaded {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button(action: onOpenHistory) {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .accessibilityLabel("Open history")
+                    .accessibilityIdentifier("uploads.historyButton")
+
+                    Button(action: onOpenSettings) {
+                        Image(systemName: "gearshape.fill")
+                    }
+                    .accessibilityLabel("Open settings")
+                    .accessibilityIdentifier("uploads.settingsButton")
+                }
+
+                if viewModel.isVideoLoaded && !viewModel.analysisService.isAnalyzing {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             returnToImportHome()
@@ -1172,79 +1192,62 @@ struct VideoPlayerView: View {
     }
 
     private func playerUnexpectedExitCard(_ summary: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.warningYellow.opacity(0.16))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "waveform.path.ecg.rectangle.fill")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(AppTheme.warningYellow)
-                }
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.clockwise.icloud.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .frame(width: 30, height: 30)
+                .background(AppTheme.warningYellow.opacity(0.14), in: Circle())
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("What happened?")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
+            Text(playerUnexpectedExitTitle(for: summary))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
 
-                    Text(playerUnexpectedExitFriendlyMessage(for: summary))
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 6 : 3)
-                        .minimumScaleFactor(0.84)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let delivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary {
-                        Text("Report: \(delivery)")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(AppTheme.warningYellow.opacity(0.86))
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                            .minimumScaleFactor(0.82)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .layoutPriority(1)
-            }
+            Spacer(minLength: 0)
 
             Button {
                 dismissUnexpectedExitCard(summary)
             } label: {
-                Label("Got it", systemImage: "checkmark.circle.fill")
+                Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.warningYellow)
-                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
-                    .background(AppTheme.warningYellow.opacity(0.12), in: .rect(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(AppTheme.warningYellow.opacity(0.24), lineWidth: 1)
-                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(.white.opacity(0.08), in: Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss upload notice")
         }
-        .padding(14)
-        .background(AppTheme.warningYellow.opacity(0.08), in: .rect(cornerRadius: 18))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(AppTheme.warningYellow.opacity(0.08), in: .rect(cornerRadius: 12))
         .overlay {
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(AppTheme.warningYellow.opacity(0.22), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("player.unexpectedExitRecoveryCard")
+        .task(id: summary) {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            dismissUnexpectedExitCard(summary)
+        }
     }
 
-    private func playerUnexpectedExitFriendlyMessage(for summary: String) -> String {
+    private func playerUnexpectedExitTitle(for summary: String) -> String {
         let lowercased = summary.lowercased()
         if lowercased.contains("analysis was active") || lowercased.contains("analyzing") {
-            return "HoopClips closed while analysis was running. Stay on Player or reopen the app; Review should wait until clips are ready."
+            return "Analysis restored"
         }
         if lowercased.contains("upload") || lowercased.contains("background") {
-            return "HoopClips closed during upload/background work. A safe upload note is saved, and reopening refreshes progress."
+            return "Upload restored"
         }
         if lowercased.contains("review") || lowercased.contains("no_reviewable_clips") {
-            return "Review was safely blocked because clips were not ready yet. Stay on Player while analysis finishes, then open Review."
+            return "Session restored"
         }
-        return "The last session ended before a normal close. HoopClips saved a clean note so we can see the last screen and step."
+        return "Session restored"
     }
 
     private func dismissUnexpectedExitCard(_ summary: String) {
@@ -1431,11 +1434,13 @@ struct VideoPlayerView: View {
 
     private var analysisSection: some View {
         VStack(spacing: 16) {
-            RorkSectionHeader(
-                title: languageStore.text(.aiAnalysis),
-                icon: "brain.head.profile.fill",
-                subtitle: analysisSectionSubtitle
-            )
+            if !viewModel.analysisService.isAnalyzing {
+                RorkSectionHeader(
+                    title: languageStore.text(.aiAnalysis),
+                    icon: "brain.head.profile.fill",
+                    subtitle: analysisSectionSubtitle
+                )
+            }
 
             if viewModel.analysisService.isAnalyzing {
                 analysisProgressView
@@ -2076,15 +2081,8 @@ struct VideoPlayerView: View {
         ]
     }
 
-    private struct AnalysisProgressFact: Identifiable {
-        let id: String
-        let icon: String
-        let text: String
-        let tint: Color
-    }
-
     private var analysisProgressView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             analysisProgressHeader
 
             ProgressView(value: analysisDisplayProgress)
@@ -2093,131 +2091,45 @@ struct VideoPlayerView: View {
                 .accessibilityLabel(analysisProgressTitle)
                 .accessibilityValue("\(analysisDisplayPercent) percent")
 
-            Text(viewModel.analysisService.statusMessage)
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-                .multilineTextAlignment(.center)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer(minLength: 0)
 
-            Text(analysisProgressDetailText)
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-                .multilineTextAlignment(.center)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let analysisLiveUploadStripText {
-                liveUploadProgressStrip(analysisLiveUploadStripText)
+                Button {
+                    requestCancelUploadConfirmation()
+                } label: {
+                    Label(isUploadProgressStage ? "Cancel upload" : "Cancel analysis", systemImage: "xmark")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.dangerRed)
+                .controlSize(.small)
+                .accessibilityIdentifier("analysis.cancelUploadButton")
             }
-
-            analysisProgressQuickFacts
-
-            if let analysisSlowUploadHelp {
-                slowUploadHelpCard(analysisSlowUploadHelp)
-            }
-
-            if let analysisBackgroundUploadStillRunningText {
-                backgroundUploadStillRunningCard(analysisBackgroundUploadStillRunningText)
-            }
-
-            if analysisBackgroundUploadBadgeText != nil,
-               analysisBackgroundUploadStillRunningText == nil,
-               let analysisRecoveredUploadProofPromptText {
-                recoveredUploadProofPrompt(analysisRecoveredUploadProofPromptText)
-            }
-
-            Button {
-                requestCancelUploadConfirmation()
-            } label: {
-                Label(analysisProgressTitle.lowercased().contains("upload") ? "Cancel upload" : "Cancel analysis", systemImage: "xmark.circle.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(AppTheme.dangerRed.opacity(0.16), in: .rect(cornerRadius: 14))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(AppTheme.dangerRed.opacity(0.30), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("analysis.cancelUploadButton")
         }
-        .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
-        .accessibilityElement(children: .combine)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(analysisProgressTitle)
         .accessibilityValue(analysisProgressAccessibilityValue)
-    }
-
-    private func liveUploadProgressStrip(_ text: String) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(Color.cyan)
-                .accessibilityHidden(true)
-
-            Text(text)
-                .font(.caption2.weight(.bold).monospacedDigit())
-                .foregroundStyle(.white)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .minimumScaleFactor(0.78)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(1)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.cyan.opacity(0.10), in: .rect(cornerRadius: 13))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13)
-                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("analysis.liveUploadProgressStrip")
     }
 
     private var analysisProgressHeader: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 analysisProgressTitleLabel
-                if let analysisBackgroundUploadBadgeText {
-                    analysisBackgroundUploadBadge(analysisBackgroundUploadBadgeText)
-                }
                 Spacer(minLength: 8)
                 analysisProgressPercentText
             }
 
             VStack(alignment: .center, spacing: 6) {
                 analysisProgressTitleLabel
-                if let analysisBackgroundUploadBadgeText {
-                    analysisBackgroundUploadBadge(analysisBackgroundUploadBadgeText)
-                }
                 analysisProgressPercentText
             }
         }
     }
 
-    private func analysisBackgroundUploadBadge(_ text: String) -> some View {
-        Label(text, systemImage: "arrow.up.circle.fill")
-            .font(.caption2.weight(.heavy))
-            .foregroundStyle(Color.cyan)
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.cyan.opacity(0.13), in: .capsule)
-            .accessibilityIdentifier("analysis.backgroundUploadBadge")
-    }
-
     private var analysisProgressTitleLabel: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "brain.head.profile.fill")
+            Image(systemName: isUploadProgressStage ? "icloud.and.arrow.up.fill" : "brain.head.profile.fill")
                 .foregroundStyle(AppTheme.neonPurple)
                 .symbolEffect(.variableColor.iterative, isActive: true)
             Text(analysisProgressTitle)
@@ -2235,43 +2147,6 @@ struct VideoPlayerView: View {
             .foregroundStyle(AppTheme.neonPurple)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-    }
-
-    @ViewBuilder
-    private var analysisProgressQuickFacts: some View {
-        let facts = analysisProgressFacts
-        if !facts.isEmpty {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(facts) { fact in
-                        analysisProgressFactPill(fact)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(facts) { fact in
-                        analysisProgressFactPill(fact)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("analysis.progressQuickFacts")
-        }
-    }
-
-    private func analysisProgressFactPill(_ fact: AnalysisProgressFact) -> some View {
-        Label(fact.text, systemImage: fact.icon)
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(fact.tint)
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-            .minimumScaleFactor(0.78)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(fact.tint.opacity(0.11), in: .rect(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(fact.tint.opacity(0.22), lineWidth: 1)
-            }
     }
 
     private var analysisCompleteView: some View {
@@ -2496,9 +2371,24 @@ struct VideoPlayerView: View {
         return languageStore.text(.readyToFind)
     }
 
+    private var isUploadProgressStage: Bool {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        return status.contains("upload")
+            || status.contains("chunk")
+            || status.contains("resum")
+            || status.contains("recover")
+            || status.contains("background transfer")
+    }
+
     private var analysisProgressTitle: String {
         let status = viewModel.analysisService.statusMessage.lowercased()
-        if status.contains("upload") {
+        if isUploadProgressStage {
+            if let analysisSlowUploadHelp {
+                return analysisSlowUploadHelp.title
+            }
+            if status.contains("resum") || status.contains("recover") {
+                return "Resuming upload"
+            }
             return languageStore.text(.uploading)
         }
         if status.contains("team") || status.contains("jersey") {
@@ -2547,118 +2437,6 @@ struct VideoPlayerView: View {
             statusMessage: viewModel.analysisService.statusMessage,
             analysisMode: viewModel.analysisMode
         )
-    }
-
-    private var analysisProgressFacts: [AnalysisProgressFact] {
-        var facts: [AnalysisProgressFact] = []
-
-        if analysisLiveUploadStripText == nil,
-           let analysisUploadMetricText {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "upload",
-                    icon: "speedometer",
-                    text: analysisUploadMetricText,
-                    tint: .cyan
-                )
-            )
-        }
-
-        if analysisLiveUploadStripText == nil,
-           let analysisChunkProgressText {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "chunks",
-                    icon: "square.stack.3d.up.fill",
-                    text: analysisChunkProgressText,
-                    tint: AppTheme.warningYellow
-                )
-            )
-        }
-
-        if let analysisFastResumeFactText {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "fast-resume",
-                    icon: "bolt.horizontal.circle.fill",
-                    text: analysisFastResumeFactText,
-                    tint: AppTheme.rimOrange
-                )
-            )
-        }
-
-        if let quickFact = analysisUploadSourceOptimization.quickFact,
-           viewModel.analysisService.statusMessage.localizedCaseInsensitiveContains("upload") {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "source",
-                    icon: "arrow.down.forward.and.arrow.up.backward",
-                    text: quickFact,
-                    tint: AppTheme.warningYellow
-                )
-            )
-        }
-
-        if let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(
-            from: CloudAnalysisService.latestUploadSourceOptimizationSummary()
-        ) {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "optimized-source",
-                    icon: "arrow.down.forward.and.arrow.up.backward.circle.fill",
-                    text: savingsFact,
-                    tint: AppTheme.successGreen
-                )
-            )
-        }
-
-        if let analysisApproximateRemainingCompactText {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "eta",
-                    icon: "clock.badge.checkmark",
-                    text: analysisApproximateRemainingCompactText,
-                    tint: .white.opacity(0.88)
-                )
-            )
-        }
-
-        if let analysisBackgroundReminderCompactText {
-            facts.append(
-                AnalysisProgressFact(
-                    id: "background",
-                    icon: "cloud.fill",
-                    text: analysisBackgroundReminderCompactText,
-                    tint: AppTheme.neonPurple
-                )
-            )
-        }
-
-        return Array(facts.prefix(dynamicTypeSize.isAccessibilitySize ? 4 : 3))
-    }
-
-    private var analysisLiveUploadStripText: String? {
-        let statusMessage = viewModel.analysisService.statusMessage
-        let latestProgress = CloudAnalysisService.latestUploadProgressSummary()
-        let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
-        let combined = "\(statusMessage) \(latestProgress) \(pendingManifest)".lowercased()
-        guard combined.contains("upload")
-            || combined.contains("background")
-            || combined.contains("resume")
-            || combined.contains("chunk") else {
-            return nil
-        }
-
-        let summary = CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: statusMessage)
-            ?? CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: latestProgress)
-            ?? CloudAnalysisProgressCopy.uploadResumeProgressSummary(from: pendingManifest)
-            ?? "Upload moving"
-
-        let fileSummary = currentVideoFileSizeShortText
-        if fileSummary == "unknown" {
-            return "Upload \(summary)"
-        }
-        return "Upload \(summary) · File \(fileSummary)"
     }
 
     private var analysisApproximateRemainingCompactText: String? {
@@ -3224,33 +3002,7 @@ struct VideoPlayerView: View {
     }
 
     private var analysisProgressAccessibilityValue: String {
-        var parts = [
-            "\(analysisDisplayPercent) percent.",
-            viewModel.analysisService.statusMessage,
-            analysisProgressDetailText
-        ]
-        if let analysisBackgroundUploadBadgeText {
-            parts.append(analysisBackgroundUploadBadgeText)
-        }
-        if let analysisApproximateRemainingText {
-            parts.append(analysisApproximateRemainingText)
-        }
-        if let analysisUploadMetricText {
-            parts.append(analysisUploadMetricText)
-        }
-        if let analysisChunkProgressText {
-            parts.append(analysisChunkProgressText)
-        }
-        if let analysisRecoveredUploadProofPromptText {
-            parts.append(analysisRecoveredUploadProofPromptText)
-        }
-        if let analysisBackgroundUploadStillRunningText {
-            parts.append(analysisBackgroundUploadStillRunningText)
-        }
-        if let analysisBackgroundReminderText {
-            parts.append(analysisBackgroundReminderText)
-        }
-        return parts.joined(separator: " ")
+        "\(analysisDisplayPercent) percent. \(analysisProgressTitle)."
     }
 
     private var currentVideoFileSizeShortText: String {
