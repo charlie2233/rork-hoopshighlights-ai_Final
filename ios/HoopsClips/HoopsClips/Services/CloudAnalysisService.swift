@@ -18,6 +18,10 @@ nonisolated private let cloudUploadForegroundResourceTimeoutSeconds: TimeInterva
 nonisolated private let cloudUploadBackgroundRequestTimeoutSeconds: TimeInterval = 90
 nonisolated private let cloudUploadBackgroundResourceTimeoutSeconds: TimeInterval = 24 * 60 * 60
 nonisolated private let cloudUploadStallProofThresholdSeconds: TimeInterval = 90
+nonisolated private let cloudUploadResumableThresholdBytes: Int64 = 64 * 1024 * 1024
+nonisolated private let cloudUploadPartSizeQuantumBytes: Int64 = 8 * 1024 * 1024
+nonisolated private let cloudUploadPreferredMultipartPartCount: Int64 = 24
+nonisolated private let cloudUploadMaximumPartSizeBytes: Int64 = 32 * 1024 * 1024
 private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
 private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5, 12, 30]
 
@@ -75,7 +79,7 @@ struct CloudAnalysisService {
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
     private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
-    private static let maxConcurrentMultipartUploads = 3
+    private static let maxConcurrentMultipartUploads = 4
     private let session: URLSession
     private let uploadSessionFactory: @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession
     private let decoder: JSONDecoder
@@ -85,12 +89,47 @@ struct CloudAnalysisService {
         session: URLSession = .shared,
         uploadSessionFactory: @escaping @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession = CloudAnalysisService.makeUploadSession
     ) {
+        _ = CloudUploadNetworkPolicy.shared
         self.session = session
         self.uploadSessionFactory = uploadSessionFactory
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601
+    }
+
+    nonisolated static func preferredAssetMultipartPartSizeBytes(fileSizeBytes: Int64) -> Int? {
+        guard fileSizeBytes >= cloudUploadResumableThresholdBytes else {
+            return nil
+        }
+
+        let safeFileSize = max(fileSizeBytes, 1)
+        let targetBytes = safeFileSize / cloudUploadPreferredMultipartPartCount
+            + (safeFileSize % cloudUploadPreferredMultipartPartCount == 0 ? 0 : 1)
+        let quantumCount = targetBytes / cloudUploadPartSizeQuantumBytes
+            + (targetBytes % cloudUploadPartSizeQuantumBytes == 0 ? 0 : 1)
+        let quantizedBytes = max(quantumCount, 1) * cloudUploadPartSizeQuantumBytes
+        let boundedBytes = min(
+            max(quantizedBytes, cloudUploadPartSizeQuantumBytes),
+            cloudUploadMaximumPartSizeBytes
+        )
+        return Int(boundedBytes)
+    }
+
+    nonisolated static func multipartUploadLaneLimit(
+        defaultMaximum: Int,
+        isExpensive: Bool,
+        isConstrained: Bool,
+        pathAvailable: Bool = true
+    ) -> Int {
+        let safeMaximum = max(defaultMaximum, 1)
+        if !pathAvailable || isConstrained {
+            return 1
+        }
+        if isExpensive {
+            return min(safeMaximum, 2)
+        }
+        return safeMaximum
     }
 
     func hasPendingBackgroundUpload() async -> Bool {
@@ -238,6 +277,9 @@ struct CloudAnalysisService {
             "networkConstrained=\(networkPolicy.isConstrained)",
             "chunkRetryAttempts=\(cloudUploadChunkRetryBackoffSeconds.count + 1)",
             "chunkRetryBackoffSeconds=\(cloudUploadChunkRetryBackoffSeconds.map { String($0) }.joined(separator: ","))",
+            "partSizePolicy=adaptive_8_to_32_mib",
+            "preferredMultipartPartCount=\(cloudUploadPreferredMultipartPartCount)",
+            "lanePolicyRefresh=between_completed_parts",
             "progressAggregation=total_bytes_across_active_chunks",
             "memoryPolicy=bounded_chunk_data_per_lane",
             "resumePolicy=persist_completed_parts"
@@ -794,7 +836,10 @@ struct CloudAnalysisService {
                 durationSeconds: duration,
                 installId: installID,
                 appVersion: appVersion,
-                analysisVersion: analysisVersion
+                analysisVersion: analysisVersion,
+                partSizeBytes: Self.preferredAssetMultipartPartSizeBytes(
+                    fileSizeBytes: fileInfo.fileSizeBytes
+                )
             )
         )
         if let assetUpload {
@@ -912,7 +957,10 @@ struct CloudAnalysisService {
                 durationSeconds: duration,
                 installId: installID,
                 appVersion: appVersion,
-                analysisVersion: analysisVersion
+                analysisVersion: analysisVersion,
+                partSizeBytes: Self.preferredAssetMultipartPartSizeBytes(
+                    fileSizeBytes: fileInfo.fileSizeBytes
+                )
             )
         )
         if let assetUpload {
@@ -2064,7 +2112,7 @@ struct CloudAnalysisService {
         let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
-        let maxConcurrentUploads = min(max(multipart.partCount, 1), networkUploadPolicy.laneLimit)
+        let initialMaxConcurrentUploads = min(max(multipart.partCount, 1), networkUploadPolicy.laneLimit)
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2076,7 +2124,7 @@ struct CloudAnalysisService {
         })
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "asset_multipart_parallel_upload_selected",
-            metadata: "lanes=\(maxConcurrentUploads) partCount=\(multipart.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+            metadata: "lanes=\(initialMaxConcurrentUploads) partCount=\(multipart.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
@@ -2084,7 +2132,8 @@ struct CloudAnalysisService {
             var inFlightUploads = 0
 
             while nextPartNumber <= multipart.partCount || inFlightUploads > 0 {
-                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= multipart.partCount {
+                let currentLaneLimit = Self.multipartUploadConcurrency(partCount: multipart.partCount)
+                while inFlightUploads < currentLaneLimit && nextPartNumber <= multipart.partCount {
                     try Task.checkCancellation()
                     let partNumber = nextPartNumber
                     nextPartNumber += 1
@@ -2565,7 +2614,7 @@ struct CloudAnalysisService {
         let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
-        let maxConcurrentUploads = min(max(resumableUpload.partCount, 1), networkUploadPolicy.laneLimit)
+        let initialMaxConcurrentUploads = min(max(resumableUpload.partCount, 1), networkUploadPolicy.laneLimit)
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2573,7 +2622,7 @@ struct CloudAnalysisService {
         )
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "multipart_parallel_upload_selected",
-            metadata: "lanes=\(maxConcurrentUploads) partCount=\(resumableUpload.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+            metadata: "lanes=\(initialMaxConcurrentUploads) partCount=\(resumableUpload.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
@@ -2581,7 +2630,8 @@ struct CloudAnalysisService {
             var inFlightUploads = 0
 
             while nextPartNumber <= resumableUpload.partCount || inFlightUploads > 0 {
-                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= resumableUpload.partCount {
+                let currentLaneLimit = Self.multipartUploadConcurrency(partCount: resumableUpload.partCount)
+                while inFlightUploads < currentLaneLimit && nextPartNumber <= resumableUpload.partCount {
                     try Task.checkCancellation()
                     let partNumber = nextPartNumber
                     nextPartNumber += 1
@@ -2718,7 +2768,7 @@ struct CloudAnalysisService {
         let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
-        let maxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
+        let initialMaxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2726,7 +2776,7 @@ struct CloudAnalysisService {
         )
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_parallel_upload_selected",
-            metadata: "lanes=\(maxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+            metadata: "lanes=\(initialMaxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
@@ -2734,7 +2784,8 @@ struct CloudAnalysisService {
             var inFlightUploads = 0
 
             while nextPartNumber <= partCount || inFlightUploads > 0 {
-                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= partCount {
+                let currentLaneLimit = Self.multipartUploadConcurrency(partCount: partCount)
+                while inFlightUploads < currentLaneLimit && nextPartNumber <= partCount {
                     try Task.checkCancellation()
                     let partNumber = nextPartNumber
                     nextPartNumber += 1
@@ -2855,7 +2906,7 @@ struct CloudAnalysisService {
         let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
-        let maxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
+        let initialMaxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
         let progressAggregator = CloudMultipartUploadProgressAggregator(
             completedBytes: initialCompletedBytes,
             totalBytes: totalBytes,
@@ -2867,7 +2918,7 @@ struct CloudAnalysisService {
         })
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_asset_manifest_parallel_upload_selected",
-            metadata: "lanes=\(maxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
+            metadata: "lanes=\(initialMaxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
@@ -2875,7 +2926,8 @@ struct CloudAnalysisService {
             var inFlightUploads = 0
 
             while nextPartNumber <= partCount || inFlightUploads > 0 {
-                while inFlightUploads < maxConcurrentUploads && nextPartNumber <= partCount {
+                let currentLaneLimit = Self.multipartUploadConcurrency(partCount: partCount)
+                while inFlightUploads < currentLaneLimit && nextPartNumber <= partCount {
                     try Task.checkCancellation()
                     let partNumber = nextPartNumber
                     nextPartNumber += 1
@@ -3023,6 +3075,9 @@ struct CloudAnalysisService {
                     }
                 )
                 let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
+                defer {
+                    try? FileManager.default.removeItem(at: chunkFileURL)
+                }
                 Self.prepareFileForBackgroundUpload(chunkFileURL, context: "chunk_\(partTarget.partNumber)")
 
                 await CloudUploadResumeStore.shared.recordSession(
@@ -3041,7 +3096,6 @@ struct CloudAnalysisService {
                 }
 
                 let response = try await delegate.upload(request: request, fromFile: chunkFileURL, using: uploadSession)
-                try? FileManager.default.removeItem(at: chunkFileURL)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw CloudAnalysisError.uploadFailed
                 }
@@ -3508,7 +3562,12 @@ private final class CloudUploadNetworkPolicy: @unchecked Sendable {
 
         guard let path else {
             return CloudUploadNetworkLanePolicy(
-                laneLimit: safeMaximum,
+                laneLimit: CloudAnalysisService.multipartUploadLaneLimit(
+                    defaultMaximum: safeMaximum,
+                    isExpensive: false,
+                    isConstrained: false,
+                    pathAvailable: false
+                ),
                 reason: "network_pending",
                 isExpensive: false,
                 isConstrained: false
@@ -3517,7 +3576,11 @@ private final class CloudUploadNetworkPolicy: @unchecked Sendable {
 
         if path.isConstrained {
             return CloudUploadNetworkLanePolicy(
-                laneLimit: 1,
+                laneLimit: CloudAnalysisService.multipartUploadLaneLimit(
+                    defaultMaximum: safeMaximum,
+                    isExpensive: path.isExpensive,
+                    isConstrained: true
+                ),
                 reason: "low_data_mode",
                 isExpensive: path.isExpensive,
                 isConstrained: true
@@ -3526,7 +3589,11 @@ private final class CloudUploadNetworkPolicy: @unchecked Sendable {
 
         if path.isExpensive {
             return CloudUploadNetworkLanePolicy(
-                laneLimit: min(safeMaximum, 2),
+                laneLimit: CloudAnalysisService.multipartUploadLaneLimit(
+                    defaultMaximum: safeMaximum,
+                    isExpensive: true,
+                    isConstrained: false
+                ),
                 reason: "expensive_network",
                 isExpensive: true,
                 isConstrained: false
@@ -3534,7 +3601,11 @@ private final class CloudUploadNetworkPolicy: @unchecked Sendable {
         }
 
         return CloudUploadNetworkLanePolicy(
-            laneLimit: safeMaximum,
+            laneLimit: CloudAnalysisService.multipartUploadLaneLimit(
+                defaultMaximum: safeMaximum,
+                isExpensive: false,
+                isConstrained: false
+            ),
             reason: "normal_network",
             isExpensive: false,
             isConstrained: false

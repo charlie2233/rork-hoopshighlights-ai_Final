@@ -278,11 +278,20 @@ function buildR2ObjectUrl(env: Env, bucketName: string, objectKey: string): URL 
   return new URL(`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${bucketName}/${objectKey}`);
 }
 
-function chooseMultipartChunkSize(fileSizeBytes: number): number {
-  const minPartBytes = 8 * 1024 * 1024;
+export function chooseMultipartChunkSize(fileSizeBytes: number): number {
+  const partSizeQuantumBytes = 8 * 1024 * 1024;
+  const preferredPartCount = 24;
+  const maxPreferredPartBytes = 32 * 1024 * 1024;
   const maxPartCount = 10000;
-  const requiredBytes = Math.ceil(Math.max(fileSizeBytes, 1) / maxPartCount);
-  return Math.max(minPartBytes, requiredBytes);
+  const safeFileSizeBytes = Number.isFinite(fileSizeBytes) ? Math.max(Math.floor(fileSizeBytes), 1) : 1;
+  const targetPartBytes = Math.ceil(safeFileSizeBytes / preferredPartCount);
+  const quantizedPartBytes = Math.ceil(targetPartBytes / partSizeQuantumBytes) * partSizeQuantumBytes;
+  const preferredPartBytes = Math.min(
+    Math.max(quantizedPartBytes, partSizeQuantumBytes),
+    maxPreferredPartBytes
+  );
+  const requiredBytesForPartLimit = Math.ceil(safeFileSizeBytes / maxPartCount);
+  return Math.max(preferredPartBytes, requiredBytesForPartLimit);
 }
 
 function parseUploadId(xml: string): string | null {

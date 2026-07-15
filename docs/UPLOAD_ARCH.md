@@ -45,6 +45,12 @@ The Swift client now attempts the asset upload path first:
 
 If `/v1/uploads/init` is not available, the client falls back to the legacy `analysis/jobs -> uploadUrl -> start` path for current Worker compatibility. New resume manifests persist optional `assetId`, `storageKey`, and asset multipart targets so foreground-interrupted asset uploads complete through the asset API instead of the legacy job-start route.
 
+## Upload Throughput Policy
+
+Large uploads use adaptive multipart sizing in both the live Worker compatibility path and the asset-first client contract. The planner uses 8–32 MiB parts and targets about 24 parts per upload. A 380 MiB basketball video therefore uses 24 parts at 16 MiB instead of 48 parts at 8 MiB, cutting presign, background-session, and chunk-staging overhead without changing the uploaded bytes.
+
+The iOS client runs up to four multipart lanes on a normal network. Expensive networks remain capped at two lanes, and Low Data Mode remains capped at one. It starts conservatively at one lane until iOS classifies the network and rechecks the cap between completed parts so Wi-Fi/cellular changes affect the remaining upload. Each lane keeps bounded chunk memory, persists completed parts, removes its staged file after every attempt, retries idle transfers inside the signed-upload window, and uses a uniquely named atomic background-upload file so app suspension and relaunch recovery remain intact.
+
 ## Status Semantics
 
 - `initialized`: upload target exists, client has not uploaded yet.

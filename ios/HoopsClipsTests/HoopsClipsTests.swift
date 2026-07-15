@@ -5493,6 +5493,24 @@ struct HoopsClipsTests {
 
 }
 
+@Suite(.serialized)
+struct UploadThroughputPolicyTests {
+    @Test func adaptivePartsAndNetworkLanesStayBounded() {
+        let mebibyte = Int64(1024 * 1024)
+
+        #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 63 * mebibyte) == nil)
+        #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 64 * mebibyte) == 8 * Int(mebibyte))
+        #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 380 * mebibyte) == 16 * Int(mebibyte))
+        #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 500 * mebibyte) == 24 * Int(mebibyte))
+        #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 2 * 1024 * mebibyte) == 32 * Int(mebibyte))
+
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: false, isConstrained: false) == 4)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: true, isConstrained: false) == 2)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: true, isConstrained: true) == 1)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: false, isConstrained: false, pathAvailable: false) == 1)
+    }
+}
+
 private func makeCloudAnalysisSession(
     handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
 ) -> URLSession {
