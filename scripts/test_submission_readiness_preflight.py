@@ -903,6 +903,53 @@ Current device information:
         self.assertFalse(has_failures(collector.findings))
         self.assertIn("no deploy-relevant files changed", collector.findings[0].detail)
 
+    def test_secret_gated_deploy_preflight_accepts_prior_dispatch_after_testflight_status_tooling(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-07-15T19:11:20Z",
+            }
+        ]
+        run_view_payload = {
+            "jobs": [
+                {
+                    "name": "Verify cloud edit deploy secrets",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ]
+        }
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_view_payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        ".github/workflows/ios-testflight-upload.yml\n"
+                        "scripts/app_store_connect_build_status.py\n"
+                        "scripts/test_app_store_connect_build_status.py\n"
+                    ),
+                )
+            return SimpleNamespace(returncode=1, stdout="")
+
+        collector = Collector()
+        with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_secret_gated_deploy_preflight(Path.cwd(), collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("no deploy-relevant files changed", collector.findings[0].detail)
+
     def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_lookup(kind: str) -> GithubEnvironmentNameLookup:
             if kind == "secret":
@@ -1353,6 +1400,60 @@ Current device information:
                 check_upload_artifact(repo_root, collector, None)
 
             self.assertFalse(has_failures(collector.findings))
+
+    def test_upload_artifact_accepts_prior_upload_after_read_only_status_dispatch(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 999,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-07-15T19:37:20Z",
+            },
+            {
+                "databaseId": 111,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-07-15T19:11:20Z",
+            },
+        ]
+        upload_log = "\n".join(
+            [
+                "Progress 21%: Upload succeeded.",
+                "Uploaded HoopsClips",
+                "Internal TestFlight upload command completed",
+            ]
+        )
+        status_log = "App Store Connect confirms this build is ready for internal TestFlight."
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=status_log if command[3] == "999" else upload_log)
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        ".github/workflows/ios-testflight-upload.yml\n"
+                        "scripts/app_store_connect_build_status.py\n"
+                    ),
+                )
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(Path(temp_dir), collector, None)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("Successful internal TestFlight upload log proof exists", collector.findings[0].detail)
 
     def test_live_editing_version_fails_when_required_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

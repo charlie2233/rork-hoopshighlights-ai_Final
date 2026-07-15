@@ -6,7 +6,7 @@ Date: 2026-07-15
 
 PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`. The enhancement integration workstream is complete on `main`; do not redo that integration.
 
-Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; build `45` proved the ownership baseline at `51df354cf945069ef55a13f5f0ec50a3065fc53c`. The cloud integration, live version proof, deterministic Worker render path, signed archive/upload, build `45` internal-testing availability, strict staging deploy, and live ownership contract are proven. A real-device build `45` smoke then exposed an upload-runtime defect before analysis: one 8 MB background part stayed idle long enough for the 15-minute signed upload plan to expire, leaving a 379.9 MB source at 14%. Build `46` is the next installed-smoke candidate and retries idle parts after 90 seconds.
+Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; build `45` proved the ownership baseline at `51df354cf945069ef55a13f5f0ec50a3065fc53c`. A real-device build `45` smoke then exposed an upload-runtime defect before analysis: one 8 MB background part stayed idle long enough for the 15-minute signed upload plan to expire, leaving a 379.9 MB source at 14%. Build `46` fixes that timeout at `22e24d35b32e784b0d6f9e290504118e965fa105`, is deployed, uploaded, `VALID`, and `IN_BETA_TESTING`. The remaining internal-beta gate is its installed real-basketball phone smoke.
 
 ## Confirmed Main State
 
@@ -18,6 +18,8 @@ Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; bui
 - PR #58: merged; launch privacy/auth/telemetry hardening and Worker dependency cleanup.
 - PR #59: merged; focused iOS tests and serial-bound automatic-signing certificate cleanup.
 - PR #60: merged at `51df354cf945069ef55a13f5f0ec50a3065fc53c`; install-bound analysis job reads/cancellation and build `45` compatibility.
+- PR #62: merged at `22e24d35b32e784b0d6f9e290504118e965fa105`; build `46` idle-upload recovery, team-scan reliability, smoke tooling, and launch UX follow-up.
+- PR #63: merged at `c4a9776be82787551efd25808516775f891468bb`; read-only App Store Connect status proof.
 - Branch posture: `main` contains the integration; follow-up work should stay scoped to launch gates, docs, signing, and smoke proof.
 
 ## GitHub Actions State
@@ -40,15 +42,20 @@ Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; bui
 - `iOS Internal TestFlight Upload` upload run `29311514901`: success for build `45`; signed archive, metadata/privacy checks, App Store Connect upload, and runner-owned certificate cleanup passed.
 - App Store Connect build `1.0.0 (45)`: `VALID` with internal state `IN_BETA_TESTING`.
 - `Cloud Edit Deploy Preflight` deploy run `29312118314`: success for the strict ownership baseline; Worker version `640ca379-99c7-43fa-815a-b1ec9a15f5a6` was verified.
+- `Cloud Edit Deploy Preflight` push run `29443527257`: success on build `46` merge SHA `22e24d35b32e784b0d6f9e290504118e965fa105`.
+- `Cloud Edit Deploy Preflight` deploy run `29443552918`: success; staging editing and Worker deploy/version proof passed.
+- `iOS Internal TestFlight Upload` push/codecheck run `29443528171`: success; six focused tests passed.
+- `iOS Internal TestFlight Upload` upload run `29443559399`: success for build `46`; signed archive, metadata/privacy checks, upload, and certificate cleanup passed.
+- `iOS Internal TestFlight Upload` status run `29445202395`: success; build `46` is `VALID`, `IN_BETA_TESTING`, and ready for internal testing.
 
 ## Staging Deploy And Version Proof
 
-The original staging deploy passed after PR #43 was merged. After build `45` became available to internal testers, deploy run `29312118314` published the strict ownership baseline. The live Worker `/v1/editing/version` and direct editing `/version` checks reported `51df354cf945069ef55a13f5f0ec50a3065fc53c` and the expected AI Edit/GPT feature flags.
+The original staging deploy passed after PR #43 was merged. Deploy run `29312118314` later published the strict ownership baseline. Build `46` deploy run `29443552918` then published the upload/team-scan reliability fix; the live Worker `/v1/editing/version` and direct editing `/version` checks reported `22e24d35b32e784b0d6f9e290504118e965fa105` and the expected AI Edit/GPT feature flags.
 
 Operator rerun command:
 
 ```bash
-python3 scripts/staging_version_probe.py --expected-git-sha 51df354cf945069ef55a13f5f0ec50a3065fc53c --json
+python3 scripts/staging_version_probe.py --expected-git-sha 22e24d35b32e784b0d6f9e290504118e965fa105 --json
 ```
 
 ## Deterministic Render Smoke
@@ -56,6 +63,8 @@ python3 scripts/staging_version_probe.py --expected-git-sha 51df354cf945069ef55a
 The deterministic Worker render smoke passed through the active Worker render path after the merge. It produced a valid MP4 with H.264 video and AAC audio.
 
 This proves the Worker/direct editing render contract for a deterministic edit plan. It does not replace an installed TestFlight run on real basketball footage.
+
+After the build `46` deploy, three consecutive real-basketball team scans detected the black/white teams and queued selected-team analysis. A separate all-teams collection completed with eight clips. These are cloud-path reliability proofs, not substitutes for the installed app flow.
 
 ## Synthetic GPT Smoke Classification
 
@@ -89,11 +98,13 @@ Upload run `29298033420` then passed the signed archive, metadata/privacy verifi
 
 Build `45` upload run `29311514901` then passed the same signed archive, metadata/privacy, upload, and certificate-cleanup gates. App Store Connect reports build `45` as `VALID` and `IN_BETA_TESTING`.
 
+Build `46` upload run `29443559399` passed signed archive, metadata/privacy, upload, and certificate cleanup. Status run `29445202395` then read the processed build through Apple's API and confirmed `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and no non-exempt encryption. Apple account state is not the remaining blocker.
+
 Use `TESTFLIGHT_BLOCKER.md` as the resolved incident record and future rerun guide.
 
 ## Real-Basketball TestFlight Smoke Checklist
 
-Run this against internal TestFlight build `1.0.0 (46)` after its upload, processing, internal-testing availability, and matching staging deployment are confirmed. Build `45` is retained as launch evidence but is superseded for this smoke by the idle-upload retry fix.
+Run this against internal TestFlight build `1.0.0 (46)`. Its upload, processing, internal-testing availability, and matching staging deployment are confirmed. Build `45` is retained as launch evidence but is superseded for this smoke by the idle-upload retry fix.
 
 1. Install the latest internal TestFlight build on a trusted iPhone.
 2. Confirm the build is `1.0.0 (46)` from the documented launch-fix merge SHA.
@@ -118,4 +129,4 @@ Run this against internal TestFlight build `1.0.0 (46)` after its upload, proces
 
 ## Next Gate
 
-Upload and install build `46`, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. Public launch remains separately gated by production identity/quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
+Install build `46`, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. Public launch remains separately gated by production identity/quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.

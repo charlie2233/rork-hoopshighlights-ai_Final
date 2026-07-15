@@ -1,10 +1,10 @@
 # TestFlight Signing Incident
 
-Status: Apple signing incident resolved on July 13, 2026. Builds `1.0.0 (44)` and `1.0.0 (45)` were uploaded successfully; App Store Connect reports build `45` as `VALID` and `IN_BETA_TESTING`. Build `46` is the next upload candidate after a separate upload-runtime fix.
+Status: Apple signing incident resolved on July 13, 2026. Builds `1.0.0 (44)`, `(45)`, and `(46)` were uploaded successfully. Read-only status run `29445202395` reports build `46` as `VALID`, `IN_BETA_TESTING`, and ready for internal testing.
 
-This file is retained as the non-secret incident record and rerun guide. Apple signing is not the current blocker. Build `45` upload and its compatible Worker deploy are complete; build `46` must be uploaded and installed before real-basketball TestFlight smoke resumes.
+This file is retained as the non-secret incident record and rerun guide. Apple signing, provisioning, archive, upload, and processing are not current blockers. Build `46` must now be installed on a trusted iPhone before real-basketball TestFlight smoke resumes.
 
-Build `45` adds install-bound analysis polling and cancellation. It was made available to internal testers before the strict Worker was deployed, so build `44` was not cut over underneath an incompatible client.
+Build `45` added install-bound analysis polling and cancellation. Build `46` adds bounded idle-part recovery for large background uploads while preserving the same cloud-first contract.
 
 ## Resolution Evidence
 
@@ -24,6 +24,11 @@ Build `45` adds install-bound analysis polling and cancellation. It was made ava
 - App Store Connect build `1.0.0 (45)`: `VALID`, `IN_BETA_TESTING`, not expired, minimum iOS `17.0`, and no non-exempt encryption declaration required.
 - Strict staging deploy run `29312118314`: passed Worker and direct editing deployment/version proof at the PR #60 merge SHA.
 - Live ownership smoke passed: missing ownership was rejected with `400`, mismatched ownership with `403`, and only the matching install could read and cancel its analysis job.
+- PR #62 merged at `22e24d35b32e784b0d6f9e290504118e965fa105` with the build `46` upload-expiry fix and focused smoke reliability changes.
+- Strict staging deploy run `29443552918`: passed editing/Worker deploy and live version proof for `22e24d35b32e784b0d6f9e290504118e965fa105`.
+- Upload run `29443559399`: passed signed archive, metadata/privacy verification, build `46` upload, and serial-bound runner certificate cleanup.
+- PR #63 merged at `c4a9776be82787551efd25808516775f891468bb` with a read-only status operation that does not archive, sign, or upload.
+- App Store Connect status run `29445202395`: build `1.0.0 (46)` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and does not use non-exempt encryption.
 
 No certificate contents, private keys, API key contents, provisioning profile contents, passwords, or tokens belong in this file.
 
@@ -52,6 +57,12 @@ Use this only when a later build needs to be uploaded:
 gh workflow run ios-testflight-upload.yml --ref main -f operation=upload
 ```
 
+After the upload completes, verify processing and internal availability without creating another archive or certificate:
+
+```bash
+gh workflow run ios-testflight-upload.yml --ref main -f operation=status
+```
+
 Expected passing evidence:
 
 - `Build signed internal staging archive`: success.
@@ -65,4 +76,4 @@ Expected passing evidence:
 
 ## Remaining TestFlight Work
 
-Upload and install build `46`, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Build `46` retries an idle background upload part after 90 seconds so retry/backoff remains inside the 15-minute signed upload plan. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
+Install build `46`, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Build `46` retries an idle background upload part after 90 seconds so retry/backoff remains inside the 15-minute signed upload plan. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
