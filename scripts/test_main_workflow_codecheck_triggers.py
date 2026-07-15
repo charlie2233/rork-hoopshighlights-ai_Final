@@ -91,7 +91,14 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "CODE_SIGNING_ALLOWED=NO",
             ],
         )
-        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
+        self.assertIn(
+            "if: github.event_name == 'workflow_dispatch' && (inputs.operation == 'preflight' || inputs.operation == 'archive' || inputs.operation == 'upload')",
+            text,
+        )
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation == 'status'", text)
+        status_job = text.split("  app-store-connect-status:\n", 1)[1]
+        self.assertNotIn("xcodebuild archive", status_job)
+        self.assertNotIn("-allowProvisioningUpdates", status_job)
         self.assertNotIn("paths:", text)
 
 
