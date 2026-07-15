@@ -1392,6 +1392,9 @@ struct VideoPlayerView: View {
         if hasPendingUploadResume {
             return "Resume saved upload"
         }
+        if uploadExpiredFreshUploadPromptText != nil {
+            return "Start fresh upload"
+        }
         if viewModel.isVideoImportInProgress {
             return "Wait for import"
         }
@@ -1407,6 +1410,9 @@ struct VideoPlayerView: View {
     private var analysisPrimaryButtonSubtitle: String {
         if hasPendingUploadResume {
             return "Skip finished chunks and keep going."
+        }
+        if uploadExpiredFreshUploadPromptText != nil {
+            return "Keep this video and create a new secure upload."
         }
         return analysisStartUnavailableReason ?? analysisButtonSubtitle
     }
@@ -1486,7 +1492,13 @@ struct VideoPlayerView: View {
                 .disabled(isAnalysisStartDisabled)
                 .opacity(isAnalysisStartDisabled ? 0.72 : 1)
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
-                .accessibilityIdentifier(hasPendingUploadResume ? "analysis.resumePendingBackgroundUploadButton" : "analysis.startButton")
+                .accessibilityIdentifier(
+                    hasPendingUploadResume
+                        ? "analysis.resumePendingBackgroundUploadButton"
+                        : uploadExpiredFreshUploadPromptText != nil
+                            ? "analysis.restartExpiredUploadButton"
+                            : "analysis.startButton"
+                )
 
                 if shouldShowAnalysisOptionsPanel {
                     analysisOptionsPanel
@@ -3056,7 +3068,7 @@ struct VideoPlayerView: View {
             return nil
         }
 
-        return "Upload expired. Tap AI Analysis again to start a fresh cloud upload."
+        return "The secure upload expired. Your selected video is still ready; start a fresh upload below."
     }
 
     private var pendingUploadResumePromptText: String? {
@@ -3103,7 +3115,7 @@ struct VideoPlayerView: View {
         }
 
         if summary.contains("uploadExpired=true") {
-            return "Previous upload expired. Tap AI Analysis to start a fresh cloud upload."
+            return "The previous upload expired. Your selected video is still ready for a fresh upload."
         }
         return "Previous upload stopped updating. Tap AI Analysis to start a fresh cloud upload."
     }
@@ -3305,7 +3317,7 @@ struct VideoPlayerView: View {
     }
 
     private var analysisButtonIcon: String {
-        if hasPendingUploadResume {
+        if hasPendingUploadResume || uploadExpiredFreshUploadPromptText != nil {
             return "arrow.clockwise.icloud.fill"
         }
         if requiresProForCurrentVideo {

@@ -1,8 +1,8 @@
 # TestFlight Signing Incident
 
-Status: resolved on July 13, 2026. Builds `1.0.0 (44)` and `1.0.0 (45)` were uploaded successfully; App Store Connect reports build `45` as `VALID` and `IN_BETA_TESTING`.
+Status: Apple signing incident resolved on July 13, 2026. Builds `1.0.0 (44)` and `1.0.0 (45)` were uploaded successfully; App Store Connect reports build `45` as `VALID` and `IN_BETA_TESTING`. Build `46` is the next upload candidate after a separate upload-runtime fix.
 
-This file is retained as the non-secret incident record and rerun guide. Apple signing, build `45` upload, and its compatible Worker deploy are complete. The remaining beta path is installed real-basketball TestFlight smoke.
+This file is retained as the non-secret incident record and rerun guide. Apple signing is not the current blocker. Build `45` upload and its compatible Worker deploy are complete; build `46` must be uploaded and installed before real-basketball TestFlight smoke resumes.
 
 Build `45` adds install-bound analysis polling and cancellation. It was made available to internal testers before the strict Worker was deployed, so build `44` was not cut over underneath an incompatible client.
 
@@ -65,4 +65,4 @@ Expected passing evidence:
 
 ## Remaining TestFlight Work
 
-Install build `45` from TestFlight and complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
+Upload and install build `46`, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Build `46` retries an idle background upload part after 90 seconds so retry/backoff remains inside the 15-minute signed upload plan. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.

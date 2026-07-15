@@ -7,10 +7,10 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 ## Current Launch Posture
 
 - PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`; the enhancement integration workstream is complete on `main`.
-- Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; the current build `45` ownership-hardening baseline is `51df354cf945069ef55a13f5f0ec50a3065fc53c`.
+- Build `44` launch proof began at `4540381752db2eb5ac22442c8f49971e0d49f6cb`; build `45` proved the ownership-hardening baseline at `51df354cf945069ef55a13f5f0ec50a3065fc53c`. Build `46` is the next installed-smoke candidate.
 - Current beta launch status: staging deploy passed, live Worker/direct editing version proof passed, deterministic Worker render smoke passed, and build `45` uploaded successfully to internal TestFlight. App Store Connect reports `1.0.0 (45)` as `VALID` and `IN_BETA_TESTING`.
 - PR #60 is merged. iOS sends its scoped `installId` on analysis polling, and the deployed strict Worker rejects missing or mismatched ownership on analysis job reads and cancellation. A live create/read/cancel ownership smoke passed after deployment.
-- Remaining beta verification: install build `45` from TestFlight and complete the real-basketball smoke. The previous Apple certificate-capacity incident is resolved and documented in `TESTFLIGHT_BLOCKER.md`.
+- Build `45` device smoke reached a real 379.9 MB upload but stalled at 14% after an idle 8 MB part outlived its signed upload window. Build `46` retries idle background parts after 90 seconds instead of 10 minutes; upload and installed real-basketball smoke remain required. The previous Apple certificate-capacity incident is resolved and documented in `TESTFLIGHT_BLOCKER.md`.
 - Public submission posture: no on-device analysis fallback is approved; Release requires the production cloud analysis, edit-planning, and rendering gates to pass.
 - Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
 - Cloud ML/rendering path: available to internal staging/TestFlight; gated off for public launch until the cutover rules below are satisfied.
@@ -25,7 +25,7 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 
 ## Latest Verified State
 
-Last launch-gate verification: July 13, 2026.
+Last launch-gate verification: July 15, 2026.
 
 - Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`.
 - PR #43: merged, `Integrate HoopClips enhancement workstream`.
@@ -60,8 +60,9 @@ Last launch-gate verification: July 13, 2026.
 - Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
 - Live analysis ownership smoke: missing owner returned `400`, a mismatched owner returned `403`, the matching owner could read and cancel its job, and the cancelled state remained readable only to that owner.
 - Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.
+- Real-device build `45` upload smoke: failed at 14% on a 379.9 MB source after one 8 MB background part stayed idle until the 15-minute signed upload plan expired. Build `46` shortens the background request idle timeout from 10 minutes to 90 seconds so retry/backoff finishes inside that signed window.
 
-Known beta launch gate: install build `45` and exercise it with real basketball footage using the checklist below. Public launch remains separately gated by production identity and quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
+Known beta launch gate: upload and install build `46`, then exercise it with real basketball footage using the checklist below. Public launch remains separately gated by production identity and quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
 
 ## Repo Layout
 
@@ -81,7 +82,7 @@ Known beta launch gate: install build `45` and exercise it with real basketball 
 
 ## Local Setup
 
-Use Xcode 17 or newer with the iOS 26 SDK and an Apple Developer team that can sign `atrak.charlie.hoopsclips`.
+Use Xcode 17 or newer with the iOS 26 SDK, Python 3.13 for backend development, and an Apple Developer team that can sign `atrak.charlie.hoopsclips`.
 
 Create the ignored local secret mirror from operator-held values:
 
@@ -113,17 +114,16 @@ Run iOS UI tests:
 ```bash
 xcodebuild test \
   -project ios/HoopsClips.xcodeproj \
-  -scheme HoopsClips \
+  -scheme HoopsClipsUITests \
   -configuration Debug \
   -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' \
-  -only-testing:HoopsClipsUITests \
   -parallel-testing-enabled NO
 ```
 
 Run backend tests:
 
 ```bash
-python3 -m venv /tmp/hoops-backend-test-venv
+python3.13 -m venv /tmp/hoops-backend-test-venv
 /tmp/hoops-backend-test-venv/bin/python -m pip install -r ios/backend/requirements.txt pytest httpx
 PYTHONPATH=ios/backend /tmp/hoops-backend-test-venv/bin/python -m pytest ios/backend/tests -q
 ```
@@ -162,7 +162,7 @@ gh run watch "$run_id" --exit-status
 Before App Store submission:
 
 - Confirm GitHub `production` secrets are present for signing, RevenueCat, Google, Firebase auth, and telemetry.
-- Confirm App Store Connect still shows internal build `1.0.0 (45)` as valid and available to the intended tester group.
+- Confirm App Store Connect shows internal build `1.0.0 (46)` as valid and available to the intended tester group.
 - Complete the real-basketball TestFlight smoke checklist in `docs/phase_beta_launch_gates_after_pr43.md`.
 - Confirm Firebase Authentication has Email/Password enabled and the App Review account works in Release.
 - Confirm `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` resolve in the Release build.

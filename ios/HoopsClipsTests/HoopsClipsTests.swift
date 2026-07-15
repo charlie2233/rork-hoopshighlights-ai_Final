@@ -712,6 +712,28 @@ struct HoopsClipsTests {
         #expect(!safeStage.localizedCaseInsensitiveContains("ETA"))
     }
 
+    @Test func testBackgroundUploadRetriesIdleChunksBeforeSignedUploadExpires() {
+        let configuration = CloudAnalysisService.uploadSessionConfiguration(
+            backgroundIdentifier: "atrak.charlie.hoopsclips.tests.idle-chunk-timeout"
+        )
+
+        #expect(configuration.timeoutIntervalForRequest == 90)
+        #expect(configuration.timeoutIntervalForResource == 24 * 60 * 60)
+        #expect(configuration.waitsForConnectivity)
+        #expect(configuration.isDiscretionary == false)
+    }
+
+    @Test func testExpiredUploadMessageKeepsSelectedVideoActionable() {
+        let message = CloudAnalysisError.backend(
+            code: "upload_expired",
+            message: "raw backend text"
+        ).localizedDescription
+
+        #expect(message.contains("selected video"))
+        #expect(message.contains("fresh upload"))
+        #expect(!message.contains("re-import"))
+    }
+
     @Test func testCloudAnalysisBackgroundReminderIsHonestAndVisible() {
         let uploadReminder = CloudAnalysisProgressCopy.backgroundReminder(
             statusMessage: "Uploading source video",

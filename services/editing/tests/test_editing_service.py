@@ -311,7 +311,7 @@ class EditingServiceTests(unittest.TestCase):
         prescan_settings = apply_scan.call_args.args[3]
         self.assertEqual(prescan_settings.team_quick_scan_max_candidate_clips, 1)
         self.assertEqual(prescan_settings.team_quick_scan_clip_frames_per_clip, 1)
-        self.assertEqual(prescan_settings.team_quick_scan_timeout_seconds, 3.0)
+        self.assertEqual(prescan_settings.team_quick_scan_timeout_seconds, 10.0)
         self.assertIs(apply_scan.call_args.args[3], prescan_settings)
         self.assertEqual(cleanup_calls, [True])
 

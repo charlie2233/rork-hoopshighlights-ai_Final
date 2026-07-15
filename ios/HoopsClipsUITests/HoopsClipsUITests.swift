@@ -70,7 +70,8 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(waitForAppTab(named: "Exports", identifier: "app.tab.export", in: app, timeout: 10).exists)
 
         let reviewTab = waitForAppTab(named: "Review", identifier: "app.tab.review", in: app, timeout: 5)
-        reviewTab.tap()
+        tapWhenReady(reviewTab, in: app)
+        assertElementEventuallyExists(app.descendants(matching: .any)["review.carousel"], in: app, timeout: 10)
         assertElementEventuallyExists(app.buttons["review.carousel.keepButton"], in: app, timeout: 10)
         assertElementEventuallyExists(app.descendants(matching: .any)["review.carousel.boundaryNudgeControls"], in: app, timeout: 10)
 
@@ -326,6 +327,7 @@ final class HoopsClipsUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
 
         let app = XCUIApplication()
+        app.terminate()
         app.launchArguments = ["--hoops-ai-edit-live-smoke"]
         app.launchEnvironment["HOOPS_UI_SMOKE_MODE"] = "1"
         app.launchEnvironment["HOOPS_AI_EDIT_TEST_FIXTURE"] = fixture
@@ -345,6 +347,7 @@ final class HoopsClipsUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
 
         let app = XCUIApplication()
+        app.terminate()
         app.launchArguments = ["--hoops-team-choice-ui-smoke"]
         app.launchEnvironment["HOOPS_UI_SMOKE_MODE"] = "team_choice"
         app.launchEnvironment["HOOPS_CLOUD_ANALYSIS_BASE_URL"] = "http://127.0.0.1:9"

@@ -196,7 +196,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 0)
         self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 1)
         self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 1)
-        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 3.0)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 10.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
     def test_prescan_frame_budget_uses_few_context_frames_and_one_clip_safety_cap(self) -> None:
@@ -1622,7 +1622,7 @@ class TeamQuickScanTests(unittest.TestCase):
 
                 def fake_team_scan(source_path, duration_seconds, clips, scan_settings):
                     self.assertEqual(clips, [])
-                    self.assertEqual(scan_settings.team_quick_scan_timeout_seconds, 3.0)
+                    self.assertEqual(scan_settings.team_quick_scan_timeout_seconds, 10.0)
                     self.assertLessEqual(scan_settings.team_quick_scan_video_frame_count, 5)
                     return [], detected, True
 

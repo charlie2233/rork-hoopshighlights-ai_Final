@@ -47,7 +47,7 @@ class CollectTeamHighlightAccuracyCaseTests(unittest.TestCase):
                     }
                 if path == "v1/analysis/jobs/job_123/start":
                     return {"status": "queued"}
-                if path == "v1/analysis/jobs/job_123":
+                if path == "v1/analysis/jobs/job_123?installId=accuracy-install":
                     return completed_job()
                 raise AssertionError(f"Unexpected path: {path}")
 
@@ -62,6 +62,7 @@ class CollectTeamHighlightAccuracyCaseTests(unittest.TestCase):
             self.assertEqual(result["status"], "pass")
             self.assertEqual(result["selectedTeamId"], "team_dark")
             self.assertEqual(result["clipCount"], 2)
+            self.assertEqual(calls[3][1], "v1/analysis/jobs/job_123?installId=accuracy-install")
 
             start_payload = calls[2][2]
             self.assertIsNotNone(start_payload)
@@ -99,7 +100,7 @@ class CollectTeamHighlightAccuracyCaseTests(unittest.TestCase):
                     return {"jobId": "job_123", "uploadUrl": "https://r2.example.test/upload?X-Amz-Signature=secret"}
                 if path == "v1/analysis/jobs/job_123/start":
                     return {"status": "queued"}
-                if path == "v1/analysis/jobs/job_123":
+                if path == "v1/analysis/jobs/job_123?installId=accuracy-install":
                     return completed_job(team_selection={"mode": "all"})
                 raise AssertionError(f"Unexpected path: {path}")
 

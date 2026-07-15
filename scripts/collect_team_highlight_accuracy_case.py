@@ -9,6 +9,7 @@ import re
 import sys
 import time
 from typing import Any
+from urllib.parse import urlencode
 
 REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
@@ -143,7 +144,15 @@ def collect_case(args: argparse.Namespace) -> dict[str, Any]:
         trace_id=trace_id,
         timeout_seconds=args.request_timeout_seconds,
     )
-    final_job = poll_job(base_url, job_id, trace_id, args.timeout_seconds, args.poll_interval_seconds, args.request_timeout_seconds)
+    final_job = poll_job(
+        base_url,
+        job_id,
+        args.install_id,
+        trace_id,
+        args.timeout_seconds,
+        args.poll_interval_seconds,
+        args.request_timeout_seconds,
+    )
     if final_job.get("status") not in {"completed", "succeeded"} or not isinstance(final_job.get("results"), dict):
         raise SmokeError("Cloud analysis did not complete with result metadata.", {"jobId": job_id, "job": final_job})
 
@@ -230,6 +239,7 @@ def team_selection_payload(args: argparse.Namespace, selected_team: dict[str, An
 def poll_job(
     base_url: str,
     job_id: str,
+    install_id: str,
     trace_id: str,
     timeout_seconds: float,
     poll_interval_seconds: float,
@@ -238,7 +248,14 @@ def poll_job(
     deadline = time.monotonic() + timeout_seconds
     last_job: dict[str, Any] | None = None
     while time.monotonic() <= deadline:
-        job = request_json("GET", base_url, f"v1/analysis/jobs/{job_id}", trace_id=trace_id, timeout_seconds=request_timeout_seconds)
+        query = urlencode({"installId": install_id})
+        job = request_json(
+            "GET",
+            base_url,
+            f"v1/analysis/jobs/{job_id}?{query}",
+            trace_id=trace_id,
+            timeout_seconds=request_timeout_seconds,
+        )
         last_job = job
         status = str(job.get("status") or "").lower()
         if status in TERMINAL_STATUSES:
