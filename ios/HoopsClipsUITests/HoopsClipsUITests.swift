@@ -52,6 +52,11 @@ final class HoopsClipsUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Launch Status"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Analysis Path"].waitForExistence(timeout: 5))
+
+        let closeButton = app.buttons["settings.closeButton"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 5))
+        closeButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["uploads.screen"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -64,7 +69,8 @@ final class HoopsClipsUITests: XCTestCase {
         )
 
         XCTAssertTrue(waitForAppTab(named: "Uploads", identifier: "app.tab.uploads", in: app, timeout: 10).exists)
-        XCTAssertTrue(app.descendants(matching: .any)["uploads.queue.panel"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["uploads.screen"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["uploads.queue.panel"].exists)
         XCTAssertTrue(waitForAppTab(named: "Review", identifier: "app.tab.review", in: app, timeout: 10).exists)
         XCTAssertTrue(waitForAppTab(named: "AI Edit", identifier: "app.tab.aiEdit", in: app, timeout: 10).exists)
         XCTAssertTrue(waitForAppTab(named: "Exports", identifier: "app.tab.export", in: app, timeout: 10).exists)
