@@ -14,6 +14,7 @@ on:
         type: choice
         options:
           - codecheck
+          - status
           - preflight
           - archive
           - upload
@@ -73,7 +74,7 @@ jobs:
 
   internal-testflight:
     name: Build internal staging TestFlight archive
-    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'
+    if: github.event_name == 'workflow_dispatch' && (inputs.operation == 'preflight' || inputs.operation == 'archive' || inputs.operation == 'upload')
     runs-on: macos-26
     environment: staging
     concurrency:
@@ -306,6 +307,98 @@ jobs:
             cleanup_args+=(--certificate-serial "$ASC_ARCHIVE_CERTIFICATE_SERIAL")
           fi
           python3 scripts/app_store_connect_certificates.py "${cleanup_args[@]}"
+
+      - name: Remove App Store Connect API key
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -n "${ASC_KEY_PATH:-}" ]]; then
+            rm -f "$ASC_KEY_PATH"
+          fi
+
+  app-store-connect-status:
+    name: Verify build 46 internal TestFlight status
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'status'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Assert App Store Connect inputs are present
+        run: |
+          set -euo pipefail
+          required=(
+            APP_STORE_CONNECT_KEY_ID
+            APP_STORE_CONNECT_ISSUER_ID
+            APP_STORE_CONNECT_API_KEY_BASE64
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            else
+              echo "$key=present"
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing App Store Connect inputs: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Materialize App Store Connect API key
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          ASC_KEY_PATH="$key_path" python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          Path(os.environ["ASC_KEY_PATH"]).write_bytes(base64.b64decode(os.environ["APP_STORE_CONNECT_API_KEY_BASE64"]))
+          PY
+          chmod 600 "$key_path"
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          echo "App Store Connect API key materialized"
+
+      - name: Wait for build 46 internal TestFlight availability
+        run: |
+          set -euo pipefail
+          status_path="$RUNNER_TEMP/app-store-connect-build-46-status.json"
+          python3 scripts/app_store_connect_build_status.py \
+            --key-path "$ASC_KEY_PATH" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --bundle-id atrak.charlie.hoopsclips \
+            --marketing-version 1.0.0 \
+            --build-version 46 \
+            --wait-seconds 900 \
+            --poll-seconds 30 \
+            --output "$status_path"
+          echo "ASC_BUILD_STATUS_PATH=$status_path" >> "$GITHUB_ENV"
+
+      - name: Publish non-secret build status summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### App Store Connect build 46"
+            echo
+            echo '```json'
+            jq . "$ASC_BUILD_STATUS_PATH"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload non-secret build status proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-connect-build-46-status
+          path: ${{ env.ASC_BUILD_STATUS_PATH }}
+          retention-days: 14
 
       - name: Remove App Store Connect API key
         if: always()
