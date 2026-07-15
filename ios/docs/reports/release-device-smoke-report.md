@@ -2,21 +2,23 @@
 
 ## Active snapshot (2026-07-15)
 
-- Candidate: internal TestFlight `1.0.0 (46)` from app SHA `22e24d35b32e784b0d6f9e290504118e965fa105`.
-- Staging deploy: run `29443552918` passed editing/Worker deploy and live version proof for the same app SHA.
-- TestFlight upload: run `29443559399` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
-- App Store Connect processing: status run `29445202395` reports `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, iOS `17.0+`, and no non-exempt encryption.
+- Candidate: internal TestFlight `1.0.0 (47)` from app SHA `cb7d8f3c946a6933f52ad18255318c8c4ae3e151`.
+- Staging deploy: run `29449140849` passed editing/Worker deploy and live version proof for the same app SHA.
+- TestFlight upload: run `29449525744` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
+- App Store Connect processing: status run `29450181533` reports `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, iOS `17.0+`, and no non-exempt encryption.
 - Cloud fixture proof: three consecutive real-basketball team scans detected black/white teams and queued selected-team analysis; an all-teams collection completed with eight clips.
-- Automated regression: 217 iOS unit tests passed, all enabled UI tests passed, Release simulator build passed, and the upload configuration asserts a 90-second request timeout, 24-hour resource timeout, connectivity waiting, and non-discretionary transfer behavior.
-- Device availability: the paired iPhone currently reports `unavailable` to `devicectl`, so build `46` installation and its full phone smoke have not been claimed.
-- Current gate: bring the trusted iPhone online, install build `46` from TestFlight, rerun the real-basketball flow, and record every downstream step separately.
+- Automated regression: 218 iOS unit tests passed, all enabled UI tests passed, Release simulator build passed, all 43 Worker tests passed, and the required CI lane passed all seven upload-policy tests.
+- Upload plan: a 379.9 MB source now uses 24 adaptive parts instead of 48 fixed 8 MB parts. Normal networks can use four lanes; expensive paths cap at two and Low Data Mode at one.
+- Device availability: the paired iPhone was online on July 15, but still reported installed HoopClips build `45` before TestFlight was opened. Build `47` installation and its full phone smoke have not been claimed yet.
+- Current gate: install build `47` from TestFlight, rerun the real-basketball flow, and record every downstream step separately.
 
-### Prior build 45 failure that build 46 addresses
+### Prior build 45 failure that builds 46 and 47 address
 
 - Device/source: trusted physical iPhone with internal TestFlight `1.0.0 (45)` and a real 379.9 MB basketball video split into forty-eight 8 MB upload parts.
 - Result: upload remained at 14%, so team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export were not reached.
 - Evidence: two parts completed while one active part remained idle. The app was backgrounded, and the 15-minute signed upload plan expired before the 10-minute request-idle timeout and retry sequence could recover.
-- Fix: build `46` changes the background request-idle timeout to 90 seconds, preserving retry/backoff while keeping worst-case idle recovery inside the signed upload window.
+- Fix: build `46` changes the background request-idle timeout to 90 seconds, preserving retry/backoff while keeping worst-case idle recovery inside the signed upload window. Build `47` also halves multipart operations for this source size and adds one normal-network upload lane.
+- Measurement boundary: fewer parts and scheduling waves are deterministic, but no wall-clock speedup is claimed until build `47` completes the same real-device upload.
 - Apple state: signing, provisioning, upload, and processing are resolved and are not blockers for this rerun.
 
 ## Historical snapshot (2026-07-05)
