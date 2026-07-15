@@ -1,10 +1,10 @@
 # TestFlight Signing Incident
 
-Status: Apple signing incident resolved on July 13, 2026. Builds `1.0.0 (44)`, `(45)`, and `(46)` were uploaded successfully. Read-only status run `29445202395` reports build `46` as `VALID`, `IN_BETA_TESTING`, and ready for internal testing.
+Status: Apple signing incident resolved on July 13, 2026. Builds `1.0.0 (44)` through `(47)` were uploaded successfully. Read-only status run `29450181533` reports build `47` as `VALID`, `IN_BETA_TESTING`, and ready for internal testing.
 
-This file is retained as the non-secret incident record and rerun guide. Apple signing, provisioning, archive, upload, and processing are not current blockers. Build `46` must now be installed on a trusted iPhone before real-basketball TestFlight smoke resumes.
+This file is retained as the non-secret incident record and rerun guide. Apple signing, provisioning, archive, upload, and processing are not current blockers. Build `47` must now be installed on a trusted iPhone before real-basketball TestFlight smoke resumes.
 
-Build `45` added install-bound analysis polling and cancellation. Build `46` adds bounded idle-part recovery for large background uploads while preserving the same cloud-first contract.
+Build `45` added install-bound analysis polling and cancellation. Build `46` added bounded idle-part recovery for large background uploads. Build `47` adds adaptive part sizing and path-aware upload concurrency while preserving the same cloud-first contract.
 
 ## Resolution Evidence
 
@@ -29,6 +29,10 @@ Build `45` added install-bound analysis polling and cancellation. Build `46` add
 - Upload run `29443559399`: passed signed archive, metadata/privacy verification, build `46` upload, and serial-bound runner certificate cleanup.
 - PR #63 merged at `c4a9776be82787551efd25808516775f891468bb` with a read-only status operation that does not archive, sign, or upload.
 - App Store Connect status run `29445202395`: build `1.0.0 (46)` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and does not use non-exempt encryption.
+- PR #65 merged at `cb7d8f3c946a6933f52ad18255318c8c4ae3e151` with build `47` adaptive multipart planning and path-aware concurrency.
+- Strict staging deploy run `29449140849`: passed editing/Worker deploy and live version proof for the PR #65 merge SHA.
+- Upload run `29449525744`: passed signed archive, metadata/privacy verification, build `47` upload, and serial-bound runner certificate cleanup.
+- App Store Connect status run `29450181533`: build `1.0.0 (47)` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and does not use non-exempt encryption.
 
 No certificate contents, private keys, API key contents, provisioning profile contents, passwords, or tokens belong in this file.
 
@@ -76,4 +80,4 @@ Expected passing evidence:
 
 ## Remaining TestFlight Work
 
-Install build `46`, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Build `46` retries an idle background upload part after 90 seconds so retry/backoff remains inside the 15-minute signed upload plan. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
+Install build `47`, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. Build `47` retains the 90-second idle retry, targets about 24 adaptive parts, and uses four normal-network upload lanes while throttling expensive or constrained paths. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
