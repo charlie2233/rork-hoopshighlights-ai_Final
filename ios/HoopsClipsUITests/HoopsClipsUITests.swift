@@ -52,6 +52,11 @@ final class HoopsClipsUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Launch Status"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Analysis Path"].waitForExistence(timeout: 5))
+
+        let closeButton = app.buttons["settings.closeButton"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 5))
+        closeButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["uploads.screen"].waitForExistence(timeout: 5))
     }
 
     @MainActor

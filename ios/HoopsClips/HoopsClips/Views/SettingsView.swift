@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Bindable var authService: AuthService
     @Bindable var subscriptionManager: SubscriptionManager
     @Environment(AppLanguageStore.self) private var languageStore
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingResetConfirmation = false
@@ -164,6 +165,17 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .accessibilityLabel("Close settings")
+                    .accessibilityIdentifier("settings.closeButton")
+                }
+            }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
