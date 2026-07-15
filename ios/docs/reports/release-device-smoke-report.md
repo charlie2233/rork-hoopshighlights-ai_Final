@@ -2,16 +2,24 @@
 
 ## Active snapshot (2026-07-15)
 
-- Device: trusted physical iPhone with internal TestFlight `1.0.0 (45)` installed.
-- Source: real basketball video, 379.9 MB, split into forty-eight 8 MB upload parts.
-- Result: failed at upload; progress remained at 14%, so team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export were not reached.
-- Evidence: two parts completed while one active part remained idle. The app was backgrounded, and the 15-minute signed upload plan expired before the 10-minute request-idle timeout and retry sequence could recover.
-- Fix candidate: build `46` changes the background request-idle timeout to 90 seconds, preserving the existing retry/backoff policy while keeping its worst-case idle recovery inside the signed upload window.
-- Automated regression: the background upload configuration asserts a 90-second request timeout, 24-hour resource timeout, connectivity waiting, and non-discretionary transfer behavior.
-- Apple state: signing/provisioning is resolved and is not the blocker for this attempt.
-- Next gate: upload/install build `46`, rerun this real-basketball flow, and record every downstream step separately.
+- Candidate: internal TestFlight `1.0.0 (46)` from app SHA `22e24d35b32e784b0d6f9e290504118e965fa105`.
+- Staging deploy: run `29443552918` passed editing/Worker deploy and live version proof for the same app SHA.
+- TestFlight upload: run `29443559399` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
+- App Store Connect processing: status run `29445202395` reports `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, iOS `17.0+`, and no non-exempt encryption.
+- Cloud fixture proof: three consecutive real-basketball team scans detected black/white teams and queued selected-team analysis; an all-teams collection completed with eight clips.
+- Automated regression: 217 iOS unit tests passed, all enabled UI tests passed, Release simulator build passed, and the upload configuration asserts a 90-second request timeout, 24-hour resource timeout, connectivity waiting, and non-discretionary transfer behavior.
+- Device availability: the paired iPhone currently reports `unavailable` to `devicectl`, so build `46` installation and its full phone smoke have not been claimed.
+- Current gate: bring the trusted iPhone online, install build `46` from TestFlight, rerun the real-basketball flow, and record every downstream step separately.
 
-## Active snapshot (2026-07-05)
+### Prior build 45 failure that build 46 addresses
+
+- Device/source: trusted physical iPhone with internal TestFlight `1.0.0 (45)` and a real 379.9 MB basketball video split into forty-eight 8 MB upload parts.
+- Result: upload remained at 14%, so team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export were not reached.
+- Evidence: two parts completed while one active part remained idle. The app was backgrounded, and the 15-minute signed upload plan expired before the 10-minute request-idle timeout and retry sequence could recover.
+- Fix: build `46` changes the background request-idle timeout to 90 seconds, preserving retry/backoff while keeping worst-case idle recovery inside the signed upload window.
+- Apple state: signing, provisioning, upload, and processing are resolved and are not blockers for this rerun.
+
+## Historical snapshot (2026-07-05)
 
 - Branch evidence source: `main`
 - Build `44` launch proof baseline: `4540381752db2eb5ac22442c8f49971e0d49f6cb`
@@ -24,13 +32,13 @@
 - iOS build `43` upload: succeeded in `iOS Internal TestFlight Upload` run `28470081179`.
 - iOS build `44` archive: succeeded in `iOS Internal TestFlight Upload` run `28756536677`.
 - iOS build `44` upload: blocked in `iOS Internal TestFlight Upload` runs `28756673502` and `28764285946`.
-- Current blocker: Apple certificate limit/provisioning state for `atrak.charlie.hoopsclips`.
+- Historical blocker at this snapshot: Apple certificate limit/provisioning state for `atrak.charlie.hoopsclips`.
 - Handoff: `TESTFLIGHT_BLOCKER.md`
 - Real-basketball TestFlight checklist: `docs/phase_beta_launch_gates_after_pr43.md`
 
-Installed build `44` TestFlight smoke remains unproven until the account holder repairs Apple certificate/provisioning state, CI uploads the internal build, and a trusted iPhone runs the real-basketball flow from upload through render, download, save to Photos, and share/open export.
+At this snapshot, installed build `44` TestFlight smoke was unproven pending Apple certificate repair, upload, and a trusted-iPhone run. Those Apple gates were resolved later; the active snapshot above is authoritative.
 
-## Active snapshot (2026-06-03)
+## Historical snapshot (2026-06-03)
 - Branch: `codex/phase-launch-proof-next`
 - Evidence head before this report refresh: `2976d4b`
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.

@@ -93,14 +93,14 @@ TESTFLIGHT_UPLOAD_LOG_MARKERS = (
     "Uploaded HoopsClips",
     "Internal TestFlight upload command completed",
 )
+TESTFLIGHT_STATUS_LOG_MARKER = "App Store Connect confirms this build is ready for internal TestFlight."
 TESTFLIGHT_SIGNING_FAILURE_MARKERS = (
     "maximum number of certificates",
     "No profiles for 'atrak.charlie.hoopsclips' were found",
     "requires a development team",
     "conflicting provisioning settings",
 )
-IOS_UPLOAD_RELEVANT_PREFIXES = (
-    ".github/workflows/ios-testflight-upload.yml",
+IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES = (
     "ios/HoopsClips/",
     "ios/HoopsClips.xcodeproj/",
     "ios/HoopsClipsTests/",
@@ -110,9 +110,20 @@ IOS_UPLOAD_RELEVANT_PREFIXES = (
     "ios/scripts/",
     "ios/tools/",
 )
+IOS_WORKFLOW_RELEVANT_PREFIXES = (
+    ".github/workflows/ios-testflight-upload.yml",
+    *IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES,
+)
 CLOUD_DEPLOY_RELEVANT_PREFIXES = (
     ".github/workflows/cloud-edit-deploy-preflight.yml",
     "scripts/",
+    "services/control-plane/",
+    "services/editing/",
+    "services/inference/",
+)
+CLOUD_SECRET_DEPLOY_RELEVANT_PREFIXES = (
+    ".github/workflows/cloud-edit-deploy-preflight.yml",
+    "ios/backend/",
     "services/control-plane/",
     "services/editing/",
     "services/inference/",
@@ -124,7 +135,7 @@ EDITING_SERVICE_DEPLOY_RELEVANT_PREFIXES = (
 )
 REQUIRED_MAIN_WORKFLOW_RELEVANT_PREFIXES = {
     "Cloud Edit Deploy Preflight": CLOUD_DEPLOY_RELEVANT_PREFIXES,
-    "iOS Internal TestFlight Upload": IOS_UPLOAD_RELEVANT_PREFIXES,
+    "iOS Internal TestFlight Upload": IOS_WORKFLOW_RELEVANT_PREFIXES,
 }
 BLOCKER_DOCS = (
     (
@@ -923,7 +934,12 @@ def current_testflight_upload_proof(repo_root: Path) -> bool:
         if isinstance(run, dict)
         and run.get("status") == "completed"
         and run.get("conclusion") == "success"
-        and commit_is_current_or_unchanged_for_paths(repo_root, str(run.get("headSha") or ""), current_sha, IOS_UPLOAD_RELEVANT_PREFIXES)
+        and commit_is_current_or_unchanged_for_paths(
+            repo_root,
+            str(run.get("headSha") or ""),
+            current_sha,
+            IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES,
+        )
     ]
     for run in matching_runs:
         if testflight_upload_log_has_markers(run.get("databaseId")):
@@ -938,7 +954,12 @@ def current_testflight_workflow_failure_detail(repo_root: Path) -> str:
         return ""
     for run in runs:
         head_sha = str(run.get("headSha") or "")
-        if not commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, IOS_UPLOAD_RELEVANT_PREFIXES):
+        if not commit_is_current_or_unchanged_for_paths(
+            repo_root,
+            head_sha,
+            current_sha,
+            IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES,
+        ):
             continue
         status = str(run.get("status") or "unknown")
         conclusion = str(run.get("conclusion") or "unknown")
@@ -966,17 +987,26 @@ def current_testflight_workflow_missing_upload_detail(repo_root: Path) -> str:
         return ""
     for run in runs:
         head_sha = str(run.get("headSha") or "")
-        if not commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, IOS_UPLOAD_RELEVANT_PREFIXES):
+        if not commit_is_current_or_unchanged_for_paths(
+            repo_root,
+            head_sha,
+            current_sha,
+            IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES,
+        ):
             continue
         status = str(run.get("status") or "unknown")
         conclusion = str(run.get("conclusion") or "unknown")
         created_at = str(run.get("createdAt") or "unknown")
-        if status == "completed" and conclusion == "success" and not testflight_upload_log_has_markers(run.get("databaseId")):
-            return (
-                "Current-branch iOS workflow completed successfully at "
-                f"{created_at}, but internal TestFlight upload log proof was not found; "
-                "this may be a codecheck-only run and does not prove signed archive/upload."
-            )
+        if status == "completed" and conclusion == "success":
+            run_log = testflight_run_log(run.get("databaseId"))
+            if TESTFLIGHT_STATUS_LOG_MARKER in run_log:
+                continue
+            if not all(marker in run_log for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS):
+                return (
+                    "Current-branch iOS workflow completed successfully at "
+                    f"{created_at}, but internal TestFlight upload log proof was not found; "
+                    "this may be a codecheck-only run and does not prove signed archive/upload."
+                )
         return ""
     return ""
 
@@ -1021,9 +1051,9 @@ def current_testflight_workflow_dispatch_runs(repo_root: Path) -> list[dict[str,
     ]
 
 
-def testflight_upload_log_has_markers(run_id: object) -> bool:
+def testflight_run_log(run_id: object) -> str:
     if run_id in (None, ""):
-        return False
+        return ""
     try:
         result = subprocess.run(
             [
@@ -1042,10 +1072,15 @@ def testflight_upload_log_has_markers(run_id: object) -> bool:
             timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return ""
     if result.returncode != 0:
-        return False
-    return all(marker in result.stdout for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
+        return ""
+    return result.stdout
+
+
+def testflight_upload_log_has_markers(run_id: object) -> bool:
+    run_log = testflight_run_log(run_id)
+    return all(marker in run_log for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
 
 
 def testflight_workflow_failure_log_detail(run_id: object) -> str:
@@ -1631,7 +1666,12 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
     matching_run = None
     for run in dispatch_runs:
         head_sha = str(run.get("headSha") or "")
-        if current_sha and commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, CLOUD_DEPLOY_RELEVANT_PREFIXES):
+        if current_sha and commit_is_current_or_unchanged_for_paths(
+            repo_root,
+            head_sha,
+            current_sha,
+            CLOUD_SECRET_DEPLOY_RELEVANT_PREFIXES,
+        ):
             matching_run = run
             break
 
