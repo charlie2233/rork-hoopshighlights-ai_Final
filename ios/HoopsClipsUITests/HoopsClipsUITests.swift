@@ -60,6 +60,31 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
+    func testVideoImportProgressHidesLandingClutter() throws {
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = [
+            "--hoops-import-progress-smoke",
+            "-hoopsclips.rookieGuide.completed.v1",
+            "YES",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["import.status.card"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["import.progress.stage"].exists)
+        XCTAssertTrue(app.buttons["import.status.cancelButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["import.landing.content"].exists)
+        XCTAssertFalse(app.buttons["import.selectVideoButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["app.tabBar"].exists)
+        XCTAssertFalse(app.buttons["uploads.historyButton"].exists)
+        XCTAssertFalse(app.buttons["uploads.settingsButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["player.unexpectedExitRecoveryCard"].exists)
+        attachScreenshot(named: "Import Focused Progress", app: app)
+    }
+
+    @MainActor
     func testWorkflowSectionsNavigateEndToEndWithSmokeFixture() throws {
         let app = launchAIEditSmokeApp(
             fixture: "staging_render_ready",
