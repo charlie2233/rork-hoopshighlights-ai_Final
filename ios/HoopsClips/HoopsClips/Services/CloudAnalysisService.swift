@@ -132,6 +132,11 @@ struct CloudAnalysisService {
         return safeMaximum
     }
 
+    nonisolated static func renewedUploadExpiration(current: Date?, candidate: Date) -> Date {
+        guard let current else { return candidate }
+        return max(current, candidate)
+    }
+
     func hasPendingBackgroundUpload() async -> Bool {
         await CloudUploadResumeStore.shared.pendingManifest() != nil
     }
@@ -1959,7 +1964,8 @@ struct CloudAnalysisService {
             totalFileSizeBytes: max(fileSizeBytes, 1),
             assetID: asset.assetId,
             storageKey: asset.storageKey,
-            assetMultipartParts: nil
+            assetMultipartParts: nil,
+            uploadExpiresAt: asset.expiresAt
         )
         await CloudUploadResumeStore.shared.recordSession(
             jobID: asset.assetId,
@@ -2100,7 +2106,8 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes,
             assetID: asset.assetId,
             storageKey: asset.storageKey,
-            assetMultipartParts: multipart.parts
+            assetMultipartParts: multipart.parts,
+            uploadExpiresAt: asset.expiresAt
         )
         var completedPartNumbers = Set(uploadedParts.map(\.partNumber))
         let initialCompletedBytes = Self.completedUploadBytes(
@@ -2731,11 +2738,17 @@ struct CloudAnalysisService {
         )
 
         let (data, response) = try await session.data(for: request)
-        return try decodeResponse(
+        let part = try decodeResponse(
             data: data,
             response: response,
             successType: CloudMultipartPartResponse.self
         )
+        await CloudUploadResumeStore.shared.recordRenewedUploadExpiration(
+            jobID: jobID,
+            uploadID: uploadID,
+            expiresAt: part.expiresAt
+        )
+        return part
     }
 
     private func resumeUploadManifest(
@@ -4152,6 +4165,24 @@ private actor CloudUploadResumeStore {
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
         return manifest.completedParts
+    }
+
+    func recordRenewedUploadExpiration(jobID: String, uploadID: String, expiresAt: Date) {
+        guard var manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else {
+            return
+        }
+        let renewedExpiration = CloudAnalysisService.renewedUploadExpiration(
+            current: manifest.uploadExpiresAt,
+            candidate: expiresAt
+        )
+        guard manifest.uploadExpiresAt != renewedExpiration else { return }
+        manifest.uploadExpiresAt = renewedExpiration
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        Self.recordBackgroundUploadProof(
+            "resume_manifest_upload_lease_renewed",
+            metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count)/\(manifest.partCount)"
+        )
     }
 
     private static func manifestJobMatchesSession(_ manifestJobID: String, sessionJobID: String) -> Bool {

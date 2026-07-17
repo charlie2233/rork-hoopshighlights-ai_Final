@@ -403,16 +403,36 @@ async function handleMultipartPart(
       partNumber: body.partNumber,
       expiresInSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds
     });
+    const renewedAt = new Date().toISOString();
+    const renewedJob = await updateJobState(
+      env,
+      jobOrResponse.jobId,
+      {
+        expiresAt: target.expiresAt,
+        updatedAt: renewedAt
+      },
+      {
+        requestId,
+        traceId: jobOrResponse.traceId,
+        eventType: "job.multipart_upload.lease_renewed",
+        message: "Active multipart upload lease renewed.",
+        payload: {
+          partNumber: body.partNumber,
+          expiresAt: target.expiresAt,
+          uploadTraceId: jobOrResponse.uploadTraceId ?? null
+        }
+      }
+    );
 
     return jsonResponse(
       {
         requestId,
         schemaVersion,
         confidence: null,
-        modelVersion: jobOrResponse.modelVersion ?? null,
+        modelVersion: renewedJob.modelVersion ?? null,
         failureReason: null,
-        uploadTraceId: jobOrResponse.uploadTraceId ?? null,
-        jobId: jobOrResponse.jobId,
+        uploadTraceId: renewedJob.uploadTraceId ?? null,
+        jobId: renewedJob.jobId,
         partNumber: body.partNumber,
         uploadUrl: target.uploadUrl,
         uploadMethod: target.uploadMethod,
