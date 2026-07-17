@@ -5516,6 +5516,16 @@ struct UploadThroughputPolicyTests {
         #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: true, isConstrained: true) == 1)
         #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: false, isConstrained: false, pathAvailable: false) == 1)
     }
+
+    @Test func renewedUploadExpirationNeverMovesBackward() {
+        let original = Date(timeIntervalSince1970: 1_000)
+        let olderCandidate = Date(timeIntervalSince1970: 900)
+        let newerCandidate = Date(timeIntervalSince1970: 1_900)
+
+        #expect(CloudAnalysisService.renewedUploadExpiration(current: nil, candidate: original) == original)
+        #expect(CloudAnalysisService.renewedUploadExpiration(current: original, candidate: olderCandidate) == original)
+        #expect(CloudAnalysisService.renewedUploadExpiration(current: original, candidate: newerCandidate) == newerCandidate)
+    }
 }
 
 private func makeCloudAnalysisSession(
