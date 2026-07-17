@@ -26,6 +26,7 @@ struct AIEditView: View {
     let isProUser: Bool
     var revenueCatAppUserID: String? = nil
     var presentation: AIEditPresentation = .sheet
+    var isActive = true
     var onRequestProUpgrade: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -82,6 +83,7 @@ struct AIEditView: View {
         isProUser: Bool,
         revenueCatAppUserID: String? = nil,
         presentation: AIEditPresentation = .sheet,
+        isActive: Bool = true,
         cloudEditService: any CloudEditServicing = CloudEditService(),
         onRequestProUpgrade: (() -> Void)? = nil
     ) {
@@ -89,6 +91,7 @@ struct AIEditView: View {
         self.isProUser = isProUser
         self.revenueCatAppUserID = revenueCatAppUserID
         self.presentation = presentation
+        self.isActive = isActive
         self.cloudEditService = cloudEditService
         self.onRequestProUpgrade = onRequestProUpgrade
     }
@@ -126,13 +129,14 @@ struct AIEditView: View {
         } message: {
             Text("Your HoopClips video is in your photo library.")
         }
-        .task(id: viewModel.cloudEditInputSignature) {
+        .task(id: cloudEditRefreshTaskID) {
             resetCloudEditSessionIfInputChanged(to: viewModel.cloudEditInputSignature)
+            guard isActive else { return }
             await refreshCloudEditVersion()
             await refreshRenderHistory()
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active, isActive else { return }
             refreshCloudEditAfterForegroundIfNeeded()
         }
         .onChange(of: renderStatus?.renderJobId) { _, _ in
@@ -141,9 +145,26 @@ struct AIEditView: View {
         .onChange(of: renderStatus?.status) { _, _ in
             viewModel.latestCloudEditRenderStatus = renderStatus
         }
-        .onAppear {
-            viewModel.latestCloudEditRenderStatus = renderStatus
+        .onChange(of: isActive) { _, active in
+            if active {
+                if let renderStatus {
+                    viewModel.latestCloudEditRenderStatus = renderStatus
+                }
+            } else {
+                foregroundRefreshTask?.cancel()
+                foregroundRefreshTask = nil
+                previewPlayer?.pause()
+            }
         }
+        .onAppear {
+            if let renderStatus {
+                viewModel.latestCloudEditRenderStatus = renderStatus
+            }
+        }
+    }
+
+    private var cloudEditRefreshTaskID: String {
+        "\(viewModel.cloudEditInputSignature)|active=\(isActive)"
     }
 
     private func resetCloudEditSessionIfInputChanged(to signature: String) {
@@ -220,7 +241,6 @@ struct AIEditView: View {
             heroCard
             compactExportSetupCard
             if showSetupControls {
-                smartSetupCard
                 stylePicker
                 formatPicker
                 durationPicker
@@ -308,100 +328,117 @@ struct AIEditView: View {
     }
 
     private var heroCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text("EXPORT")
-                            .font(.caption2.bold())
-                            .tracking(1.4)
-                            .foregroundStyle(AppTheme.warningYellow)
-                    }
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(aiEditHeroTint.opacity(0.14))
+                    .frame(width: 46, height: 46)
 
-                    Text("Make the reel")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.76)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("export.aiEdit.section")
-
-                    Text("HoopClips builds the reel for you.")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                        .minimumScaleFactor(0.84)
-                        .fixedSize(horizontal: false, vertical: true)
+                if aiEditHeroShowsProgress {
+                    ProgressView()
+                        .tint(aiEditHeroTint)
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: aiEditHeroIcon)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(aiEditHeroTint)
                 }
+            }
+            .accessibilityHidden(true)
 
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(aiEditHeroTitle)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.neonPurple.opacity(0.22))
-                        .frame(width: 58, height: 58)
-                    Image(systemName: phase == .rendered ? "checkmark.seal.fill" : "wand.and.stars.inverse")
-                        .font(.title2.bold())
-                        .foregroundStyle(phase == .rendered ? AppTheme.successGreen : AppTheme.warningYellow)
-                }
-                .accessibilityHidden(true)
+                Text(aiEditHeroSubtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 10) {
-                exportHeroMetric(icon: "film.stack.fill", value: clipPoolChipText)
-                exportHeroMetric(icon: selectedAspectRatio.icon, value: selectedAspectRatio.rawValue)
-                exportHeroMetric(icon: "timer", value: formattedDuration(selectedDuration))
-            }
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(
-            LinearGradient(
-                colors: [
-                    AppTheme.accentPurple.opacity(0.9),
-                    AppTheme.cardBg.opacity(0.94),
-                    AppTheme.neonPurple.opacity(0.22)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: .rect(cornerRadius: 24)
-        )
-        .overlay(alignment: .topTrailing) {
-            Circle()
-                .fill(AppTheme.neonPurple.opacity(0.18))
-                .frame(width: 120, height: 120)
-                .blur(radius: 18)
-                .offset(x: 36, y: -42)
-                .allowsHitTesting(false)
-        }
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.82), in: .rect(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(aiEditHeroTint.opacity(0.24), lineWidth: 1)
         )
-        .shadow(color: AppTheme.neonPurple.opacity(0.18), radius: 18, x: 0, y: 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("export.aiEdit.section")
     }
 
-    private func exportHeroMetric(icon: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Image(systemName: icon)
-                .font(.caption.bold())
-                .foregroundStyle(AppTheme.warningYellow)
-            Text(value)
-                .font(.caption.bold())
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.78)
-                .fixedSize(horizontal: false, vertical: true)
+    private var aiEditHeroTitle: String {
+        if downloadResponse != nil || phase == .rendered {
+            return "Reel ready"
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(.white.opacity(0.07), in: .rect(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        )
+        if aiEditHeroShowsProgress {
+            return "Making your reel"
+        }
+        switch phase {
+        case .failed, .failedTimeout, .cancelled:
+            return "Ready to try again"
+        default:
+            return "Create your reel"
+        }
+    }
+
+    private var aiEditHeroSubtitle: String {
+        if downloadResponse != nil || phase == .rendered {
+            return "Preview it, save it, or share it."
+        }
+        if aiEditHeroShowsProgress {
+            return phase.displayLabel
+        }
+        switch phase {
+        case .failed, .failedTimeout, .cancelled:
+            return "Review the message below, then try again."
+        default:
+            return "Choose a style, format, and length."
+        }
+    }
+
+    private var aiEditHeroIcon: String {
+        if downloadResponse != nil || phase == .rendered {
+            return "checkmark.seal.fill"
+        }
+        switch phase {
+        case .failed, .failedTimeout, .cancelled:
+            return "arrow.clockwise"
+        default:
+            return "wand.and.stars.inverse"
+        }
+    }
+
+    private var aiEditHeroTint: Color {
+        if downloadResponse != nil || phase == .rendered {
+            return AppTheme.successGreen
+        }
+        switch phase {
+        case .failed, .failedTimeout, .cancelled:
+            return AppTheme.warningYellow
+        default:
+            return AppTheme.neonPurple
+        }
+    }
+
+    private var aiEditHeroShowsProgress: Bool {
+        if isWorking {
+            return true
+        }
+        switch phase {
+        case .renderRequested, .created, .queued, .rendering:
+            return true
+        default:
+            return false
+        }
     }
 
     private var compactExportSetupCard: some View {
@@ -410,6 +447,7 @@ struct AIEditView: View {
                 Label("Setup", systemImage: "slider.horizontal.3")
                     .font(.headline)
                     .foregroundStyle(.white)
+                    .accessibilityIdentifier("export.aiEdit.smartSetupCard")
 
                 Spacer(minLength: 0)
 
@@ -459,7 +497,6 @@ struct AIEditView: View {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
         )
-        .accessibilityIdentifier("export.aiEdit.smartSetupCard")
     }
 
     private func exportSetupChip(_ text: String, icon: String) -> some View {
@@ -724,62 +761,6 @@ struct AIEditView: View {
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.2), glow: AppTheme.neonPurple, glowOpacity: 0.06)
         .accessibilityIdentifier("export.aiEdit.proValueCard")
-    }
-
-    private var smartSetupCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(AppTheme.accentPurple.opacity(0.24))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "slider.horizontal.below.rectangle")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.warningYellow)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Edit options")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(selectedSetupSummary)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                        .minimumScaleFactor(0.84)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("export.aiEdit.smartSetup.summary")
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            Button {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
-                    showSetupControls.toggle()
-                }
-            } label: {
-                Label(showSetupControls ? "Hide options" : "Change options", systemImage: showSetupControls ? "chevron.up.circle.fill" : "slider.horizontal.3")
-                    .font(.caption.bold())
-                    .multilineTextAlignment(.center)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
-                    .padding(.horizontal, 8)
-            }
-            .buttonStyle(.bordered)
-            .tint(AppTheme.neonPurple)
-            .accessibilityIdentifier("export.aiEdit.smartSetup.changeButton")
-            .accessibilityValue(showSetupControls ? "Setup choices shown" : "Setup choices hidden")
-            .accessibilityHint("Shows or hides optional AI edit style, video shape, and reel length choices.")
-        }
-        .padding(14)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
-        .accessibilityIdentifier("export.aiEdit.smartSetupCard")
     }
 
     private var stylePicker: some View {
@@ -2836,10 +2817,6 @@ struct AIEditView: View {
 
     private var selectedTemplateTitle: String {
         selectedProTemplate?.title ?? selectedPreset.title
-    }
-
-    private var selectedSetupSummary: String {
-        "\(selectedTemplateTitle) - \(selectedAspectRatio.rawValue) - \(formattedDuration(selectedDuration))."
     }
 
     private var aiEditDetailsSummary: String {

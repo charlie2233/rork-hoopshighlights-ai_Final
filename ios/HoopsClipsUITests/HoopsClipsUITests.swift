@@ -81,7 +81,35 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["uploads.historyButton"].exists)
         XCTAssertFalse(app.buttons["uploads.settingsButton"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["player.unexpectedExitRecoveryCard"].exists)
+        XCTAssertFalse(app.staticTexts["Preparing your video"].exists)
         attachScreenshot(named: "Import Focused Progress", app: app)
+    }
+
+    @MainActor
+    func testCloudUploadProgressHidesNavigationClutter() throws {
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = [
+            "--hoops-cloud-upload-progress-smoke",
+            "-hoopsclips.rookieGuide.completed.v1",
+            "YES",
+        ]
+        app.launch()
+
+        let focusedProgress = app.descendants(matching: .any)["analysis.progress.focused"]
+        XCTAssertTrue(focusedProgress.waitForExistence(timeout: 10))
+        XCTAssertTrue(focusedProgress.label.localizedCaseInsensitiveContains("upload"))
+        let progressValue = (focusedProgress.value as? String) ?? ""
+        XCTAssertTrue(progressValue.localizedCaseInsensitiveContains("14 percent"))
+        XCTAssertTrue(app.buttons["analysis.cancelUploadButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["app.tabBar"].exists)
+        XCTAssertFalse(app.buttons["uploads.historyButton"].exists)
+        XCTAssertFalse(app.buttons["uploads.settingsButton"].exists)
+        XCTAssertFalse(app.staticTexts["Uploading video 14%"].exists)
+        XCTAssertFalse(app.staticTexts["Upload help"].exists)
+        attachScreenshot(named: "Cloud Upload Focused Progress", app: app)
     }
 
     @MainActor
@@ -107,12 +135,44 @@ final class HoopsClipsUITests: XCTestCase {
         assertElementEventuallyExists(app.descendants(matching: .any)["review.carousel.boundaryNudgeControls"], in: app, timeout: 10)
 
         tapWhenReady(app.buttons["review.continueToExportButton"], in: app)
-        XCTAssertTrue(app.descendants(matching: .any)["aiEdit.workflow.header"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["aiEdit.workflow.screen"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.section"].waitForExistence(timeout: 10))
 
         let exportsTab = waitForAppTab(named: "Exports", identifier: "app.tab.export", in: app, timeout: 5)
         exportsTab.tap()
         XCTAssertTrue(app.descendants(matching: .any)["exports.renderOutput.section"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["exports.openAIEditButton"].waitForExistence(timeout: 10))
+    }
+
+    @MainActor
+    func testAIEditSetupPersistsAcrossExportsRoundTrip() throws {
+        let app = launchAIEditSmokeApp(
+            fixture: "staging_render_ready",
+            sourceObjectKey: "uploads/25a101ba8d234fd98094bd112276161f/source.mp4",
+            workerURL: "http://127.0.0.1:9",
+            installID: "ai-edit-persistence-ui-smoke"
+        )
+
+        openAIEditExportFlow(from: app)
+        openAIEditSetupControls(in: app)
+
+        let coachReview = app.buttons["export.aiEdit.style.coachReview"]
+        XCTAssertTrue(coachReview.waitForExistence(timeout: 10))
+        tapWhenReady(coachReview, in: app)
+        XCTAssertEqual(coachReview.value as? String, "Selected")
+
+        let exportsTab = waitForAppTab(named: "Exports", identifier: "app.tab.export", in: app, timeout: 10)
+        tapWhenReady(exportsTab, in: app)
+
+        let openAIEdit = app.buttons["exports.openAIEditButton"]
+        XCTAssertTrue(openAIEdit.waitForExistence(timeout: 10))
+        tapWhenReady(openAIEdit, in: app)
+
+        XCTAssertTrue(app.descendants(matching: .any)["aiEdit.workflow.screen"].waitForExistence(timeout: 10))
+        let persistedCoachReview = app.buttons["export.aiEdit.style.coachReview"]
+        XCTAssertTrue(persistedCoachReview.waitForExistence(timeout: 10))
+        XCTAssertEqual(persistedCoachReview.value as? String, "Selected")
+        attachScreenshot(named: "AI Edit Persists After Exports", app: app)
     }
 
     @MainActor
@@ -425,7 +485,7 @@ final class HoopsClipsUITests: XCTestCase {
         reviewTab.tap()
 
         let entryButton = app.buttons["review.continueToExportButton"]
-        if !app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 4) {
+        if !app.staticTexts["Continue to AI Edit"].waitForExistence(timeout: 4) {
             _ = entryButton.waitForExistence(timeout: 6)
         }
         XCTAssertTrue(entryButton.waitForExistence(timeout: 10), "Review should expose the AI Edit export entry.")
@@ -442,17 +502,14 @@ final class HoopsClipsUITests: XCTestCase {
     @MainActor
     private func openAIEditSetupControls(in app: XCUIApplication) {
         let changeSetupButton = app.buttons["export.aiEdit.smartSetup.changeButton"]
-        let setupCardButton = app.buttons["export.aiEdit.smartSetupCard"]
-        let usesFlattenedCardToggle = !changeSetupButton.exists
-        let setupToggle = usesFlattenedCardToggle ? setupCardButton : changeSetupButton
-        if setupToggle.value as? String == "Setup choices shown" {
+        guard changeSetupButton.waitForExistence(timeout: 5) else {
+            XCTFail("AI Edit setup control should be visible.")
             return
         }
-        tapWhenReady(
-            setupToggle,
-            in: app,
-            normalizedOffset: usesFlattenedCardToggle ? CGVector(dx: 0.5, dy: 0.86) : nil
-        )
+        if changeSetupButton.value as? String == "Setup choices shown" {
+            return
+        }
+        tapWhenReady(changeSetupButton, in: app)
     }
 
     @MainActor

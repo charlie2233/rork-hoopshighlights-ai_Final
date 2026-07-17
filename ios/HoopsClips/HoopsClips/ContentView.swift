@@ -595,7 +595,8 @@ struct ContentView: View {
     }
 
     private var shouldShowAppTabBar: Bool {
-        activeTab != .player || !viewModel.isVideoImportInProgress
+        activeTab != .player
+            || (!viewModel.isVideoImportInProgress && !viewModel.analysisService.isAnalyzing)
     }
 
     private var isReviewWaitingForAnalysis: Bool {
@@ -853,6 +854,17 @@ struct ContentView: View {
                 .environment(authService)
             }
 
+            persistentTabLayer(.aiEdit) {
+                AIEditWorkflowView(
+                    viewModel: viewModel,
+                    isActive: activeTab == .aiEdit,
+                    onRequestProUpgrade: { showingPaywall = true }
+                )
+                .id("ai-edit-\(revenueCatSyncKey)")
+                .environment(subscriptionManager)
+                .environment(authService)
+            }
+
             transientActiveTabLayer
         }
     }
@@ -892,17 +904,16 @@ struct ContentView: View {
             }
 
         case .export:
-            ExportView(viewModel: viewModel, showsAIEditAgentSection: false)
+            ExportView(
+                viewModel: viewModel,
+                showsAIEditAgentSection: false,
+                onOpenAIEdit: { selectTab(.aiEdit) }
+            )
                 .environment(subscriptionManager)
                 .environment(authService)
 
         case .aiEdit:
-            AIEditWorkflowView(
-                viewModel: viewModel,
-                onRequestProUpgrade: { showingPaywall = true }
-            )
-            .environment(subscriptionManager)
-            .environment(authService)
+            EmptyView()
         }
     }
 

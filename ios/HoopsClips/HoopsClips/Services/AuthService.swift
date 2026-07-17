@@ -353,8 +353,16 @@ final class AuthService {
 
 #if DEBUG
 enum ImportProgressUISmokeConfig {
-    static var isEnabled: Bool {
+    static var isLocalImportEnabled: Bool {
         ProcessInfo.processInfo.arguments.contains("--hoops-import-progress-smoke")
+    }
+
+    static var isCloudUploadEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-cloud-upload-progress-smoke")
+    }
+
+    static var isEnabled: Bool {
+        isLocalImportEnabled || isCloudUploadEnabled
     }
 }
 
