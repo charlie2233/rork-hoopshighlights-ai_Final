@@ -75,7 +75,7 @@ struct HoopsClipsTests {
         }
     }
 
-    @Test func testVideoImportStatusCopyStaysVisibleAndRecoveryFocused() {
+    @Test func testVideoImportStatusCopyStaysShortAndRecoveryFocused() {
         let statusMessages = [
             VideoImportStatusCopy.readingFromPhotos,
             VideoImportStatusCopy.checkingDetails,
@@ -86,7 +86,6 @@ struct HoopsClipsTests {
             VideoImportStatusCopy.openingProject,
             VideoImportStatusCopy.slowReminder,
             VideoImportStatusCopy.longRunningReminder,
-            VideoImportStatusCopy.statusDetail,
             VideoImportStatusCopy.timeoutRecovery,
             VideoImportStatusCopy.savedButNotVisible,
             VideoImportStatusCopy.defaultFailure
@@ -100,8 +99,6 @@ struct HoopsClipsTests {
         }
         #expect(VideoImportStatusCopy.slowReminder.contains("keeps checking"))
         #expect(VideoImportStatusCopy.longRunningReminder.contains("Open History"))
-        #expect(VideoImportStatusCopy.statusDetail.contains("Keep HoopClips open"))
-        #expect(VideoImportStatusCopy.statusDetail.contains("Open History"))
         #expect(VideoImportStatusCopy.timeoutRecovery.contains("Open History"))
         #expect(VideoImportStatusCopy.savedButNotVisible.contains("Open History"))
         #expect(VideoImportStatusCopy.longRunningReminder.contains("resume"))
@@ -110,6 +107,16 @@ struct HoopsClipsTests {
         #expect(VideoImportStatusCopy.historyActionHint.contains("Resume"))
         #expect(VideoImportStatusCopy.historyActionHint.contains("watch"))
         #expect(VideoImportStatusCopy.recoveryAlertTitle == "Open History")
+    }
+
+    @Test func testVideoImportCompactStageHidesTechnicalDetails() {
+        #expect(VideoImportStatusCopy.compactStage(for: "Reading from Photos...", offersRecovery: false) == "Reading video")
+        #expect(VideoImportStatusCopy.compactStage(for: "Checking cloud upload limits", offersRecovery: false) == "Checking video")
+        #expect(VideoImportStatusCopy.compactStage(for: "Copying video into HoopClips...", offersRecovery: false) == "Saving video")
+        #expect(VideoImportStatusCopy.compactStage(for: "Building project preview...", offersRecovery: false) == "Creating preview")
+        #expect(VideoImportStatusCopy.compactStage(for: "Opening project...", offersRecovery: false) == "Opening project")
+        #expect(VideoImportStatusCopy.compactStage(for: "Internal stage value", offersRecovery: false) == "Getting things ready")
+        #expect(VideoImportStatusCopy.compactStage(for: "Any status", offersRecovery: true) == "Taking longer than usual")
     }
 
     @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {

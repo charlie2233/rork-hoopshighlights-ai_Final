@@ -146,7 +146,7 @@ struct VideoPlayerView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        if let playerUnexpectedExitSummary {
+                        if !isImportingVideo, let playerUnexpectedExitSummary {
                             playerUnexpectedExitCard(playerUnexpectedExitSummary)
                         }
 
@@ -172,18 +172,20 @@ struct VideoPlayerView: View {
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button(action: onOpenHistory) {
-                        Image(systemName: "clock.arrow.circlepath")
-                    }
-                    .accessibilityLabel("Open history")
-                    .accessibilityIdentifier("uploads.historyButton")
+                if !isImportingVideo {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button(action: onOpenHistory) {
+                            Image(systemName: "clock.arrow.circlepath")
+                        }
+                        .accessibilityLabel("Open history")
+                        .accessibilityIdentifier("uploads.historyButton")
 
-                    Button(action: onOpenSettings) {
-                        Image(systemName: "gearshape.fill")
+                        Button(action: onOpenSettings) {
+                            Image(systemName: "gearshape.fill")
+                        }
+                        .accessibilityLabel("Open settings")
+                        .accessibilityIdentifier("uploads.settingsButton")
                     }
-                    .accessibilityLabel("Open settings")
-                    .accessibilityIdentifier("uploads.settingsButton")
                 }
 
                 if viewModel.isVideoLoaded && !viewModel.analysisService.isAnalyzing {
@@ -227,6 +229,9 @@ struct VideoPlayerView: View {
                 resumeCloudAnalysisAfterForegroundIfNeeded()
             }
             .onChange(of: isImportingVideo) { _, isImporting in
+                if isImporting, let summary = playerUnexpectedExitSummary {
+                    dismissUnexpectedExitCard(summary)
+                }
                 HoopsAccessibility.announce(isImporting ? currentImportStatusMessage : "Video import finished.")
             }
             .onChange(of: viewModel.analysisService.statusMessage) { _, message in
@@ -358,7 +363,18 @@ struct VideoPlayerView: View {
         syncPlayer(with: viewModel.videoURL)
         completeImportAfterLoadedVideo()
         resumeCloudAnalysisAfterForegroundIfNeeded()
+        showImportProgressSmokeIfNeeded()
         loadSimulatorSmokeVideoIfNeeded()
+    }
+
+    private func showImportProgressSmokeIfNeeded() {
+        #if DEBUG
+        guard ImportProgressUISmokeConfig.isEnabled else { return }
+        viewModel.resetProject()
+        isImportingVideo = true
+        importStatusMessage = VideoImportStatusCopy.copyingSource
+        viewModel.updateVideoImportProgress(importStatusMessage)
+        #endif
     }
 
     private func loadSimulatorSmokeVideoIfNeeded() {
@@ -994,7 +1010,16 @@ struct VideoPlayerView: View {
         clearImportError()
     }
 
+    @ViewBuilder
     private var importSection: some View {
+        if isImportingVideo {
+            importInProgressSection
+        } else {
+            importLandingSection
+        }
+    }
+
+    private var importLandingSection: some View {
         VStack(spacing: 32) {
             Spacer().frame(height: 40)
 
@@ -1023,15 +1048,9 @@ struct VideoPlayerView: View {
                 showSourcePicker = true
             } label: {
                 HStack(spacing: 12) {
-                    if isImportingVideo {
-                        ProgressView()
-                            .tint(.white)
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                    }
-                    Text(isImportingVideo ? currentImportStatusMessage : languageStore.text(.selectVideo))
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                    Text(languageStore.text(.selectVideo))
                         .font(.headline)
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
@@ -1048,15 +1067,10 @@ struct VideoPlayerView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(AppTheme.neonPurple.opacity(0.25), lineWidth: 1)
             )
-            .disabled(isImportingVideo)
-            .opacity(isImportingVideo ? 0.82 : 1)
-            .accessibilityLabel(isImportingVideo ? currentImportStatusMessage : languageStore.text(.selectVideo))
+            .accessibilityIdentifier("import.selectVideoButton")
+            .accessibilityLabel(languageStore.text(.selectVideo))
             .accessibilityHint("Opens choices for importing a basketball video from Photos or Files.")
-            .accessibilityValue(isImportingVideo ? currentImportStatusMessage : "Ready")
-
-            if isImportingVideo {
-                importStatusCard
-            }
+            .accessibilityValue("Ready")
 
             LazyVGrid(columns: importFeatureGridColumns, alignment: .leading, spacing: 12) {
                 featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))
@@ -1067,49 +1081,45 @@ struct VideoPlayerView: View {
         }
         .padding(18)
         .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.18)
+        .accessibilityIdentifier("import.landing.content")
     }
 
-    private var importStatusCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                ProgressView()
-                    .tint(AppTheme.neonPurple)
-                    .padding(.top, 2)
-                    .accessibilityHidden(true)
+    private var importInProgressSection: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 56)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(currentImportStatusMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
-                        .minimumScaleFactor(0.86)
-                        .fixedSize(horizontal: false, vertical: true)
+            ProgressView()
+                .tint(AppTheme.neonPurple)
+                .controlSize(.large)
+                .scaleEffect(1.15)
+                .accessibilityHidden(true)
 
-                    Text(VideoImportStatusCopy.statusDetail)
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                        .minimumScaleFactor(0.84)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .layoutPriority(1)
+            VStack(spacing: 6) {
+                Text("Preparing your video")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+
+                Text(importProgressStageText)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.86)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("import.progress.stage")
             }
 
-            LazyVGrid(columns: importStatusActionGridColumns, spacing: 8) {
+            HStack(spacing: 10) {
                 if importRecoveryOffersHistory {
                     Button {
                         openHistoryFromImportRecovery()
                     } label: {
-                        importStatusActionLabel(
-                            title: VideoImportStatusCopy.historyActionTitle,
-                            icon: "clock.arrow.circlepath",
-                            foreground: AppTheme.warningYellow,
-                            fill: AppTheme.warningYellow.opacity(0.12),
-                            stroke: AppTheme.warningYellow.opacity(0.24)
-                        )
+                        Label(VideoImportStatusCopy.historyActionTitle, systemImage: "clock.arrow.circlepath")
+                            .frame(minHeight: 44)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(VideoImportStatusCopy.historyActionTitle)
+                    .buttonStyle(.bordered)
+                    .tint(AppTheme.warningYellow)
                     .accessibilityHint(VideoImportStatusCopy.historyActionHint)
                     .accessibilityIdentifier("import.status.checkHistoryButton")
                 }
@@ -1117,61 +1127,31 @@ struct VideoPlayerView: View {
                 Button {
                     requestCancelUploadConfirmation()
                 } label: {
-                    importStatusActionLabel(
-                        title: languageStore.text(.cancelImport),
-                        icon: "xmark.circle.fill",
-                        foreground: AppTheme.subtleText,
-                        fill: AppTheme.cardBg.opacity(0.72),
-                        stroke: AppTheme.softBorder
-                    )
+                    Label(languageStore.text(.cancelImport), systemImage: "xmark")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
                 }
-                .accessibilityIdentifier("import.status.cancelButton")
                 .buttonStyle(.plain)
-                .accessibilityLabel(languageStore.text(.cancelImport))
-                .accessibilityValue(currentImportStatusMessage)
+                .accessibilityValue(importProgressStageText)
                 .accessibilityHint("Stops the current video import and returns to the import screen.")
                 .accessibilityIdentifier("import.status.cancelButton")
             }
+
+            Spacer(minLength: 56)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(AppTheme.surfaceBg.opacity(0.72), in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.softBorder, lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, minHeight: 420)
+        .padding(.horizontal, 24)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("import.status.card")
     }
 
-    private var importStatusActionGridColumns: [GridItem] {
-        [
-            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 164 : 128), spacing: 8, alignment: .top)
-        ]
-    }
-
-    private func importStatusActionLabel(
-        title: String,
-        icon: String,
-        foreground: Color,
-        fill: Color,
-        stroke: Color
-    ) -> some View {
-        Label(title, systemImage: icon)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(foreground)
-            .multilineTextAlignment(.center)
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-            .minimumScaleFactor(0.86)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(fill, in: .rect(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(stroke, lineWidth: 1)
-            )
+    private var importProgressStageText: String {
+        VideoImportStatusCopy.compactStage(
+            for: currentImportStatusMessage,
+            offersRecovery: importRecoveryOffersHistory
+        )
     }
 
     private var importFeatureGridColumns: [GridItem] {

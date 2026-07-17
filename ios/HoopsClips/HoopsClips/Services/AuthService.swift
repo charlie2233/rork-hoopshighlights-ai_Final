@@ -54,7 +54,7 @@ final class AuthService {
         self.emailAuthClient = emailAuthClient ?? FirebaseEmailAuthClient(apiKey: AppConstants.firebaseAuthAPIKey)
         self.isDemoVerificationEnabled = isDemoVerificationEnabled ?? AppConstants.runtimeConfig.isDebug
         #if DEBUG
-        if AIEditUISmokeConfig.isEnabled {
+        if AIEditUISmokeConfig.isEnabled || ImportProgressUISmokeConfig.isEnabled {
             setUser(Self.aiEditLiveSmokeUser)
             return
         }
@@ -352,6 +352,12 @@ final class AuthService {
 }
 
 #if DEBUG
+enum ImportProgressUISmokeConfig {
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-import-progress-smoke")
+    }
+}
+
 enum AIEditUITestFixture: String {
     case stagingRenderReady = "staging_render_ready"
     case failingRender = "failing_render"

@@ -244,7 +244,9 @@ struct ContentView: View {
                 .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.995)))
                 .animation(reduceMotion ? nil : tabSelectionAnimation, value: activeTab.id)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                appTabBar
+                if shouldShowAppTabBar {
+                    appTabBar
+                }
             }
 
             if let reviewRecoveryNotice, !isRookieGuideVisible, !isReviewWaitingForAnalysis {
@@ -590,6 +592,10 @@ struct ContentView: View {
             && activeTab != .player
             && activeTab != .review
             && !isRookieGuideVisible
+    }
+
+    private var shouldShowAppTabBar: Bool {
+        activeTab != .player || !viewModel.isVideoImportInProgress
     }
 
     private var isReviewWaitingForAnalysis: Bool {
