@@ -139,6 +139,10 @@ struct VideoPlayerView: View {
         Int((analysisDisplayProgress * 100).rounded())
     }
 
+    private var isFocusedProcessing: Bool {
+        isImportingVideo || viewModel.analysisService.isAnalyzing
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -146,7 +150,7 @@ struct VideoPlayerView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        if !isImportingVideo, let playerUnexpectedExitSummary {
+                        if !isFocusedProcessing, let playerUnexpectedExitSummary {
                             playerUnexpectedExitCard(playerUnexpectedExitSummary)
                         }
 
@@ -172,7 +176,7 @@ struct VideoPlayerView: View {
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                if !isImportingVideo {
+                if !isFocusedProcessing {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button(action: onOpenHistory) {
                             Image(systemName: "clock.arrow.circlepath")
@@ -369,7 +373,7 @@ struct VideoPlayerView: View {
 
     private func showImportProgressSmokeIfNeeded() {
         #if DEBUG
-        guard ImportProgressUISmokeConfig.isEnabled else { return }
+        guard ImportProgressUISmokeConfig.isLocalImportEnabled else { return }
         viewModel.resetProject()
         isImportingVideo = true
         importStatusMessage = VideoImportStatusCopy.copyingSource
@@ -1085,7 +1089,7 @@ struct VideoPlayerView: View {
     }
 
     private var importInProgressSection: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 18) {
             Spacer(minLength: 56)
 
             ProgressView()
@@ -1094,21 +1098,14 @@ struct VideoPlayerView: View {
                 .scaleEffect(1.15)
                 .accessibilityHidden(true)
 
-            VStack(spacing: 6) {
-                Text("Preparing your video")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-
-                Text(importProgressStageText)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(AppTheme.subtleText)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.86)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("import.progress.stage")
-            }
+            Text(importProgressStageText)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("import.progress.stage")
 
             HStack(spacing: 10) {
                 if importRecoveryOffersHistory {
@@ -1127,13 +1124,14 @@ struct VideoPlayerView: View {
                 Button {
                     requestCancelUploadConfirmation()
                 } label: {
-                    Label(languageStore.text(.cancelImport), systemImage: "xmark")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .frame(width: 36, height: 36)
+                        .background(AppTheme.surfaceBg.opacity(0.76), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(languageStore.text(.cancelImport))
                 .accessibilityValue(importProgressStageText)
                 .accessibilityHint("Stops the current video import and returns to the import screen.")
                 .accessibilityIdentifier("import.status.cancelButton")
@@ -2070,26 +2068,12 @@ struct VideoPlayerView: View {
                 .scaleEffect(y: 2)
                 .accessibilityLabel(analysisProgressTitle)
                 .accessibilityValue("\(analysisDisplayPercent) percent")
-
-            HStack {
-                Spacer(minLength: 0)
-
-                Button {
-                    requestCancelUploadConfirmation()
-                } label: {
-                    Label(isUploadProgressStage ? "Cancel upload" : "Cancel analysis", systemImage: "xmark")
-                        .font(.caption.weight(.bold))
-                }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.dangerRed)
-                .controlSize(.small)
-                .accessibilityIdentifier("analysis.cancelUploadButton")
-            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(analysisProgressTitle)
         .accessibilityValue(analysisProgressAccessibilityValue)
+        .accessibilityIdentifier("analysis.progress.focused")
     }
 
     private var analysisProgressHeader: some View {
@@ -2098,13 +2082,32 @@ struct VideoPlayerView: View {
                 analysisProgressTitleLabel
                 Spacer(minLength: 8)
                 analysisProgressPercentText
+                analysisProgressCancelButton
             }
 
             VStack(alignment: .center, spacing: 6) {
                 analysisProgressTitleLabel
-                analysisProgressPercentText
+                HStack(spacing: 10) {
+                    analysisProgressPercentText
+                    analysisProgressCancelButton
+                }
             }
         }
+    }
+
+    private var analysisProgressCancelButton: some View {
+        Button {
+            requestCancelUploadConfirmation()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.78))
+                .frame(width: 32, height: 32)
+                .background(AppTheme.surfaceBg.opacity(0.76), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isUploadProgressStage ? "Cancel upload" : "Cancel analysis")
+        .accessibilityIdentifier("analysis.cancelUploadButton")
     }
 
     private var analysisProgressTitleLabel: some View {
@@ -2363,8 +2366,16 @@ struct VideoPlayerView: View {
     private var analysisProgressTitle: String {
         let status = viewModel.analysisService.statusMessage.lowercased()
         if isUploadProgressStage {
-            if let analysisSlowUploadHelp {
-                return analysisSlowUploadHelp.title
+            if status.contains("waiting for connection")
+                || status.contains("waiting for connectivity")
+                || status.contains("connectivity") {
+                return "Waiting for connection"
+            }
+            if status.contains("retry") {
+                return "Retrying upload"
+            }
+            if status.contains("slow") || status.contains("paused") || status.contains("stall") {
+                return "Upload is still active"
             }
             if status.contains("resum") || status.contains("recover") {
                 return "Resuming upload"

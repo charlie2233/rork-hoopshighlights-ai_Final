@@ -310,6 +310,7 @@ final class HighlightsViewModel {
 
         #if DEBUG
         applyAIEditLiveSmokeProjectIfNeeded()
+        applyCloudUploadProgressSmokeProjectIfNeeded()
         #endif
     }
 
@@ -2599,6 +2600,34 @@ final class HighlightsViewModel {
                 detectionMethod: .cloud
             )
         ]
+    }
+
+    private func applyCloudUploadProgressSmokeProjectIfNeeded() {
+        guard ImportProgressUISmokeConfig.isCloudUploadEnabled else { return }
+
+        currentProjectID = nil
+        videoURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("hoopclips-cloud-upload-ui-smoke.mov")
+        videoDuration = 92 * 60
+        videoThumbnail = nil
+        isVideoLoaded = true
+        analysisMode = .cloud
+        cloudAnalysisJobID = nil
+        cloudEditSourceObjectKey = nil
+        clearCloudUploadAssetState()
+        lastAnalysisStatusSummary = nil
+        lastAnalyzedAt = nil
+        cloudQuotaRemaining = nil
+        isCloudFallbackOffered = false
+        pendingCloudAnalysisJob = nil
+        cloudDetectedTeams = []
+        hasConfirmedHighlightTeamSelection = true
+
+        analysisService.isAnalyzing = true
+        analysisService.progress = 0.14
+        analysisService.statusMessage = "Uploading video 14%"
+        analysisService.lastRunDiagnostics = nil
+        analysisService.clips = []
     }
 
     private func applyTeamChoiceUISmokeProject() {

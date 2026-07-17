@@ -149,10 +149,10 @@ struct ReviewView: View {
                         VStack(spacing: 16) {
                             headerStats
                             reviewCarousel
-                            aiEditEntryCard
                             filterBar
                             priorityReviewCard
                             quickActionsBar
+                            aiEditEntryCard
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
@@ -1796,7 +1796,7 @@ struct ReviewView: View {
 
     private var aiEditEntryCard: some View {
         Button {
-            openExport()
+            openAIEdit()
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "wand.and.stars.inverse")
@@ -1806,7 +1806,7 @@ struct ReviewView: View {
                     .background(AppTheme.warningYellow.opacity(0.15), in: .circle)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Make reel")
+                    Text("Continue to AI Edit")
                         .font(.subheadline.weight(.heavy))
                         .foregroundStyle(.white)
                     Text(aiEditEntrySubtitle)
@@ -1835,16 +1835,16 @@ struct ReviewView: View {
         .buttonStyle(.plain)
         .disabled(!viewModel.canRequestCloudEdit)
         .accessibilityIdentifier("review.continueToExportButton")
-        .accessibilityLabel("Make highlight reel")
+        .accessibilityLabel("Continue to AI Edit")
         .accessibilityValue(aiEditEntrySubtitle)
         .accessibilityHint("Opens AI Edit with style, length, preview, save, and share controls.")
     }
 
     private var aiEditEntrySubtitle: String {
-        viewModel.cloudEditUnavailableReason ?? "Style, note, export."
+        viewModel.cloudEditUnavailableReason ?? "Choose a style, length, and format."
     }
 
-    private func openExport() {
+    private func openAIEdit() {
         guard selectedTab != 2 else { return }
         guard !reduceMotion else {
             selectedTab = 2

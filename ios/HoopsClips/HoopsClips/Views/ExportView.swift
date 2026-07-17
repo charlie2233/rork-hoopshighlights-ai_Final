@@ -10,6 +10,7 @@ struct ExportView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable var viewModel: HighlightsViewModel
     var showsAIEditAgentSection = true
+    var onOpenAIEdit: () -> Void = {}
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
     @State private var shareTrigger = 0
@@ -39,7 +40,9 @@ struct ExportView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 24) {
-                            summaryCard
+                            if !AppConstants.requiresCloudVideoPipeline {
+                                summaryCard
+                            }
                             if showsAIEditAgentSection {
                                 aiEditAgentSection
                             } else {
@@ -68,7 +71,7 @@ struct ExportView: View {
                     }
                 }
             }
-            .navigationTitle("Make Reel")
+            .navigationTitle("Exports")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -211,29 +214,38 @@ struct ExportView: View {
 
     private var renderOutputSubtitle: String {
         if viewModel.exportService.exportedURL != nil {
-            return "Downloaded cloud render is ready for preview, Photos, Files, editors, and share sheet."
+            return "Your reel is ready to preview and share."
         }
         if let renderStatus = viewModel.latestCloudEditRenderStatus {
             switch renderStatus.status {
             case .rendered:
-                return "Cloud render is complete. Open AI Edit to download the MP4 into Exports."
+                return "Your reel is ready to download."
             case .failed, .failedTimeout, .cancelled:
-                return renderStatus.failureReason ?? "Cloud render needs attention in AI Edit before Exports can handle the MP4."
+                return "Open AI Edit to review the issue and try again."
             default:
-                return "\(renderStatus.status.displayLabel). Exports will unlock preview, save, and share after download."
+                return "Your reel is still being made."
             }
         }
         if viewModel.canRequestCloudEdit {
-            return "AI Edit owns planning and cloud rendering; Exports owns finished MP4 handling."
+            return "Create your reel in AI Edit."
         }
-        return viewModel.cloudEditUnavailableReason ?? "Run Uploads and Review before exporting a rendered MP4."
+        return "Finish Uploads and Review, then create your reel in AI Edit."
     }
 
     private var renderOutputStatusTitle: String {
         if viewModel.exportService.exportedURL != nil {
             return "Ready"
         }
-        return viewModel.latestCloudEditRenderStatus?.status.displayLabel ?? "Waiting"
+        switch viewModel.latestCloudEditRenderStatus?.status {
+        case .rendered:
+            return "Ready to download"
+        case .failed, .failedTimeout, .cancelled:
+            return "Needs attention"
+        case .renderRequested, .created, .queued, .rendering:
+            return "Making reel"
+        case .planning, .planReady, .none:
+            return "Not started"
+        }
     }
 
     private var renderOutputStatusIcon: String {
@@ -259,31 +271,49 @@ struct ExportView: View {
                 icon: "shippingbox.and.arrow.down.fill",
                 subtitle: renderOutputSubtitle
             )
+            .accessibilityIdentifier("exports.renderOutput.section")
 
             HStack(spacing: 10) {
                 exportContextPill(
                     icon: renderOutputStatusIcon,
                     title: renderOutputStatusTitle,
-                    subtitle: viewModel.latestCloudEditRenderStatus == nil ? "MP4 output" : "Cloud render"
-                )
-                exportContextPill(
-                    icon: viewModel.cloudEditSourceObjectKey == nil ? "icloud.slash.fill" : "icloud.fill",
-                    title: viewModel.cloudEditSourceObjectKey == nil ? "Pending" : "Cloud",
-                    subtitle: "Source"
+                    subtitle: viewModel.exportService.exportedURL == nil ? "Reel status" : "Ready to share"
                 )
             }
 
-            if viewModel.exportService.exportedURL == nil {
-                Text("Open AI Edit to request or monitor the cloud render job. Exports will show preview, save, and share actions after the MP4 is downloaded.")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(4)
-                    .fixedSize(horizontal: false, vertical: true)
+            Button(action: onOpenAIEdit) {
+                HStack(spacing: 10) {
+                    Label(renderOutputActionTitle, systemImage: "wand.and.stars.inverse")
+                        .font(.headline)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.bold))
+                }
+                .frame(maxWidth: .infinity, minHeight: 46)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(AppTheme.accentPurple)
+            .accessibilityIdentifier("exports.openAIEditButton")
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.courtBlue.opacity(0.18), glow: AppTheme.courtBlue, glowOpacity: 0.05)
-        .accessibilityIdentifier("exports.renderOutput.section")
+    }
+
+    private var renderOutputActionTitle: String {
+        if viewModel.exportService.exportedURL != nil {
+            return "Open AI Edit"
+        }
+
+        switch viewModel.latestCloudEditRenderStatus?.status {
+        case .rendered:
+            return "Download in AI Edit"
+        case .failed, .failedTimeout, .cancelled:
+            return "Fix in AI Edit"
+        case .renderRequested, .created, .queued, .rendering:
+            return "View in AI Edit"
+        case .planning, .planReady, .none:
+            return "Create in AI Edit"
+        }
     }
 
     private var localExportSetupCard: some View {
