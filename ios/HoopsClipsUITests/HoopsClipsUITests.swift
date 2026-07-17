@@ -172,6 +172,9 @@ final class HoopsClipsUITests: XCTestCase {
         let persistedCoachReview = app.buttons["export.aiEdit.style.coachReview"]
         XCTAssertTrue(persistedCoachReview.waitForExistence(timeout: 10))
         XCTAssertEqual(persistedCoachReview.value as? String, "Selected")
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.setup.styleSummary"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.aiEdit.statusLabel"].exists)
+        XCTAssertFalse(app.staticTexts["Building edit plan"].exists)
         attachScreenshot(named: "AI Edit Persists After Exports", app: app)
     }
 
@@ -332,6 +335,10 @@ final class HoopsClipsUITests: XCTestCase {
         tapWhenReady(app.buttons["export.aiEdit.generateButton"], in: app)
         let failureReason = app.staticTexts["export.aiEdit.failure.reasonLabel"]
         XCTAssertTrue(failureReason.waitForExistence(timeout: 10), "Failed render fixture should show a user-facing failure reason.")
+        XCTAssertEqual(app.buttons.matching(identifier: "export.aiEdit.retryButton").count, 1)
+        XCTAssertFalse(app.buttons["export.aiEdit.generateButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.aiEdit.renderProgressCard"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.aiEdit.statusLabel"].exists)
         attachScreenshot(named: "Export AI Edit Failure Fixture", app: app)
     }
 
@@ -373,8 +380,18 @@ final class HoopsClipsUITests: XCTestCase {
     private func waitForRenderedState(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         let statusLabel = app.descendants(matching: .any)["export.aiEdit.statusLabel"]
+        let renderedPreview = app.descendants(matching: .any)["export.aiEdit.preview"]
+        let failureReason = app.staticTexts["export.aiEdit.failure.reasonLabel"].firstMatch
         var lastStatus = "<missing>"
         while Date() < deadline {
+            if renderedPreview.exists {
+                return true
+            }
+            if failureReason.exists {
+                attachScreenshot(named: "AI Edit Failed", app: app)
+                XCTFail(failureReason.label)
+                return false
+            }
             if statusLabel.exists {
                 lastStatus = (statusLabel.value as? String) ?? statusLabel.label
             }
@@ -383,7 +400,6 @@ final class HoopsClipsUITests: XCTestCase {
             }
             if lastStatus == "Failed" || lastStatus == "Render failed" {
                 attachScreenshot(named: "AI Edit Failed", app: app)
-                let failureReason = app.staticTexts["export.aiEdit.failure.reasonLabel"].firstMatch
                 XCTFail(failureReason.exists ? failureReason.label : "AI edit failed before rendering.")
                 return false
             }
