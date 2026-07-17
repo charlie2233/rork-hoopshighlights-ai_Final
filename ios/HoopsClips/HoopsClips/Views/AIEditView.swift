@@ -467,10 +467,16 @@ struct AIEditView: View {
                 .accessibilityIdentifier("export.aiEdit.smartSetup.changeButton")
             }
 
-            HStack(spacing: 8) {
+            VStack(spacing: 8) {
                 exportSetupChip(selectedTemplateTitle, icon: "sparkles")
-                exportSetupChip(selectedAspectRatio.rawValue, icon: selectedAspectRatio.icon)
-                exportSetupChip(formattedDuration(selectedDuration), icon: "timer")
+                    .accessibilityIdentifier("export.aiEdit.setup.styleSummary")
+
+                HStack(spacing: 8) {
+                    exportSetupChip(selectedAspectRatio.rawValue, icon: selectedAspectRatio.icon)
+                        .accessibilityIdentifier("export.aiEdit.setup.formatSummary")
+                    exportSetupChip(formattedDuration(selectedDuration), icon: "timer")
+                        .accessibilityIdentifier("export.aiEdit.setup.durationSummary")
+                }
             }
 
             if !showSetupControls {
@@ -577,15 +583,23 @@ struct AIEditView: View {
 
     private var exportBottomDock: some View {
         HStack(spacing: 10) {
-            exportDockButton(title: "Preview", icon: "play.rectangle.fill", isEnabled: downloadResponse != nil) {
-                HoopsAccessibility.announce(downloadResponse == nil ? "Preview unlocks when the reel is ready." : "Preview is ready above.")
-            }
-
-            exportDockButton(title: "Save", icon: "square.and.arrow.down.fill", isEnabled: downloadResponse != nil && !isPreparingShare) {
+            exportDockButton(
+                title: "Save",
+                icon: "square.and.arrow.down.fill",
+                isEnabled: viewModel.exportService.exportedURL != nil && !isPreparingShare,
+                accessibilityIdentifier: "export.aiEdit.saveToPhotosButton",
+                accessibilityHint: "Saves the finished video to your photo library."
+            ) {
                 Task { await saveRenderedVideoToPhotos() }
             }
 
-            exportDockButton(title: "Share", icon: "square.and.arrow.up.fill", isEnabled: downloadResponse != nil && !isPreparingShare) {
+            exportDockButton(
+                title: "Share",
+                icon: "square.and.arrow.up.fill",
+                isEnabled: downloadResponse != nil && !isPreparingShare,
+                accessibilityIdentifier: "export.aiEdit.shareButton",
+                accessibilityHint: "Opens the system share sheet for editors, Files, Photos, and social apps."
+            ) {
                 shareRenderedVideo()
             }
         }
@@ -602,6 +616,8 @@ struct AIEditView: View {
         title: String,
         icon: String,
         isEnabled: Bool,
+        accessibilityIdentifier: String,
+        accessibilityHint: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -618,7 +634,8 @@ struct AIEditView: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .accessibilityIdentifier("export.aiEdit.bottomDock.\(title.lowercased())")
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityHint(accessibilityHint)
     }
 
     private var planTierCard: some View {
@@ -1266,81 +1283,14 @@ struct AIEditView: View {
 
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: statusIcon)
-                    .font(.headline)
-                    .foregroundStyle(statusColor)
-                Text(phase.displayLabel)
-                    .font(.headline)
-                    .foregroundStyle(statusColor)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export.aiEdit.statusLabel")
-                Spacer()
-                if isWorking {
-                    ProgressView()
-                        .tint(AppTheme.neonPurple)
-                }
-            }
-
-            if let editPlan {
-                Text("\(editPlan.clips.count) clips planned for \(editPlan.targetDurationSeconds)s, \(editPlan.aspectRatio.rawValue).")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text(viewModel.cloudEditUnavailableReason ?? renderStateGuidance)
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let activeAIWorkPhrase {
-                Label(activeAIWorkPhrase, systemImage: "sparkles")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.warningYellow)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export.aiEdit.activeWorkPhrase")
-            }
-
-            if let backgroundJobReminderText {
-                Label(backgroundJobReminderText, systemImage: "rectangle.on.rectangle")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.86))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export.aiEdit.backgroundReminder")
-            }
-
-            if let renderStatus, let duration = renderStatus.durationSeconds {
-                Text("Rendered duration: \(Clip.formatTime(duration))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(AppTheme.subtleText)
-            }
-
             if let serviceStatusMessage {
                 serviceStatusBanner(message: serviceStatusMessage)
             }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.dangerRed)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(14)
-        .rorkCard(cornerRadius: 16, stroke: statusColor.opacity(0.24), glow: statusColor, glowOpacity: 0.05)
-        .accessibilityLabel("AI edit status")
-        .accessibilityValue(phase.displayLabel)
+        .rorkCard(cornerRadius: 16, stroke: serviceStatusColor.opacity(0.24), glow: serviceStatusColor, glowOpacity: 0.05)
+        .accessibilityLabel("AI Edit availability")
+        .accessibilityValue(serviceStatusMessage ?? "Available")
     }
 
     private func serviceStatusBanner(message: String) -> some View {
@@ -1888,7 +1838,7 @@ struct AIEditView: View {
     private var actionCard: some View {
         VStack(spacing: 10) {
             if let errorMessage {
-                Text(errorMessage)
+                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(AppTheme.dangerRed)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1902,55 +1852,8 @@ struct AIEditView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(primaryActionDisabled)
-            .accessibilityIdentifier(revisionResponse != nil && downloadResponse == nil ? "export.aiEdit.renderRevisionButton" : "export.aiEdit.generateButton")
+            .accessibilityIdentifier(primaryActionAccessibilityIdentifier)
             .accessibilityHint(primaryActionHint)
-
-            if phase == .failed {
-                Button(action: startEdit) {
-                    fullWidthActionLabel(
-                        "Try Again",
-                        systemImage: "arrow.clockwise",
-                        font: .caption.bold(),
-                        minimumHeight: 40,
-                        verticalPadding: 10
-                    )
-                }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.warningYellow)
-                .disabled(primaryActionDisabled)
-                .accessibilityIdentifier("export.aiEdit.retryButton")
-                .accessibilityHint("Retries the cloud job when HoopClips allows it.")
-            }
-
-            if downloadResponse != nil {
-                Button {
-                    Task { await saveRenderedVideoToPhotos() }
-                } label: {
-                    fullWidthActionLabel(
-                        "Save to Photos",
-                        systemImage: "photo.badge.arrow.down.fill",
-                        verticalPadding: 12
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.successGreen)
-                .disabled(isPreparingShare || viewModel.exportService.exportedURL == nil)
-                .accessibilityIdentifier("export.aiEdit.saveToPhotosButton")
-                .accessibilityHint("Saves the finished video to your photo library.")
-
-                Button(action: shareRenderedVideo) {
-                    fullWidthActionLabel(
-                        isPreparingShare ? "Preparing" : "Share",
-                        systemImage: "square.and.arrow.up.fill",
-                        verticalPadding: 12
-                    )
-                }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.neonPurple)
-                .disabled(isPreparingShare)
-                .accessibilityIdentifier("export.aiEdit.shareButton")
-                .accessibilityHint("Downloads the finished video and opens the system share sheet for editors, Files, Photos, and social apps.")
-            }
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
@@ -2036,28 +1939,6 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
-    }
-
-    private var statusIcon: String {
-        switch phase {
-        case .rendered:
-            return "checkmark.seal.fill"
-        case .failed, .failedTimeout, .cancelled:
-            return "exclamationmark.triangle.fill"
-        case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
-            return "cloud.fill"
-        }
-    }
-
-    private var statusColor: Color {
-        switch phase {
-        case .rendered:
-            return AppTheme.successGreen
-        case .failed, .failedTimeout, .cancelled:
-            return AppTheme.dangerRed
-        case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
-            return AppTheme.neonPurple
-        }
     }
 
     private var activeWorkTimeline: CloudEditWorkTimeline {
@@ -2165,11 +2046,18 @@ struct AIEditView: View {
     }
 
     private var shouldShowExportProgressCard: Bool {
-        hasStartedAIEditJob || phase != .planning
+        switch phase {
+        case .planning:
+            return hasStartedAIEditJob
+        case .planReady, .renderRequested, .created, .queued, .rendering:
+            return true
+        case .rendered, .failed, .failedTimeout, .cancelled:
+            return false
+        }
     }
 
     private var shouldShowExportBottomDock: Bool {
-        downloadResponse != nil
+        downloadResponse != nil && previewPlayer != nil
     }
 
     private var shouldShowAIEditDetailsToggle: Bool {
@@ -2560,17 +2448,13 @@ struct AIEditView: View {
     private var cloudEditVersionBlockMessage: String? {
         guard AppConstants.cloudEditEnabled else { return nil }
         guard serviceStatusBlocksRendering else { return nil }
-        if let serviceStatusErrorMessage {
-            return "Cloud editing config check failed: \(serviceStatusErrorMessage)"
-        }
-        return "Cloud editing config check failed."
+        return "AI Edit is temporarily unavailable. Your video is safe. Try again in a few minutes."
     }
 
     private var shouldShowStatusNoticeCard: Bool {
         cloudEditActionBlockedMessage != nil
-            || errorMessage != nil
             || serviceStatusBlocksRendering
-            || (!serviceStatusIsChecking && serviceStatusErrorMessage != nil)
+            || (hasStartedAIEditJob && !serviceStatusIsChecking && serviceStatusErrorMessage != nil)
     }
 
     private var exportProgressValue: CGFloat {
@@ -2736,10 +2620,10 @@ struct AIEditView: View {
 
     private var primaryActionTitle: String {
         if cloudEditVersionBlockMessage != nil {
-            return "Fix Cloud Config"
+            return "AI Edit Unavailable"
         }
         if launchReadinessFlagMessage != nil {
-            return "Update Cloud Backend"
+            return "Try Again Later"
         }
         if !aiEditPlanningAvailable {
             return "AI Edit Paused"
@@ -2756,10 +2640,23 @@ struct AIEditView: View {
         if !viewModel.canRequestCloudEdit {
             return "Finish Cloud Analysis"
         }
+        if phase == .failed || phase == .failedTimeout || phase == .cancelled {
+            return "Try Again"
+        }
         if revisionResponse != nil, downloadResponse == nil {
             return "Make Revised Video"
         }
         return downloadResponse == nil ? "Make My Reel" : "Render Again"
+    }
+
+    private var primaryActionAccessibilityIdentifier: String {
+        if phase == .failed || phase == .failedTimeout || phase == .cancelled {
+            return "export.aiEdit.retryButton"
+        }
+        if revisionResponse != nil && downloadResponse == nil {
+            return "export.aiEdit.renderRevisionButton"
+        }
+        return "export.aiEdit.generateButton"
     }
 
     private var clipPoolChipText: String {
@@ -2772,6 +2669,9 @@ struct AIEditView: View {
     private var primaryActionIcon: String {
         if cloudEditActionBlockedMessage != nil {
             return "pause.circle.fill"
+        }
+        if phase == .failed || phase == .failedTimeout || phase == .cancelled {
+            return "arrow.clockwise"
         }
         return revisionResponse != nil && downloadResponse == nil ? "arrow.triangle.2.circlepath.circle.fill" : "sparkles.tv.fill"
     }
@@ -2960,51 +2860,6 @@ struct AIEditView: View {
             return "Render timed out. Try a shorter duration and retry."
         case .cancelled:
             return "Render was cancelled."
-        }
-    }
-
-    private var backgroundJobReminderText: String? {
-        AIEditBackgroundJobCopy.reminder(
-            for: phase,
-            hasCloudSource: viewModel.cloudEditSourceObjectKey != nil
-        )
-    }
-
-    private var activeAIWorkPhrase: String? {
-        guard isWorking || editJob != nil || renderStatus != nil || revisionResponse != nil else { return nil }
-        if phase == .rendered || phase == .failed || phase == .failedTimeout || phase == .cancelled {
-            return nil
-        }
-
-        if let runningStep = activeWorkTimeline.steps.first(where: { $0.status == .running }) {
-            return activeAIWorkPhrase(for: runningStep.stepId)
-        }
-
-        return nil
-    }
-
-    private func activeAIWorkPhrase(for stepID: String) -> String {
-        switch stepID {
-        case "video_uploaded":
-            return "Cloud source is ready for editing."
-        case "finding_highlights":
-            return "Cloud job is scanning candidate highlights."
-        case "selecting_best_clips":
-            return "Cloud job is selecting the best highlights."
-        case "removing_duplicates":
-            return "Cloud job is removing duplicates and weak moments."
-        case "applying_template":
-            return "Template rules are being applied."
-        case "adding_slow_motion":
-            return "Slow-motion moments are being validated in the edit plan."
-        case "adding_watermark_outro":
-            return "Plan rules, watermark, and outro are being validated."
-        case "rendering_mp4":
-            return "HoopClips is rendering the cloud MP4."
-        case "finalizing_download":
-            return "Preparing preview and share access."
-        default:
-            return "HoopClips is updating this edit from real cloud job status."
         }
     }
 
