@@ -37,7 +37,7 @@ Result:
 - First sandboxed build attempt failed before source validation because it could not reach GitHub package hosts and CoreSimulatorService.
 - First full external build exposed a local Swift opaque-return inference error in `quickPromptCard`; fixed with an explicit `return Button`.
 
-Real-device TestFlight smoke still needs the latest available internal TestFlight build installed from TestFlight. Build 51 is the next upload candidate for this polish; until its upload/status workflows pass, build 50 remains the currently available build:
+Real-device TestFlight smoke still needs the latest available internal TestFlight build installed from TestFlight. Build 51 is uploaded, processed, and ready for internal testers:
 
 1. Open Export -> AI Edit.
 2. Select a quick prompt.

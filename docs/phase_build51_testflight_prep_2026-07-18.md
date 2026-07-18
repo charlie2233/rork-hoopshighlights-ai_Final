@@ -1,10 +1,10 @@
-# Phase Build 51 TestFlight Prep
+# Phase Build 51 TestFlight Prep And Upload Proof
 
 Date: 2026-07-18
 
 ## Goal
 
-Prepare the latest merged `main` state after PR #80 for a new internal TestFlight upload without reusing App Store Connect build `50`.
+Prepare the latest merged `main` state after PR #80 for a new internal TestFlight upload without reusing App Store Connect build `50`, then record the successful upload/status proof.
 
 ## What Changed
 
@@ -12,15 +12,23 @@ Prepare the latest merged `main` state after PR #80 for a new internal TestFligh
 - Updated the internal staging config verifier to require `CURRENT_PROJECT_VERSION=51`.
 - Updated the submission-readiness preflight expected iOS build number to `51`.
 - Updated the `iOS Internal TestFlight Upload` workflow archive/status assertions and App Store Connect status query to target build `51`.
-- Refreshed launch docs to keep build `50` as the currently available TestFlight build and classify build `51` as the next upload candidate until upload/status proof exists.
+- Initially refreshed launch docs to keep build `50` as the available TestFlight build while build `51` waited for upload/status proof.
+- After merge, upload/status proof was collected and launch docs were refreshed again to make build `51` the current internal TestFlight build.
 
 ## Boundary
 
-This prep does not upload to TestFlight by itself. Build `51` is not available to testers until the signed upload workflow and read-only status workflow both pass on `main`.
+The prep commit did not upload to TestFlight by itself. After it merged, the signed upload workflow and read-only status workflow passed on `main`.
+
+## Upload Proof
+
+- PR #81 merge SHA: `60eda29b7989e97a93ebdf973c0d80446caa07bf`.
+- Main push/codecheck run `29644908038`: success; build settings, export options, and 12 focused unsigned simulator tests passed.
+- Upload run `29644918870`: success; signed archive, metadata/privacy checks, App Store Connect upload, and runner-owned certificate cleanup passed.
+- Status run `29645129050`: success; App Store Connect reports build `1.0.0 (51)` as `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, `readyForInternalTesting=true`, not expired, minimum iOS `17.0`, and `usesNonExemptEncryption=false`.
 
 ## Rerun Commands
 
-After this prep lands on `main`, upload build `51`:
+To upload a later build after another build-number bump:
 
 ```bash
 gh workflow run ios-testflight-upload.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=upload
