@@ -1475,7 +1475,7 @@ Current device information:
             },
         ]
         status_log = "App Store Connect confirms this build is ready for internal TestFlight."
-        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘50’."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘51’."
 
         def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
             if command[:3] == ["gh", "run", "list"]:
@@ -1507,7 +1507,7 @@ Current device information:
                 "createdAt": "2026-07-18T10:33:27Z",
             },
         ]
-        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘50’."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘51’."
 
         def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
             if command[:3] == ["gh", "run", "list"]:

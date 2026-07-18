@@ -3,6 +3,7 @@
 ## Active snapshot (2026-07-18)
 
 - Current available build: internal TestFlight `1.0.0 (50)` from main SHA `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`.
+- Next upload candidate: build `51` from the latest main state after PR #80 (`ca82e6b8552844c149f84157b043bf8f0d6c7f46`). Do not treat build `51` as available until its upload and status workflows pass.
 - Staging deployment: run `29632345235` passed editing/Worker deployment and live version proof for the build `50` main SHA. Live capabilities and a fresh secret-safe presign probe confirmed a 3,600-second signed upload lease.
 - TestFlight upload: run `29632723114` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
 - App Store Connect processing: status run `29636059497` confirmed build `50` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testing.
@@ -13,7 +14,7 @@
 - Automated proof: all 46 Worker tests passed, control-plane typecheck passed, launch config preflight passed with `85` passes and `0` failures, and the exact focused iOS CI selection passed all 12 tests across three suites. Merged-main CI, staging deployment, signed archive/upload, Apple processing, and internal TestFlight availability all passed.
 - Production Release preflight: run `29639140468` passed required production-input checks, production-compatible RevenueCat validation, Release cloud-mode validation, an unsigned Release simulator build, and built `Info.plist` wiring checks. It does not prove a signed production archive/upload, App Store submission, installed-device behavior, or public cloud operational readiness.
 - Quality gate: a staging real-video diagnostic produced 11 clips, conservatively matching two known highlights and nine known negatives; auto-keep selected one known highlight and eight negatives. The required human-reviewed 85% report remains open.
-- Current gate: the paired iPhone still has build `49`. Install build `50`, cross the old 15-minute point with the same class of real source, and record every downstream step separately.
+- Current gate: the paired iPhone still has build `49`. Install the latest available internal TestFlight build, cross the old 15-minute point with the same class of real source, and record every downstream step separately.
 
 ### Prior build 45 failure that builds 46 and 47 address
 
@@ -116,7 +117,7 @@ At this snapshot, installed build `44` TestFlight smoke was unproven pending App
 | Accessibility Reduce Motion | blocked | Verify using `ios/docs/checklists/release-accessibility-smoke-checklist.md` once device is online. |
 
 ## Current Blockers
-- Install internal TestFlight build `50` on the trusted iPhone and complete the real-basketball upload-through-export smoke, including crossing the old 15-minute upload failure point.
+- Install the latest available internal TestFlight build on the trusted iPhone and complete the real-basketball upload-through-export smoke, including crossing the old 15-minute upload failure point.
 - Complete the human-reviewed team/highlight accuracy report and meet the required 85% gate without weakening detection thresholds.
 - Run and verify a signed production Release archive/upload before claiming App Store submission proof. Release preflight run `29639140468` proves configuration and unsigned compilation only.
 - Finish the App Store Connect listing, review, and compliance audit in an authenticated App Store Connect session.
