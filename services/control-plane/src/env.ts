@@ -54,7 +54,7 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
     appEnv: env.APP_ENV || "local",
     schemaVersion: env.SCHEMA_VERSION || "phase1a-staging-happy-path",
     defaultPollAfterSeconds: toPositiveInt(env.DEFAULT_POLL_AFTER_SECONDS, 2),
-    signedUploadTtlSeconds: toPositiveInt(env.SIGNED_UPLOAD_TTL_SECONDS, 900),
+    signedUploadTtlSeconds: toPositiveInt(env.SIGNED_UPLOAD_TTL_SECONDS, 3600),
     jobTtlSeconds: toPositiveInt(env.JOB_TTL_SECONDS, 3600),
     processingTimeoutSeconds: toPositiveInt(
       env.PROCESSING_TIMEOUT_SECONDS,

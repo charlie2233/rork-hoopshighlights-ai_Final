@@ -3,7 +3,7 @@ import Foundation
 import Network
 import UniformTypeIdentifiers
 
-private let cloudUploadSingleSourcePrefix = "single-source-"
+nonisolated private let cloudUploadSingleSourcePrefix = "single-source-"
 private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
 nonisolated private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
@@ -29,6 +29,21 @@ nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
     case analysis(CloudAnalysisResult)
     case teamScan(PreparedCloudAnalysisJob)
+}
+
+nonisolated enum CloudUploadResumeNextAction: String, Sendable {
+    case waitForBackgroundSession = "wait_for_background_session"
+    case completeAssetUpload = "complete_asset_upload"
+    case runTeamScan = "run_team_scan"
+    case startCloudAnalysis = "start_cloud_analysis"
+    case freshUploadRequired = "fresh_upload_required"
+    case resumeUpload = "resume_upload"
+    case reviewSavedUpload = "review_saved_upload"
+}
+
+nonisolated struct CloudUploadResumeDisplayState: Equatable, Sendable {
+    let resumeSafe: Bool
+    let nextAction: CloudUploadResumeNextAction
 }
 
 nonisolated private enum CloudUploadResumePurpose: String, Codable, Sendable {
@@ -137,6 +152,58 @@ struct CloudAnalysisService {
         return max(current, candidate)
     }
 
+    nonisolated static func shouldDiscardExpiredResumeManifest(
+        uploadID: String,
+        partCount: Int,
+        completedPartCount: Int,
+        isAssetUpload: Bool
+    ) -> Bool {
+        guard partCount > 0, completedPartCount < partCount else { return false }
+        if isAssetUpload || uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
+            return true
+        }
+        return partCount <= 1
+    }
+
+    nonisolated static func resumeManifestDisplayState(
+        uploadID: String,
+        partCount: Int,
+        completedPartCount: Int,
+        isAssetUpload: Bool,
+        isTeamScan: Bool,
+        sourceFileExists: Bool,
+        activeSessionCount: Int,
+        uploadExpired: Bool,
+        staleWithoutActiveSession: Bool
+    ) -> CloudUploadResumeDisplayState {
+        let uploadComplete = partCount > 0 && completedPartCount >= partCount
+        if uploadComplete {
+            if isAssetUpload {
+                return CloudUploadResumeDisplayState(resumeSafe: true, nextAction: .completeAssetUpload)
+            }
+            return CloudUploadResumeDisplayState(
+                resumeSafe: true,
+                nextAction: isTeamScan ? .runTeamScan : .startCloudAnalysis
+            )
+        }
+        if activeSessionCount > 0 {
+            return CloudUploadResumeDisplayState(resumeSafe: true, nextAction: .waitForBackgroundSession)
+        }
+        if uploadExpired,
+           shouldDiscardExpiredResumeManifest(
+               uploadID: uploadID,
+               partCount: partCount,
+               completedPartCount: completedPartCount,
+               isAssetUpload: isAssetUpload
+           ) {
+            return CloudUploadResumeDisplayState(resumeSafe: false, nextAction: .freshUploadRequired)
+        }
+        if sourceFileExists, !staleWithoutActiveSession {
+            return CloudUploadResumeDisplayState(resumeSafe: true, nextAction: .resumeUpload)
+        }
+        return CloudUploadResumeDisplayState(resumeSafe: false, nextAction: .reviewSavedUpload)
+    }
+
     func hasPendingBackgroundUpload() async -> Bool {
         await CloudUploadResumeStore.shared.pendingManifest() != nil
     }
@@ -222,20 +289,20 @@ struct CloudAnalysisService {
         let ageSeconds = max(0, Int(Date().timeIntervalSince(manifest.updatedAt).rounded(.down)))
         let staleWithoutActiveSession = !uploadComplete && activeSessions == 0 && ageSeconds >= 300
         let uploadExpired = manifest.uploadExpiresAt.map { $0 <= Date().addingTimeInterval(60) } ?? false
-        let resumeSafe = (sourceAvailability == "available" || uploadComplete) && !uploadExpired && !staleWithoutActiveSession
+        let displayState = resumeManifestDisplayState(
+            uploadID: manifest.uploadID,
+            partCount: partCount,
+            completedPartCount: completedParts,
+            isAssetUpload: manifest.assetID != nil,
+            isTeamScan: manifest.purpose == .teamScan,
+            sourceFileExists: sourceAvailability == "available",
+            activeSessionCount: activeSessions,
+            uploadExpired: uploadExpired,
+            staleWithoutActiveSession: staleWithoutActiveSession
+        )
+        let resumeSafe = displayState.resumeSafe
         let expiresAt = manifest.uploadExpiresAt.map { ISO8601DateFormatter().string(from: $0) } ?? "none"
-        let nextAction: String
-        if uploadExpired {
-            nextAction = "fresh_upload_required"
-        } else if activeSessions > 0 {
-            nextAction = "wait_for_background_session"
-        } else if uploadComplete, manifest.assetID != nil {
-            nextAction = "complete_asset_upload"
-        } else if uploadComplete {
-            nextAction = manifest.purpose == .teamScan ? "run_team_scan" : "start_cloud_analysis"
-        } else {
-            nextAction = "resume_upload"
-        }
+        let nextAction = displayState.nextAction.rawValue
         return [
             "pending=true",
             "assetUpload=\(manifest.assetID != nil)",
@@ -1148,15 +1215,6 @@ struct CloudAnalysisService {
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_invalid")
             return nil
         }
-        if let uploadExpiresAt = manifest.uploadExpiresAt,
-           uploadExpiresAt <= Date().addingTimeInterval(60) {
-            await CloudUploadResumeStore.shared.clearAnyManifest(reason: "upload_expired")
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
-                "resume_manifest_upload_expired",
-                metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count)/\(manifest.partCount)"
-            )
-            return nil
-        }
         guard let baseURL = configuredBaseURL() else {
             throw CloudAnalysisError.notConfigured
         }
@@ -1165,19 +1223,8 @@ struct CloudAnalysisService {
         let sourceFileExists = FileManager.default.fileExists(atPath: sourceURL.path)
         let isSingleSourceUpload = manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix)
         let isAssetUpload = manifest.assetID != nil
-        let uploadPartsCompleted = manifest.completedParts.count >= manifest.partCount
+        var uploadPartsCompleted = manifest.completedParts.count >= manifest.partCount
         var assetCompletedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
-        guard sourceFileExists || uploadPartsCompleted else {
-            await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
-            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_missing")
-            return nil
-        }
-        if !sourceFileExists {
-            LaunchTelemetry.shared.recordBackgroundUploadProof(
-                "resume_manifest_source_missing_but_upload_complete",
-                metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount) singleSource=\(isSingleSourceUpload)"
-            )
-        }
 
         let stage = manifest.purpose == .teamScan ? "Resuming team scan upload" : "Resuming cloud upload"
         let progressStart = manifest.purpose == .teamScan ? 0.14 : 0.15
@@ -1210,6 +1257,12 @@ struct CloudAnalysisService {
         if !manifest.activeSessionIdentifiers.isEmpty,
            manifest.completedParts.count < manifest.partCount {
             let sessionInspection = await inspectBackgroundUploadSessions(manifest.activeSessionIdentifiers)
+            guard let refreshedManifest = await CloudUploadResumeStore.shared.pendingManifest() else {
+                return nil
+            }
+            manifest = refreshedManifest
+            uploadPartsCompleted = manifest.completedParts.count >= manifest.partCount
+            assetCompletedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
             let completedBytes = Self.completedUploadBytes(
                 completedParts: manifest.completedParts,
                 chunkSizeBytes: manifest.chunkSizeBytes,
@@ -1265,8 +1318,44 @@ struct CloudAnalysisService {
                     metadata: "reason=stale_empty_background_session"
                 )
             }
+            guard let reconciledManifest = await CloudUploadResumeStore.shared.pendingManifest() else {
+                return nil
+            }
+            manifest = reconciledManifest
         }
+        uploadPartsCompleted = manifest.completedParts.count >= manifest.partCount
         assetCompletedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
+        guard sourceFileExists || uploadPartsCompleted else {
+            await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
+            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_missing")
+            return nil
+        }
+        if !sourceFileExists {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_source_missing_but_upload_complete",
+                metadata: "purpose=\(manifest.purpose.rawValue) partCount=\(manifest.partCount) singleSource=\(isSingleSourceUpload)"
+            )
+        }
+        if let uploadExpiresAt = manifest.uploadExpiresAt,
+           uploadExpiresAt <= Date().addingTimeInterval(60) {
+            if Self.shouldDiscardExpiredResumeManifest(
+                uploadID: manifest.uploadID,
+                partCount: manifest.partCount,
+                completedPartCount: manifest.completedParts.count,
+                isAssetUpload: isAssetUpload
+            ) {
+                await CloudUploadResumeStore.shared.clearAnyManifest(reason: "upload_expired")
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "resume_manifest_upload_expired",
+                    metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count)/\(manifest.partCount)"
+                )
+                return nil
+            }
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "resume_manifest_expired_lease_renewal_selected",
+                metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count)/\(manifest.partCount)"
+            )
+        }
         if isSingleSourceUpload {
             guard !manifest.completedParts.isEmpty else {
                 LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_still_uploading")
@@ -1285,13 +1374,20 @@ struct CloudAnalysisService {
             let uploadedParts = manifest.completedParts.sorted { $0.partNumber < $1.partNumber }
             assetCompletedParts = uploadedParts
             if !isAssetUpload {
-                try await completeMultipartUpload(
-                    baseURL: baseURL,
-                    jobID: manifest.jobID,
-                    installID: manifest.installID,
-                    uploadID: manifest.uploadID,
-                    parts: uploadedParts
-                )
+                do {
+                    try await completeMultipartUpload(
+                        baseURL: baseURL,
+                        jobID: manifest.jobID,
+                        installID: manifest.installID,
+                        uploadID: manifest.uploadID,
+                        parts: uploadedParts
+                    )
+                } catch {
+                    if Self.isUploadExpiredError(error) {
+                        await CloudUploadResumeStore.shared.clearAnyManifest(reason: "renewal_grace_expired")
+                    }
+                    throw error
+                }
             }
             await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
             let snapshot = await tracker.snapshot()
@@ -1315,13 +1411,20 @@ struct CloudAnalysisService {
                     reportUploadProgress: reportUploadProgress
                 )
             } else {
-                try await resumeUploadManifest(
-                    manifest,
-                    sourceURL: sourceURL,
-                    baseURL: baseURL,
-                    tracker: tracker,
-                    reportUploadProgress: reportUploadProgress
-                )
+                do {
+                    try await resumeUploadManifest(
+                        manifest,
+                        sourceURL: sourceURL,
+                        baseURL: baseURL,
+                        tracker: tracker,
+                        reportUploadProgress: reportUploadProgress
+                    )
+                } catch {
+                    if Self.isUploadExpiredError(error) {
+                        await CloudUploadResumeStore.shared.clearAnyManifest(reason: "renewal_grace_expired")
+                    }
+                    throw error
+                }
             }
         }
 
@@ -3246,6 +3349,13 @@ struct CloudAnalysisService {
         }
     }
 
+    private static func isUploadExpiredError(_ error: Error) -> Bool {
+        guard case CloudAnalysisError.backend(let code, _) = error else {
+            return false
+        }
+        return code.caseInsensitiveCompare("upload_expired") == .orderedSame
+    }
+
     private static func isAssetProxyReady(_ status: String) -> Bool {
         let normalized = status.lowercased()
         return normalized == "proxy_ready" || normalized == "ready"
@@ -3730,13 +3840,25 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
 
     func inspectTaskCount(for identifier: String) async -> Int {
         let session = sessionForInspection(identifier: identifier)
-        let tasks = await Self.allTasks(in: session)
+        var tasks = await Self.allTasks(in: session)
         Self.recordBackgroundUploadProof(
             "reattached_session_foreground_checked",
             metadata: "source=foreground_resume taskCount=\(tasks.count)"
         )
         if tasks.isEmpty {
-            finishEvents(for: identifier)
+            Self.recordBackgroundUploadProof(
+                "reattached_session_foreground_empty_recheck_scheduled",
+                metadata: "source=foreground_resume delayMs=750"
+            )
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            tasks = await Self.allTasks(in: session)
+            Self.recordBackgroundUploadProof(
+                "reattached_session_foreground_empty_rechecked",
+                metadata: "source=foreground_resume taskCount=\(tasks.count)"
+            )
+            if tasks.isEmpty {
+                finishEvents(for: identifier)
+            }
         }
         return tasks.count
     }

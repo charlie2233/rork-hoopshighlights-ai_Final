@@ -5526,6 +5526,105 @@ struct UploadThroughputPolicyTests {
         #expect(CloudAnalysisService.renewedUploadExpiration(current: original, candidate: olderCandidate) == original)
         #expect(CloudAnalysisService.renewedUploadExpiration(current: original, candidate: newerCandidate) == newerCandidate)
     }
+
+    @Test func expiredMultipartResumeRenewsInsteadOfDiscardingSavedChunks() {
+        #expect(
+            CloudAnalysisService.shouldDiscardExpiredResumeManifest(
+                uploadID: "multipart-upload",
+                partCount: 24,
+                completedPartCount: 0,
+                isAssetUpload: false
+            ) == false
+        )
+        #expect(
+            CloudAnalysisService.shouldDiscardExpiredResumeManifest(
+                uploadID: "single-source-job",
+                partCount: 1,
+                completedPartCount: 0,
+                isAssetUpload: false
+            )
+        )
+        #expect(
+            CloudAnalysisService.shouldDiscardExpiredResumeManifest(
+                uploadID: "asset-multipart-upload",
+                partCount: 24,
+                completedPartCount: 0,
+                isAssetUpload: true
+            )
+        )
+        #expect(
+            CloudAnalysisService.shouldDiscardExpiredResumeManifest(
+                uploadID: "multipart-upload",
+                partCount: 24,
+                completedPartCount: 24,
+                isAssetUpload: false
+            ) == false
+        )
+    }
+
+    @Test func expiredActiveBackgroundUploadRemainsPendingWhenOriginalSourceIsMissing() {
+        let state = CloudAnalysisService.resumeManifestDisplayState(
+            uploadID: "multipart-upload",
+            partCount: 24,
+            completedPartCount: 4,
+            isAssetUpload: false,
+            isTeamScan: false,
+            sourceFileExists: false,
+            activeSessionCount: 4,
+            uploadExpired: true,
+            staleWithoutActiveSession: false
+        )
+
+        #expect(state.resumeSafe)
+        #expect(state.nextAction == .waitForBackgroundSession)
+    }
+
+    @Test func expiredCompletedMultipartUploadFinishesWithoutOriginalSource() {
+        let state = CloudAnalysisService.resumeManifestDisplayState(
+            uploadID: "multipart-upload",
+            partCount: 24,
+            completedPartCount: 24,
+            isAssetUpload: false,
+            isTeamScan: false,
+            sourceFileExists: false,
+            activeSessionCount: 0,
+            uploadExpired: true,
+            staleWithoutActiveSession: false
+        )
+
+        #expect(state.resumeSafe)
+        #expect(state.nextAction == .startCloudAnalysis)
+    }
+
+    @Test func expiredResumeStatusOnlyRequiresFreshUploadForNonrenewablePlans() {
+        let singleSource = CloudAnalysisService.resumeManifestDisplayState(
+            uploadID: "single-source-job",
+            partCount: 1,
+            completedPartCount: 0,
+            isAssetUpload: false,
+            isTeamScan: false,
+            sourceFileExists: true,
+            activeSessionCount: 0,
+            uploadExpired: true,
+            staleWithoutActiveSession: false
+        )
+        let multipart = CloudAnalysisService.resumeManifestDisplayState(
+            uploadID: "multipart-upload",
+            partCount: 24,
+            completedPartCount: 4,
+            isAssetUpload: false,
+            isTeamScan: false,
+            sourceFileExists: true,
+            activeSessionCount: 0,
+            uploadExpired: true,
+            staleWithoutActiveSession: false
+        )
+
+        #expect(singleSource.resumeSafe == false)
+        #expect(singleSource.nextAction == .freshUploadRequired)
+        #expect(multipart.resumeSafe)
+        #expect(multipart.nextAction == .resumeUpload)
+    }
 }
 
 private func makeCloudAnalysisSession(
