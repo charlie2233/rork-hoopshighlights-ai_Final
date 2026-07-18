@@ -588,10 +588,18 @@ struct ContentView: View {
     }
 
     private var shouldShowGlobalPipelineBanner: Bool {
-        (viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing)
+        hasSelectedPipelineVideo
+            && (viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing)
             && activeTab != .player
             && activeTab != .review
             && !isRookieGuideVisible
+    }
+
+    private var hasSelectedPipelineVideo: Bool {
+        viewModel.videoURL != nil
+            || viewModel.isVideoLoaded
+            || isBackgroundUploadStillRunning
+            || hasPendingUploadManifest
     }
 
     private var shouldShowAppTabBar: Bool {
@@ -636,6 +644,10 @@ struct ContentView: View {
         let manifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         return manifest.contains("pending=true")
             && manifest.contains("nextAction=resume_upload")
+    }
+
+    private var hasPendingUploadManifest: Bool {
+        CloudAnalysisService.pendingBackgroundUploadManifestSummary().contains("pending=true")
     }
 
     private func uploadProgressPipelineDetail(from summary: String) -> String? {
@@ -1342,7 +1354,7 @@ struct ContentView: View {
             } else if pendingManifest.contains("uploadComplete=true") {
                 message = "Upload finished. Continuing..."
             } else if pendingManifest.contains("nextAction=fresh_upload_required") {
-                message = "Saved upload expired. Your video is still selected; start a fresh upload."
+                message = "Upload needs a fresh start. Your video is still selected."
             } else if pendingManifest.contains("resumeSafe=true") {
                 message = "Resuming saved upload..."
             } else {
