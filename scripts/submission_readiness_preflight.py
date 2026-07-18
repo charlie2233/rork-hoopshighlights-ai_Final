@@ -30,7 +30,7 @@ DEFAULT_WORKER_BASE_URL = "https://hoopsclips-control-plane-staging.charliehan-l
 DEFAULT_EDITING_VERSION_URL = "https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version"
 EXPECTED_IOS_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_IOS_MARKETING_VERSION = "1.0.0"
-EXPECTED_IOS_BUILD_NUMBER = "51"
+EXPECTED_IOS_BUILD_NUMBER = "52"
 KNOWN_CONFLICTING_BUNDLE_IDS = ("app.rork.hoopshighlights-ai",)
 REQUIRED_FEATURE_FLAGS = (
     "aiEditEnabled",
@@ -1250,7 +1250,7 @@ def check_installed_testflight_build(repo_root: Path, collector: Collector) -> N
         collector.fail(
             "installed TestFlight build",
             str(helper.relative_to(repo_root)),
-            "Installed build verifier is missing; cannot prove build 51 is installed before smoke.",
+            "Installed build verifier is missing; cannot prove build 52 is installed before smoke.",
         )
         return
 
@@ -1268,7 +1268,7 @@ def check_installed_testflight_build(repo_root: Path, collector: Collector) -> N
         collector.fail(
             "installed TestFlight build",
             str(helper.relative_to(repo_root)),
-            "Could not run installed build verifier; install/update build 51 and rerun before smoke.",
+            "Could not run installed build verifier; install/update build 52 and rerun before smoke.",
         )
         return
 
