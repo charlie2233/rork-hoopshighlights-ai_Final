@@ -2,10 +2,10 @@
 
 ## Active snapshot (2026-07-18)
 
-- Current uploaded build: internal TestFlight `1.0.0 (51)` from main SHA `60eda29b7989e97a93ebdf973c0d80446caa07bf`. Current main has newer iOS source after PR #85 and is being prepared as build `1.0.0 (52)`.
+- Current uploaded build: internal TestFlight `1.0.0 (52)` from main SHA `f46705959eb1d792e93d03999eb43c828de114f0`.
 - Staging deployment: run `29632345235` passed editing/Worker deployment and live version proof for the build `50` main SHA. Live capabilities and a fresh secret-safe presign probe confirmed a 3,600-second signed upload lease.
-- TestFlight upload: run `29644918870` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup for build `51`.
-- App Store Connect processing: status run `29645129050` confirmed build `51` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing.
+- TestFlight upload: run `29656420482` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup for build `52`.
+- App Store Connect processing: status run `29656700078` confirmed build `52` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing.
 - Apple state: developer/app agreements, bundle ID, and certificates are active; signing is not the current blocker.
 - Device proof: build `49` was installed and launched on the paired iPhone. A real 380 MB basketball source produced a 24-part plan and four background sessions, reached about 15%, then expired with `0/24` completed parts before team scan.
 - Root-cause classification: the upload had enough throughput to cross initial progress, but the 15-minute lease and foreground/background reconciliation discarded recoverable multipart state. This is not evidence for changing basketball detection thresholds.
@@ -14,7 +14,7 @@
 - Installed-build preflight helper: run `python3 scripts/check_installed_testflight_build.py --device E5786BB6-0095-5509-8B85-110C0B5CE6D3` once the iPhone is available to confirm the installed TestFlight app is `atrak.charlie.hoopsclips` `1.0.0 (52)` before the real-basketball smoke.
 - Production Release preflight: run `29639140468` passed required production-input checks, production-compatible RevenueCat validation, Release cloud-mode validation, an unsigned Release simulator build, and built `Info.plist` wiring checks. It does not prove a signed production archive/upload, App Store submission, installed-device behavior, or public cloud operational readiness.
 - Quality gate: a staging real-video diagnostic produced 11 clips, conservatively matching two known highlights and nine known negatives; auto-keep selected one known highlight and eight negatives. The required human-reviewed 85% report remains open.
-- Current gate: the paired iPhone appears as `available (paired)`. One installed-app metadata read confirmed HoopClips `1.0.0 (49)` is installed, while later reads intermittently lost the CoreDevice app metadata channel. Restore stable device tunneling, upload/status-check build `52`, install or update to internal TestFlight build `52`, cross the old 15-minute point with the same class of real source, and record every downstream step separately.
+- Current gate: the paired iPhone currently appears as `unavailable` through CoreDevice. One earlier installed-app metadata read confirmed HoopClips `1.0.0 (49)` was installed, while later reads lost the CoreDevice app metadata channel and `devicectl list devices` reported `tunnelState=unavailable`. Restore stable device tunneling, install or update to internal TestFlight build `52`, cross the old 15-minute point with the same class of real source, and record every downstream step separately.
 
 ### Prior build 45 failure that builds 46 and 47 address
 
