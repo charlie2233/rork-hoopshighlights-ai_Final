@@ -1,10 +1,10 @@
 # TestFlight Signing Incident
 
-Status: Apple signing incident resolved. Builds `1.0.0 (44)` through `(49)` were uploaded successfully. Build `49` upload run `29623108647` passed, and read-only status run `29623416437` confirmed internal TestFlight availability.
+Status: Apple signing incident resolved. Builds `1.0.0 (44)` through `(50)` were uploaded successfully. Build `50` upload run `29632723114` passed, and read-only status run `29636059497` confirmed internal TestFlight availability.
 
-This file is retained as the non-secret incident record and rerun guide. Apple signing, provisioning, archive, upload, and processing are not current blockers. On July 17, 2026, the Apple Developer Program agreement and App Store Connect Free/Paid Apps agreements were active, `atrak.charlie.hoopsclips` remained registered, and valid development/distribution certificates were present. Build `49` independently proves automatic provisioning and signed upload.
+This file is retained as the non-secret incident record and rerun guide. Apple signing, provisioning, archive, upload, and processing are not current blockers. On July 17, 2026, the Apple Developer Program agreement and App Store Connect Free/Paid Apps agreements were active, `atrak.charlie.hoopsclips` remained registered, and valid development/distribution certificates were present. Build `50` independently proves automatic provisioning, signed upload, processing, and internal TestFlight availability.
 
-Build `49` installed and launched on a trusted iPhone but reproduced a saved-upload expiry near 15% on a real 380 MB source. Build `50` is the upload-lease recovery candidate; its staging deploy, TestFlight upload, and installed real-basketball smoke must pass before the internal beta gate closes.
+Build `49` installed and launched on a trusted iPhone but reproduced a saved-upload expiry near 15% on a real 380 MB source. Build `50` is the upload-lease recovery candidate. Its staging deploy and TestFlight gates passed; the installed real-basketball smoke must still pass before the internal beta gate closes.
 
 ## Resolution Evidence
 
@@ -37,6 +37,11 @@ Build `49` installed and launched on a trusted iPhone but reproduced a saved-upl
 - Upload run `29623108647`: passed signed archive, metadata/privacy verification, build `49` upload, and serial-bound runner certificate cleanup.
 - App Store Connect status run `29623416437`: build `1.0.0 (49)` is available for internal TestFlight testing.
 - Apple account recheck on July 17 confirmed active developer/app agreements, the registered HoopClips bundle ID, and valid development/distribution certificates.
+- PR #74 merged at `6c6ae4ffc267d7b4853dbb955c512f3a098fe601` with build `50` upload-lease and background-session recovery.
+- Main push runs `29632159204` and `29632159207`: cloud checks and all 12 focused iOS tests passed.
+- Staging deploy run `29632345235`: editing/Worker deployment and live version proof passed for the build `50` main SHA. Live capabilities and a fresh secret-safe presign probe both confirmed a 3,600-second signed upload lease.
+- Upload run `29632723114`: passed signed archive, metadata/privacy verification, build `50` upload, and serial-bound runner certificate cleanup.
+- App Store Connect status run `29636059497`: build `1.0.0 (50)` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and ready for internal testing.
 
 No certificate contents, private keys, API key contents, provisioning profile contents, passwords, or tokens belong in this file.
 
@@ -85,4 +90,4 @@ Expected passing evidence:
 
 ## Remaining TestFlight Work
 
-After build `50` is merged, deploy the staging Worker, upload the internal TestFlight build, install it, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. The smoke must cross the old 15-minute failure point and continue through `proxy_ready`, team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
+Build `50` is merged, deployed, uploaded, processed, and ready for internal testers. Install it, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. The smoke must cross the old 15-minute failure point and continue through `proxy_ready`, team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
