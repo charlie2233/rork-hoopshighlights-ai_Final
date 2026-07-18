@@ -809,6 +809,16 @@ struct HoopsClipsTests {
         #expect(summary?.localizedCaseInsensitiveContains("thinking") == false)
     }
 
+    @Test func testCloudAnalysisCompactUploadProgressSummaryHidesBackendProofFields() {
+        let summary = CloudAnalysisProgressCopy.compactUploadProgressSummary(
+            statusMessage: "Uploading large video to cloud 14% · source=HoopClips_Player_recovery_card · proofGeneratedAt=2026-06-30T21:27:34Z · 53/380 MB · 1.1 MB/s"
+        )
+
+        #expect(summary == "53/380 MB · Speed 1.1 MB/s")
+        #expect(summary?.contains("source=") == false)
+        #expect(summary?.contains("proofGeneratedAt=") == false)
+    }
+
     @Test func testCloudAnalysisCompactUploadProgressSummaryShowsConnectivityWaitOnlyForUpload() {
         #expect(
             CloudAnalysisProgressCopy.compactUploadProgressSummary(

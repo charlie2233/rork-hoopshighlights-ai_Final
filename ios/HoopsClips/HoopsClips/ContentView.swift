@@ -598,8 +598,7 @@ struct ContentView: View {
     private var hasSelectedPipelineVideo: Bool {
         viewModel.videoURL != nil
             || viewModel.isVideoLoaded
-            || isBackgroundUploadStillRunning
-            || hasPendingUploadManifest
+            || viewModel.isVideoImportInProgress
     }
 
     private var shouldShowAppTabBar: Bool {
@@ -646,10 +645,6 @@ struct ContentView: View {
             && manifest.contains("nextAction=resume_upload")
     }
 
-    private var hasPendingUploadManifest: Bool {
-        CloudAnalysisService.pendingBackgroundUploadManifestSummary().contains("pending=true")
-    }
-
     private func uploadProgressPipelineDetail(from summary: String) -> String? {
         let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSummary.isEmpty, trimmedSummary != "none" else { return nil }
@@ -657,13 +652,9 @@ struct ContentView: View {
         let bytes = uploadProgressField("bytes", in: trimmedSummary)
         let speed = uploadProgressField("speed", in: trimmedSummary)
         let eta = uploadProgressField("eta", in: trimmedSummary)
-        let context = uploadProgressField("context", in: trimmedSummary)
         let stalled = uploadProgressField("stalled", in: trimmedSummary) == "true"
 
         var parts: [String] = []
-        if let context = context, uploadProgressContextIsUseful(context) {
-            parts.append(context)
-        }
         if let bytes {
             parts.append(bytes)
         }
@@ -710,18 +701,6 @@ struct ContentView: View {
         }
         let value = String(rawValue).replacingOccurrences(of: "_", with: " ")
         return value.isEmpty ? nil : String(value.prefix(40))
-    }
-
-    private func uploadProgressContextIsUseful(_ context: String) -> Bool {
-        let lowercasedContext = context.lowercased()
-        return lowercasedContext.contains("retry")
-            || lowercasedContext.contains("failed")
-            || lowercasedContext.contains("waiting")
-            || lowercasedContext.contains("reconnecting")
-            || lowercasedContext.contains("background upload")
-            || lowercasedContext.contains("chunk")
-            || lowercasedContext.contains("source upload")
-            || lowercasedContext.contains("saved chunks")
     }
 
     private func savedUploadPipelineDetail(from summary: String) -> String? {
