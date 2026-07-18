@@ -13,6 +13,7 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 - Build `49` was installed and launched on a trusted iPhone, then reproduced the large-upload defect with a real 380 MB source: 24 parts were planned, upload reached about 15%, background transfer handed off, and the saved upload expired before any part completed. Build `50` is deployed with one-hour signed upload leases, bounded multipart lease renewal, and active/completed background-session reconciliation. Live capabilities and a fresh secret-safe presign probe both confirmed a 3,600-second lease.
 - Apple account agreements and certificates are active, and build `50` proves automatic signing, archive, provisioning, upload, processing, and internal TestFlight availability. Apple signing is not the current blocker; see `TESTFLIGHT_BLOCKER.md`.
 - App Store submission is not ready yet. Build `50` must pass the installed real-basketball upload-through-export smoke, and the human-reviewed 85% team/highlight accuracy report remains an independent hard gate.
+- Production Release preflight run `29639140468` passed all required input checks, production-compatible RevenueCat validation, Release cloud-mode validation, an unsigned Release simulator build, and built `Info.plist` wiring checks. This is configuration/build proof only; it is not a signed production archive, App Store upload/submission, installed-device proof, or public cloud cutover proof.
 - Public submission posture: no on-device analysis fallback is approved; Release requires the production cloud analysis, edit-planning, and rendering gates to pass.
 - Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
 - Cloud ML/rendering path: available to internal staging/TestFlight; gated off for public launch until the cutover rules below are satisfied.
@@ -53,6 +54,7 @@ Last launch-gate verification: July 18, 2026.
   - `Cloud Edit Deploy Preflight` deploy run `29632345235`: success; staging editing and Worker deploy/version proof passed for the build `50` main SHA.
   - `iOS Internal TestFlight Upload` upload run `29632723114`: success for build `50`; signed archive, metadata/privacy verification, upload, and runner-owned certificate cleanup passed.
   - `iOS Internal TestFlight Upload` status run `29636059497`: success; build `50` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testing.
+  - `Release Secrets Preflight` run `29639140468`: success; required production inputs, production-compatible RevenueCat configuration, Release cloud mode, unsigned Release simulator compilation, and built `Info.plist` wiring passed without exposing secret values.
   - `iOS Internal TestFlight Upload` push/codecheck run `29623096223`: success for merged build `49` main.
   - `iOS Internal TestFlight Upload` upload run `29623108647`: success for build `49`; signed archive, metadata/privacy verification, upload, and runner-owned certificate cleanup passed.
   - `iOS Internal TestFlight Upload` status run `29623416437`: success; the read-only Apple API proof found build `49` and confirmed internal-testing availability.

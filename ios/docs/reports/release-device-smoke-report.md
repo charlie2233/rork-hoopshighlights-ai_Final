@@ -11,6 +11,7 @@
 - Root-cause classification: the upload had enough throughput to cross initial progress, but the 15-minute lease and foreground/background reconciliation discarded recoverable multipart state. This is not evidence for changing basketball detection thresholds.
 - Build `50` fix: one-hour signed URLs, bounded multipart lease renewal, active-session-first foreground reconciliation, completed-part finalization without the original temporary source, and concise resume notices.
 - Automated proof: all 46 Worker tests passed, control-plane typecheck passed, launch config preflight passed with `85` passes and `0` failures, and the exact focused iOS CI selection passed all 12 tests across three suites. Merged-main CI, staging deployment, signed archive/upload, Apple processing, and internal TestFlight availability all passed.
+- Production Release preflight: run `29639140468` passed required production-input checks, production-compatible RevenueCat validation, Release cloud-mode validation, an unsigned Release simulator build, and built `Info.plist` wiring checks. It does not prove a signed production archive/upload, App Store submission, installed-device behavior, or public cloud operational readiness.
 - Quality gate: a staging real-video diagnostic produced 11 clips, conservatively matching two known highlights and nine known negatives; auto-keep selected one known highlight and eight negatives. The required human-reviewed 85% report remains open.
 - Current gate: the paired iPhone still has build `49`. Install build `50`, cross the old 15-minute point with the same class of real source, and record every downstream step separately.
 
@@ -114,13 +115,12 @@ At this snapshot, installed build `44` TestFlight smoke was unproven pending App
 | Accessibility largest text | blocked | Verify using `ios/docs/checklists/release-accessibility-smoke-checklist.md` once device is online. |
 | Accessibility Reduce Motion | blocked | Verify using `ios/docs/checklists/release-accessibility-smoke-checklist.md` once device is online. |
 
-## Blockers
-- GitHub `production` environment is missing `HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL`; `Release Secrets Preflight` run `26884199422` failed until those non-secret variables are confirmed and set.
-- Required deploy and iOS upload input-name checks pass without exposing values, but the secret-gated deploy job is still skipped and must be rerun as `credential-check`, then `preflight` or `deploy`.
-- `team_highlight_labeling_bundle` is still incomplete (`0/54` clips reviewed), so launch-ready accuracy gate is unproven.
-- iPhone import/review/export/share flow from installed TestFlight app is unproven in this environment.
-- Internal staging Worker `/v1/editing/version` is live and reports cloud/GPT/render capability, but this does not close production cloud cutover or installed TestFlight smoke.
-- This branch did not perform signed archive/upload steps; it documents snapshot state only.
+## Current Blockers
+- Install internal TestFlight build `50` on the trusted iPhone and complete the real-basketball upload-through-export smoke, including crossing the old 15-minute upload failure point.
+- Complete the human-reviewed team/highlight accuracy report and meet the required 85% gate without weakening detection thresholds.
+- Run and verify a signed production Release archive/upload before claiming App Store submission proof. Release preflight run `29639140468` proves configuration and unsigned compilation only.
+- Finish the App Store Connect listing, review, and compliance audit in an authenticated App Store Connect session.
+- Keep public cloud launch gated until production identity/quota, observability, render reliability, and confirmed-label requirements are separately proven.
 
 ## Historical notes
 - Prior entries in this file include previous build 4/27 Release-device verification from older branches and are retained for historical context.
