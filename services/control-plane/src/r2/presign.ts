@@ -72,6 +72,7 @@ export async function createPresignedUploadTarget(
   const url = new URL(
     `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_UPLOAD_BUCKET_NAME}/${objectKey}`
   );
+  url.searchParams.set("X-Amz-Expires", String(params.expiresInSeconds));
   const request = new Request(url.toString(), {
     method: "PUT",
     headers: {
@@ -172,6 +173,7 @@ export async function createPresignedMultipartPartTarget(
   const url = buildR2ObjectUrl(env, env.R2_UPLOAD_BUCKET_NAME, params.objectKey);
   url.searchParams.set("partNumber", String(params.partNumber));
   url.searchParams.set("uploadId", params.uploadId);
+  url.searchParams.set("X-Amz-Expires", String(params.expiresInSeconds));
   const request = new Request(url.toString(), { method: "PUT" });
   const signed = await client.sign(request, {
     aws: {
@@ -256,6 +258,7 @@ export async function createPresignedReadTarget(
   const url = new URL(
     `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${bucketName}/${params.objectKey}`
   );
+  url.searchParams.set("X-Amz-Expires", String(params.expiresInSeconds));
   const request = new Request(url.toString(), {
     method: "GET"
   });

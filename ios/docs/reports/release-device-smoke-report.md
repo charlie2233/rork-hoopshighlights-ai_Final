@@ -1,16 +1,17 @@
 # Release Device Smoke Report
 
-## Active snapshot (2026-07-15)
+## Active snapshot (2026-07-17)
 
-- Candidate: internal TestFlight `1.0.0 (47)` from app SHA `cb7d8f3c946a6933f52ad18255318c8c4ae3e151`.
-- Staging deploy: run `29449140849` passed editing/Worker deploy and live version proof for the same app SHA.
-- TestFlight upload: run `29449525744` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
-- App Store Connect processing: status run `29450181533` reports `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, iOS `17.0+`, and no non-exempt encryption.
-- Cloud fixture proof: three consecutive real-basketball team scans detected black/white teams and queued selected-team analysis; an all-teams collection completed with eight clips.
-- Automated regression: 218 iOS unit tests passed, all enabled UI tests passed, Release simulator build passed, all 43 Worker tests passed, and the required CI lane passed all seven upload-policy tests.
-- Upload plan: a 379.9 MB source now uses 24 adaptive parts instead of 48 fixed 8 MB parts. Normal networks can use four lanes; expensive paths cap at two and Low Data Mode at one.
-- Device availability: the paired iPhone was online on July 15, but still reported installed HoopClips build `45` before TestFlight was opened. Build `47` installation and its full phone smoke have not been claimed yet.
-- Current gate: install build `47` from TestFlight, rerun the real-basketball flow, and record every downstream step separately.
+- Current available build: internal TestFlight `1.0.0 (49)` from main SHA `2affd1d0049434cda9c3026cd7db77c003b14852`.
+- TestFlight upload: run `29623108647` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
+- App Store Connect processing: status run `29623416437` confirmed build `49` internal TestFlight availability.
+- Apple state: developer/app agreements, bundle ID, and certificates are active; signing is not the current blocker.
+- Device proof: build `49` was installed and launched on the paired iPhone. A real 380 MB basketball source produced a 24-part plan and four background sessions, reached about 15%, then expired with `0/24` completed parts before team scan.
+- Root-cause classification: the upload had enough throughput to cross initial progress, but the 15-minute lease and foreground/background reconciliation discarded recoverable multipart state. This is not evidence for changing basketball detection thresholds.
+- Build `50` candidate fix: one-hour signed URLs, bounded multipart lease renewal, active-session-first foreground reconciliation, completed-part finalization without the original temporary source, and concise resume notices.
+- Automated proof so far: all 46 Worker tests passed, control-plane typecheck passed, launch config preflight passed with `85` passes and `0` failures, and the exact focused iOS CI selection passed all 12 tests across three suites. Merged CI, staging deploy, and TestFlight proof remain pending.
+- Quality gate: a staging real-video diagnostic produced 11 clips, conservatively matching two known highlights and nine known negatives; auto-keep selected one known highlight and eight negatives. The required human-reviewed 85% report remains open.
+- Current gate: merge/deploy build `50`, upload it to internal TestFlight, install it, cross the old 15-minute point, and record every downstream step separately.
 
 ### Prior build 45 failure that builds 46 and 47 address
 

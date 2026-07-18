@@ -392,7 +392,14 @@ async function handleMultipartPart(
       throw new Error("jobId, installId, uploadId, and partNumber are required.");
     }
 
-    const jobOrResponse = await getUploadOwnedJob(env, requestId, schemaVersion, body.jobId, body.installId);
+    const jobOrResponse = await getUploadOwnedJob(
+      env,
+      requestId,
+      schemaVersion,
+      body.jobId,
+      body.installId,
+      { expiredUploadGraceSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds },
+    );
     if (jobOrResponse instanceof Response) {
       return jobOrResponse;
     }
@@ -482,7 +489,14 @@ async function handleMultipartComplete(
       throw new Error("Each uploaded part needs a partNumber and ETag.");
     }
 
-    const jobOrResponse = await getUploadOwnedJob(env, requestId, schemaVersion, body.jobId, body.installId);
+    const jobOrResponse = await getUploadOwnedJob(
+      env,
+      requestId,
+      schemaVersion,
+      body.jobId,
+      body.installId,
+      { expiredUploadGraceSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds },
+    );
     if (jobOrResponse instanceof Response) {
       return jobOrResponse;
     }
@@ -1293,7 +1307,8 @@ async function getUploadOwnedJob(
   requestId: string,
   schemaVersion: string,
   jobId: string,
-  installId: string
+  installId: string,
+  options: { expiredUploadGraceSeconds?: number } = {},
 ): Promise<JobRecord | Response> {
   const job = await getJobSnapshot(env, jobId);
   if (!job) {
@@ -1326,7 +1341,11 @@ async function getUploadOwnedJob(
       requestId
     );
   }
-  if (isOpenUploadStatus(job.status) && isUploadWindowExpired(job)) {
+  if (
+    isOpenUploadStatus(job.status)
+    && isUploadWindowExpired(job)
+    && !isWithinExpiredUploadGrace(job, options.expiredUploadGraceSeconds)
+  ) {
     return jsonResponse(
       {
         requestId,
@@ -1371,6 +1390,15 @@ function isUploadWindowExpired(job: JobRecord): boolean {
 
   const expiresAtMs = Date.parse(job.expiresAt);
   return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
+}
+
+function isWithinExpiredUploadGrace(job: JobRecord, graceSeconds?: number): boolean {
+  if (!graceSeconds || !Number.isFinite(graceSeconds) || graceSeconds <= 0) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(job.expiresAt);
+  return Number.isFinite(expiresAtMs) && Date.now() <= expiresAtMs + (graceSeconds * 1000);
 }
 
 function normalizeTeamSelection(value: unknown): TeamSelection | null {

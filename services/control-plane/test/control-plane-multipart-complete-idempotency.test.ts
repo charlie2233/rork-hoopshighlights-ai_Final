@@ -9,7 +9,7 @@ const {
   uploadObject,
 } = harness;
 
-test("multipart complete is idempotent when the assembled source object already exists", async () => {
+test("expired multipart complete is idempotent when the assembled source object already exists", async () => {
   const controlPlane = createControlPlaneHarness();
 
   const createResponse = await invokePublicRoute(
@@ -40,6 +40,12 @@ test("multipart complete is idempotent when the assembled source object already 
     createJson.uploadUrl,
     new TextEncoder().encode("already assembled background upload"),
   );
+  const job = controlPlane.state.jobs.get(createJson.jobId);
+  assert.ok(job);
+  controlPlane.state.jobs.set(createJson.jobId, {
+    ...job,
+    expiresAt: new Date(Date.now() - 5_000).toISOString(),
+  });
 
   const completeResponse = await invokePublicRoute(
     controlPlane,

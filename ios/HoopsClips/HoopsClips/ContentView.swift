@@ -1337,12 +1337,16 @@ struct ContentView: View {
         let pendingManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         if pendingManifest.contains("pending=true") {
             let message: String
-            if pendingManifest.contains("uploadExpired=true") {
+            if pendingManifest.contains("activeUploadSessions=true") {
+                message = "Upload is still running."
+            } else if pendingManifest.contains("uploadComplete=true") {
+                message = "Upload finished. Continuing..."
+            } else if pendingManifest.contains("nextAction=fresh_upload_required") {
                 message = "Saved upload expired. Your video is still selected; start a fresh upload."
             } else if pendingManifest.contains("resumeSafe=true") {
                 message = "Resuming saved upload..."
             } else {
-                message = "Saved upload source missing. Check Uploads."
+                message = "Upload paused. Open Uploads to continue."
             }
             showUploadResumeNotice(message)
             LaunchTelemetry.shared.recordStabilityCheckpoint(

@@ -62,14 +62,14 @@ jobs:
             -skipPackagePluginValidation
 
           xcrun xcresulttool get test-results summary --path "$result_bundle" \
-            | jq -e '.totalTestCount == 8 and .passedTests == 8 and .failedTests == 0 and .skippedTests == 0'
+            | jq -e '.totalTestCount == 12 and .passedTests == 12 and .failedTests == 0 and .skippedTests == 0'
 
       - name: Print codecheck summary
         run: |
           set -euo pipefail
           cat <<'SUMMARY'
           No-secret codecheck completed.
-          This proves internal staging build settings, export-options syntax, and eight focused unsigned Debug simulator tests.
+          This proves internal staging build settings, export-options syntax, and twelve focused unsigned Debug simulator tests.
           It does not create a signed archive, upload to App Store Connect, or prove installed TestFlight smoke.
           SUMMARY
 
@@ -139,6 +139,11 @@ jobs:
 
           if (( ${#missing[@]} > 0 )); then
             echo "::error::Missing internal TestFlight inputs: ${missing[*]}"
+            exit 1
+          fi
+
+          if [[ "$HOOPS_REVENUECAT_API_KEY" == test_* ]]; then
+            echo "::error::HOOPS_REVENUECAT_API_KEY must be the Apple production public SDK key, not a RevenueCat Test Store key"
             exit 1
           fi
 
@@ -228,11 +233,18 @@ jobs:
 
           require_archive_value "CFBundleIdentifier" "atrak.charlie.hoopsclips"
           require_archive_value "CFBundleShortVersionString" "1.0.0"
-          require_archive_value "CFBundleVersion" "49"
+          require_archive_value "CFBundleVersion" "50"
           require_app_value "HOOPSAppEnvironment" "internal_staging"
           require_app_value "HOOPSCloudLaunchMode" "internal_only"
           require_app_value "HOOPSCloudAnalysisBaseURL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
           require_app_value "HOOPSCloudEditBaseURL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
+
+          billing_public_value="$(/usr/libexec/PlistBuddy -c 'Print :HOOPSRevenueCatAPIKey' "$app_plist")"
+          if [[ -z "$billing_public_value" || "$billing_public_value" == test_* ]]; then
+            echo "::error::Archive must contain a non-Test-Store RevenueCat Apple public SDK key"
+            exit 1
+          fi
+          echo "RevenueCat Apple public SDK key is production-compatible"
 
           if [[ ! -f "$privacy_manifest" ]]; then
             echo "::error::Archive is missing HoopsClips.app/PrivacyInfo.xcprivacy"
@@ -318,7 +330,7 @@ jobs:
           fi
 
   app-store-connect-status:
-    name: Verify build 49 internal TestFlight status
+    name: Verify build 50 internal TestFlight status
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'status'
     runs-on: ubuntu-latest
     environment: staging
@@ -367,17 +379,17 @@ jobs:
           echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
           echo "App Store Connect API key materialized"
 
-      - name: Wait for build 49 internal TestFlight availability
+      - name: Wait for build 50 internal TestFlight availability
         run: |
           set -euo pipefail
-          status_path="$RUNNER_TEMP/app-store-connect-build-49-status.json"
+          status_path="$RUNNER_TEMP/app-store-connect-build-50-status.json"
           python3 scripts/app_store_connect_build_status.py \
             --key-path "$ASC_KEY_PATH" \
             --key-id "$APP_STORE_CONNECT_KEY_ID" \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
             --bundle-id atrak.charlie.hoopsclips \
             --marketing-version 1.0.0 \
-            --build-version 49 \
+            --build-version 50 \
             --wait-seconds 900 \
             --poll-seconds 30 \
             --output "$status_path"
@@ -387,7 +399,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "### App Store Connect build 49"
+            echo "### App Store Connect build 50"
             echo
             echo '```json'
             jq . "$ASC_BUILD_STATUS_PATH"
@@ -397,7 +409,7 @@ jobs:
       - name: Upload non-secret build status proof
         uses: actions/upload-artifact@v4
         with:
-          name: app-store-connect-build-49-status
+          name: app-store-connect-build-50-status
           path: ${{ env.ASC_BUILD_STATUS_PATH }}
           retention-days: 14
 
