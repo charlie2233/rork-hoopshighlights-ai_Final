@@ -11,6 +11,7 @@ class AccuracyCliEntrypointTests(unittest.TestCase):
             "scripts/collect_team_highlight_accuracy_case.py",
             "scripts/make_team_highlight_label_template.py",
             "scripts/build_launch_team_accuracy_report.py",
+            "scripts/summarize_team_highlight_accuracy_gate.py",
         ]
 
         for script in scripts:
