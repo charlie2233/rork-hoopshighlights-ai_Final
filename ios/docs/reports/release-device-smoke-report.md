@@ -1,17 +1,18 @@
 # Release Device Smoke Report
 
-## Active snapshot (2026-07-17)
+## Active snapshot (2026-07-18)
 
-- Current available build: internal TestFlight `1.0.0 (49)` from main SHA `2affd1d0049434cda9c3026cd7db77c003b14852`.
-- TestFlight upload: run `29623108647` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
-- App Store Connect processing: status run `29623416437` confirmed build `49` internal TestFlight availability.
+- Current available build: internal TestFlight `1.0.0 (50)` from main SHA `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`.
+- Staging deployment: run `29632345235` passed editing/Worker deployment and live version proof for the build `50` main SHA. Live capabilities and a fresh secret-safe presign probe confirmed a 3,600-second signed upload lease.
+- TestFlight upload: run `29632723114` passed signed archive, metadata/privacy checks, upload, and runner-owned certificate cleanup.
+- App Store Connect processing: status run `29636059497` confirmed build `50` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testing.
 - Apple state: developer/app agreements, bundle ID, and certificates are active; signing is not the current blocker.
 - Device proof: build `49` was installed and launched on the paired iPhone. A real 380 MB basketball source produced a 24-part plan and four background sessions, reached about 15%, then expired with `0/24` completed parts before team scan.
 - Root-cause classification: the upload had enough throughput to cross initial progress, but the 15-minute lease and foreground/background reconciliation discarded recoverable multipart state. This is not evidence for changing basketball detection thresholds.
-- Build `50` candidate fix: one-hour signed URLs, bounded multipart lease renewal, active-session-first foreground reconciliation, completed-part finalization without the original temporary source, and concise resume notices.
-- Automated proof so far: all 46 Worker tests passed, control-plane typecheck passed, launch config preflight passed with `85` passes and `0` failures, and the exact focused iOS CI selection passed all 12 tests across three suites. Merged CI, staging deploy, and TestFlight proof remain pending.
+- Build `50` fix: one-hour signed URLs, bounded multipart lease renewal, active-session-first foreground reconciliation, completed-part finalization without the original temporary source, and concise resume notices.
+- Automated proof: all 46 Worker tests passed, control-plane typecheck passed, launch config preflight passed with `85` passes and `0` failures, and the exact focused iOS CI selection passed all 12 tests across three suites. Merged-main CI, staging deployment, signed archive/upload, Apple processing, and internal TestFlight availability all passed.
 - Quality gate: a staging real-video diagnostic produced 11 clips, conservatively matching two known highlights and nine known negatives; auto-keep selected one known highlight and eight negatives. The required human-reviewed 85% report remains open.
-- Current gate: merge/deploy build `50`, upload it to internal TestFlight, install it, cross the old 15-minute point, and record every downstream step separately.
+- Current gate: the paired iPhone still has build `49`. Install build `50`, cross the old 15-minute point with the same class of real source, and record every downstream step separately.
 
 ### Prior build 45 failure that builds 46 and 47 address
 
