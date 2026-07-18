@@ -1525,6 +1525,31 @@ private struct ReviewAnalysisWaitingView: View {
         return trimmed.isEmpty ? "Analysis is starting..." : trimmed
     }
 
+    private var isUploadStage: Bool {
+        pipelineStage == .uploading
+    }
+
+    private var headlineText: String {
+        isUploadStage ? "Uploading video" : "Analyzing, please wait"
+    }
+
+    private var subheadlineText: String {
+        isUploadStage
+            ? "Keep HoopClips open for live progress."
+            : "Review will open automatically when clips are ready."
+    }
+
+    private var compactUploadDetailText: String? {
+        CloudAnalysisProgressCopy.compactUploadProgressSummary(statusMessage: statusMessage)
+    }
+
+    private var accessibilityDetailText: String {
+        if isUploadStage {
+            return compactUploadDetailText ?? "Upload in progress."
+        }
+        return detailText
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -1544,10 +1569,10 @@ private struct ReviewAnalysisWaitingView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Analyzing, please wait")
+                                Text(headlineText)
                                     .font(.headline.weight(.bold))
                                     .foregroundStyle(.white)
-                                Text("Review will open automatically when clips are ready.")
+                                Text(subheadlineText)
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(AppTheme.subtleText)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -1569,14 +1594,28 @@ private struct ReviewAnalysisWaitingView: View {
                             .minimumScaleFactor(0.84)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text(detailText)
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                            .minimumScaleFactor(0.84)
-                            .fixedSize(horizontal: false, vertical: true)
+                        if isUploadStage, let compactUploadDetailText {
+                            Label(compactUploadDetailText, systemImage: "speedometer")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.86))
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.white.opacity(0.07), in: .rect(cornerRadius: 12))
+                                .accessibilityIdentifier("review.analysisWaiting.uploadDetail")
+                        } else if !isUploadStage {
+                            Text(detailText)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.subtleText)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
-                        if let approximateRemainingText {
+                        if !isUploadStage, let approximateRemainingText {
                             Label(approximateRemainingText, systemImage: "clock.badge.checkmark")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.9))
@@ -1612,8 +1651,8 @@ private struct ReviewAnalysisWaitingView: View {
                     }
                     .shadow(color: pipelineStage.tint.opacity(0.16), radius: 22, y: 12)
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Analyzing, please wait")
-                    .accessibilityValue("\(progressPercentText). \(visibleStatusMessage). \(detailText)")
+                    .accessibilityLabel(headlineText)
+                    .accessibilityValue("\(progressPercentText). \(visibleStatusMessage). \(accessibilityDetailText)")
                     .accessibilityIdentifier("review.analysisWaiting.card")
 
                     Spacer(minLength: 80)
