@@ -5521,10 +5521,10 @@ struct UploadThroughputPolicyTests {
         #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 500 * mebibyte) == 24 * Int(mebibyte))
         #expect(CloudAnalysisService.preferredAssetMultipartPartSizeBytes(fileSizeBytes: 2 * 1024 * mebibyte) == 32 * Int(mebibyte))
 
-        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: false, isConstrained: false) == 4)
-        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: true, isConstrained: false) == 2)
-        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: true, isConstrained: true) == 1)
-        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 4, isExpensive: false, isConstrained: false, pathAvailable: false) == 1)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 6, isExpensive: false, isConstrained: false) == 6)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 6, isExpensive: true, isConstrained: false) == 2)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 6, isExpensive: true, isConstrained: true) == 1)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 6, isExpensive: false, isConstrained: false, pathAvailable: false) == 1)
     }
 
     @Test func renewedUploadExpirationNeverMovesBackward() {
