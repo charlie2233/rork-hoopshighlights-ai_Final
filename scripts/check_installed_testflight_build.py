@@ -293,7 +293,13 @@ def safe_error(prefix: str, result: subprocess.CompletedProcess[str]) -> str:
     first_line = message[0] if message else f"exit code {result.returncode}"
     detail = f"{prefix}: {first_line}"
     raw_message = "\n".join(message)
-    if "CoreDevice.ControlChannelConnectionError" in raw_message or "Operation timed out" in raw_message:
+    if (
+        "CoreDevice.ControlChannelConnectionError" in raw_message
+        or "CoreDeviceError error 4000" in raw_message
+        or "device disconnected immediately after connecting" in raw_message
+        or "Command timeout" in raw_message
+        or "Operation timed out" in raw_message
+    ):
         detail += (
             " Recovery: unlock the iPhone, connect by USB or restore the same-network device tunnel, "
             "then reopen Xcode Devices and rerun this helper."

@@ -386,6 +386,7 @@ def run_checks(
     check_bundle_id_references(repo_root, collector)
     check_upload_artifact(repo_root, collector, archive_path)
     check_connected_ios_device(collector)
+    check_installed_testflight_build(repo_root, collector)
     resolved_worker_base_url = worker_base_url or worker_base_url_from_internal_staging(repo_root) or DEFAULT_WORKER_BASE_URL
     check_live_worker_version(resolved_worker_base_url, collector, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_live_editing_version(editing_version_url, collector, repo_root=repo_root, skip_live=skip_live, timeout_seconds=timeout_seconds)
@@ -1241,6 +1242,69 @@ def check_connected_ios_device(collector: Collector) -> None:
         )
     else:
         collector.fail("connected ios device", "xcrun devicectl", "No available physical iPhone detected for installed TestFlight smoke.")
+
+
+def check_installed_testflight_build(repo_root: Path, collector: Collector) -> None:
+    helper = repo_root / "scripts/check_installed_testflight_build.py"
+    if not helper.exists():
+        collector.fail(
+            "installed TestFlight build",
+            str(helper.relative_to(repo_root)),
+            "Installed build verifier is missing; cannot prove build 51 is installed before smoke.",
+        )
+        return
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(helper), "--json", "--timeout", "20"],
+            cwd=repo_root,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        collector.fail(
+            "installed TestFlight build",
+            str(helper.relative_to(repo_root)),
+            "Could not run installed build verifier; install/update build 51 and rerun before smoke.",
+        )
+        return
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        collector.fail(
+            "installed TestFlight build",
+            str(helper.relative_to(repo_root)),
+            "Installed build verifier did not return JSON; rerun it directly for device details.",
+        )
+        return
+
+    installed = payload.get("installedApp") if isinstance(payload, dict) else {}
+    if payload.get("installedTestFlightBuildReady") is True:
+        collector.pass_(
+            "installed TestFlight build",
+            str(helper.relative_to(repo_root)),
+            f"Installed app is {EXPECTED_IOS_BUNDLE_ID} {EXPECTED_IOS_MARKETING_VERSION} ({EXPECTED_IOS_BUILD_NUMBER}).",
+        )
+        return
+
+    blockers = payload.get("blockers") if isinstance(payload, dict) else None
+    blocker_text = "; ".join(str(item) for item in blockers) if isinstance(blockers, list) else "Installed build verifier did not pass."
+    installed_suffix = ""
+    if isinstance(installed, dict) and installed:
+        installed_suffix = (
+            f" Installed app: bundleId={installed.get('bundleId') or 'missing'}, "
+            f"marketingVersion={installed.get('marketingVersion') or 'missing'}, "
+            f"buildNumber={installed.get('buildNumber') or 'missing'}."
+        )
+    collector.fail(
+        "installed TestFlight build",
+        str(helper.relative_to(repo_root)),
+        f"{blocker_text}{installed_suffix} Install/update build {EXPECTED_IOS_BUILD_NUMBER} from TestFlight before real-basketball smoke.",
+    )
 
 
 def ios_device_state_is_smoke_ready(state: str) -> bool:
