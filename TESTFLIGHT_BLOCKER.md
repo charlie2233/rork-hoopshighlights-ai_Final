@@ -4,7 +4,7 @@ Status: Apple signing incident resolved. Builds `1.0.0 (44)` through `(50)` were
 
 This file is retained as the non-secret incident record and rerun guide. Apple signing, provisioning, archive, upload, and processing are not current blockers. On July 17, 2026, the Apple Developer Program agreement and App Store Connect Free/Paid Apps agreements were active, `atrak.charlie.hoopsclips` remained registered, and valid development/distribution certificates were present. Build `50` independently proves automatic provisioning, signed upload, processing, and internal TestFlight availability.
 
-Build `49` installed and launched on a trusted iPhone but reproduced a saved-upload expiry near 15% on a real 380 MB source. Build `50` is the upload-lease recovery candidate. Its staging deploy and TestFlight gates passed; the installed real-basketball smoke must still pass before the internal beta gate closes.
+Build `49` installed and launched on a trusted iPhone but reproduced a saved-upload expiry near 15% on a real 380 MB source. Build `50` is the currently available upload-lease recovery candidate. Its staging deploy and TestFlight gates passed; build `51` is the next upload candidate for the latest merged UI polish. The installed real-basketball smoke must still pass before the internal beta gate closes.
 
 ## Resolution Evidence
 
@@ -90,4 +90,4 @@ Expected passing evidence:
 
 ## Remaining TestFlight Work
 
-Build `50` is merged, deployed, uploaded, processed, and ready for internal testers. Install it, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. The smoke must cross the old 15-minute failure point and continue through `proxy_ready`, team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
+Build `50` is merged, deployed, uploaded, processed, and ready for internal testers. Build `51` is the next upload candidate for the latest main state after PR #80; do not claim it available until the upload and status workflows pass. Install the latest available build, then complete the real-basketball checklist in `docs/phase_beta_launch_gates_after_pr43.md`. The smoke must cross the old 15-minute failure point and continue through `proxy_ready`, team scan, analysis, Review, AI Edit, render, download, Photos, and share/open export. Record the result in `ios/docs/reports/release-device-smoke-report.md` without secrets, private video contents, presigned URLs, object keys, or local file paths.
