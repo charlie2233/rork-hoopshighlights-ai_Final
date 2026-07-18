@@ -55,7 +55,7 @@ require_exact "HOOPS_CLOUD_ANALYSIS_BASE_URL" "https://hoopsclips-control-plane-
 require_exact "HOOPS_CLOUD_EDIT_BASE_URL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
 require_exact "PRODUCT_BUNDLE_IDENTIFIER" "atrak.charlie.hoopsclips"
 require_exact "MARKETING_VERSION" "1.0.0"
-require_exact "CURRENT_PROJECT_VERSION" "51"
+require_exact "CURRENT_PROJECT_VERSION" "52"
 require_exact "INFOPLIST_FILE" "HoopsClips/App-Info.plist"
 require_exact "CODE_SIGN_STYLE" "Automatic"
 require_not_exact "CODE_SIGN_IDENTITY" "Apple Distribution" "Automatic signing archives fail when a manual distribution identity is forced without a matching manual profile."

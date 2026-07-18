@@ -131,16 +131,16 @@ After PR #77, rerunning `operation=upload` on `main` produced a new signed archi
 
 Build `51` upload run `29644918870` passed signed archive, metadata/privacy, upload, and certificate cleanup on main SHA `60eda29b7989e97a93ebdf973c0d80446caa07bf`. Status run `29645129050` confirmed build `51` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing. Apple account state is not the remaining blocker.
 
-The paired iPhone was visible through CoreDevice on 2026-07-18, but it still had HoopClips build `49` installed. A launch attempt was denied because the phone was locked. Install/update build `51` on the trusted iPhone, unlock the device, then run the real-basketball installed smoke before claiming the internal-beta phone gate complete.
+The paired iPhone was visible through CoreDevice on 2026-07-18, but it still had HoopClips build `49` installed. A launch attempt was denied because the phone was locked. PR #85 merged newer iOS upload-status declutter after build `51` upload proof, so upload/status-check build `52`, install/update build `52` on the trusted iPhone, unlock the device, then run the real-basketball installed smoke before claiming the internal-beta phone gate complete.
 
 Use `TESTFLIGHT_BLOCKER.md` as the resolved incident record and future rerun guide.
 
 ## Real-Basketball TestFlight Smoke Checklist
 
-Run this against internal TestFlight build `1.0.0 (51)`. Its upload, processing, internal-testing availability, and build `50` matching staging deployment are confirmed. Earlier builds are retained as launch evidence but are superseded for this smoke by the one-hour upload lease, background-session recovery, and AI Edit selected-style polish.
+Run this against internal TestFlight build `1.0.0 (52)` after its upload and App Store Connect status proof pass. Earlier builds are retained as launch evidence but are superseded for this smoke by the one-hour upload lease, background-session recovery, AI Edit selected-style polish, and PR #85 upload-status declutter.
 
-1. Install internal TestFlight build `1.0.0 (51)` on a trusted iPhone.
-2. Confirm the build is `1.0.0 (51)` from main SHA `60eda29b7989e97a93ebdf973c0d80446caa07bf`.
+1. Install internal TestFlight build `1.0.0 (52)` on a trusted iPhone.
+2. Confirm the build is `1.0.0 (52)` from the current merged main SHA.
 3. Confirm the app is in internal staging mode and points to `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`.
 4. Upload a real basketball video from Photos or Files.
 5. Keep the app active/backgrounded as a normal user would, cross the old 15-minute failure point, then wait for upload completion and `proxy_ready`.
@@ -162,4 +162,4 @@ Run this against internal TestFlight build `1.0.0 (51)`. Its upload, processing,
 
 ## Next Gate
 
-Install build `51`, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. App Store submission remains blocked until that installed flow passes and the human-reviewed 85% team/highlight accuracy report is complete. Public launch remains separately gated by production identity/quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
+Upload and status-check build `52`, install it, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. App Store submission remains blocked until that installed flow passes and the human-reviewed 85% team/highlight accuracy report is complete. Public launch remains separately gated by production identity/quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
