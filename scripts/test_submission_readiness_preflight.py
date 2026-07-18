@@ -27,6 +27,7 @@ from scripts.submission_readiness_preflight import (
     check_ci_deploy_inputs,
     check_connected_ios_device,
     check_github_workflow_runs,
+    check_installed_testflight_build,
     check_ios_signing,
     check_ios_upload_inputs,
     check_live_editing_version,
@@ -69,6 +70,13 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                     "connected ios device",
                     "xcrun devicectl",
                     "1 available iPhone device(s) detected for TestFlight smoke.",
+                ),
+            ), patch(
+                "scripts.submission_readiness_preflight.check_installed_testflight_build",
+                side_effect=lambda _repo_root, collector: collector.pass_(
+                    "installed TestFlight build",
+                    "scripts/check_installed_testflight_build.py",
+                    "Installed app is atrak.charlie.hoopsclips 1.0.0 (51).",
                 ),
             ), patch(
                 "scripts.submission_readiness_preflight.check_live_editing_version",
@@ -514,6 +522,61 @@ Current device information:
         self.assertIn("developerModeStatus=enabled", collector.findings[0].detail)
         self.assertIn("Recovery: unlock the iPhone", collector.findings[0].detail)
         self.assertIn("connect it by USB", collector.findings[0].detail)
+
+    def test_installed_testflight_build_passes_for_build_51(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            helper = repo_root / "scripts/check_installed_testflight_build.py"
+            helper.parent.mkdir(parents=True, exist_ok=True)
+            helper.write_text("# helper exists\n", encoding="utf-8")
+            collector = Collector()
+            payload = {
+                "installedTestFlightBuildReady": True,
+                "installedApp": {
+                    "bundleId": "atrak.charlie.hoopsclips",
+                    "marketingVersion": "1.0.0",
+                    "buildNumber": "51",
+                },
+                "blockers": [],
+            }
+
+            with patch(
+                "scripts.submission_readiness_preflight.subprocess.run",
+                return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+            ):
+                check_installed_testflight_build(repo_root, collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("1.0.0 (51)", collector.findings[0].detail)
+
+    def test_installed_testflight_build_fails_for_old_build(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            helper = repo_root / "scripts/check_installed_testflight_build.py"
+            helper.parent.mkdir(parents=True, exist_ok=True)
+            helper.write_text("# helper exists\n", encoding="utf-8")
+            collector = Collector()
+            payload = {
+                "installedTestFlightBuildReady": False,
+                "installedApp": {
+                    "bundleId": "atrak.charlie.hoopsclips",
+                    "marketingVersion": "1.0.0",
+                    "buildNumber": "49",
+                },
+                "blockers": ["Build number mismatch: expected 51, got 49."],
+            }
+
+            with patch(
+                "scripts.submission_readiness_preflight.subprocess.run",
+                return_value=SimpleNamespace(returncode=1, stdout=json.dumps(payload)),
+            ):
+                check_installed_testflight_build(repo_root, collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("Build number mismatch", detail)
+        self.assertIn("buildNumber=49", detail)
+        self.assertIn("Install/update build 51", detail)
 
     def test_github_workflow_runs_fail_when_latest_required_runs_failed(self) -> None:
         payload = [

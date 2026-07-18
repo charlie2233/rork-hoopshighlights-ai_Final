@@ -5,6 +5,7 @@ from scripts.check_installed_testflight_build import (
     extract_app_metadata,
     find_app_record,
     parse_device_table,
+    safe_error,
     state_is_available,
 )
 
@@ -49,6 +50,40 @@ charlie iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C
                 "name": "HoopClips",
             },
         )
+
+    def test_safe_error_adds_recovery_for_coredevice_disconnect(self) -> None:
+        result = type(
+            "Completed",
+            (),
+            {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "ERROR: The device disconnected immediately after connecting. (com.apple.dt.CoreDeviceError error 4000 (0xFA0))",
+            },
+        )()
+
+        detail = safe_error("devicectl app metadata query failed", result)
+
+        self.assertIn("device disconnected immediately", detail)
+        self.assertIn("Recovery: unlock the iPhone", detail)
+        self.assertIn("reopen Xcode Devices", detail)
+
+    def test_safe_error_adds_recovery_for_devicectl_command_timeout(self) -> None:
+        result = type(
+            "Completed",
+            (),
+            {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "ERROR: Command timeout of 20.0 seconds exceeded. Assuming command got stuck and aborting.",
+            },
+        )()
+
+        detail = safe_error("devicectl app metadata query failed", result)
+
+        self.assertIn("Command timeout", detail)
+        self.assertIn("Recovery: unlock the iPhone", detail)
+        self.assertIn("reopen Xcode Devices", detail)
 
 
 if __name__ == "__main__":
