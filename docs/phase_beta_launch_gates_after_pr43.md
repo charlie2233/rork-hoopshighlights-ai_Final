@@ -23,6 +23,7 @@ Build `49` installed on a trusted iPhone and reproduced the large-upload failure
 - PR #65: merged at `cb7d8f3c946a6933f52ad18255318c8c4ae3e151`; build `47` adaptive multipart sizing, path-aware concurrency, safe retry staging, and a seven-test upload-policy CI lane.
 - PRs #67-#73: merged upload UI simplification, persisted AI Edit state, active-session recovery, and internal builds `48` and `49`.
 - PR #74: merged at `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`; build `50` upload-lease/background-session recovery, focused tests, and Release RevenueCat Test Store safeguards.
+- PR #77: merged at `e7379227760627ed07410edb728b4eff7c72625b`; upload-time Review waiting UI now stays focused on upload progress and hides redundant analysis/ETA copy until the upload stage completes.
 - Branch posture: `main` contains the integration; follow-up work should stay scoped to launch gates, docs, signing, and smoke proof.
 
 ## GitHub Actions State
@@ -60,6 +61,10 @@ Build `49` installed on a trusted iPhone and reproduced the large-upload failure
 - `Cloud Edit Deploy Preflight` deploy run `29632345235`: success; staging editing and Worker deploy/version proof passed for build `50`.
 - `iOS Internal TestFlight Upload` upload run `29632723114`: success for build `50`; signed archive, metadata/privacy checks, upload, and certificate cleanup passed.
 - `iOS Internal TestFlight Upload` status run `29636059497`: success; build `50` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testing.
+- `Cloud Edit Deploy Preflight` push run `29640853755`: success on PR #77 merge SHA `e7379227760627ed07410edb728b4eff7c72625b`.
+- `iOS Internal TestFlight Upload` push/codecheck run `29640853783`: success on PR #77 merge SHA `e7379227760627ed07410edb728b4eff7c72625b`; focused unsigned simulator tests passed.
+- `iOS Internal TestFlight Upload` upload run `29641040373`: signed archive, metadata/privacy, certificate capacity, and certificate cleanup passed; upload step failed only because App Store Connect already had build `50`.
+- `iOS Internal TestFlight Upload` status run `29641232924`: success; build `50` is still found in App Store Connect and ready for internal testing.
 
 ## Staging Deploy And Version Proof
 
@@ -116,6 +121,10 @@ Build `46` upload run `29443559399` passed signed archive, metadata/privacy, upl
 Build `47` upload run `29449525744` passed the same signed archive, metadata/privacy, upload, and certificate-cleanup gates. Status run `29450181533` confirmed build `47` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and ready for internal testing.
 
 Build `50` upload run `29632723114` passed signed archive, metadata/privacy, production-compatible RevenueCat-key verification, upload, and certificate cleanup. Status run `29636059497` confirmed build `50` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and ready for internal testing.
+
+After PR #77, rerunning `operation=upload` on `main` produced a new signed archive and passed archive metadata checks, but App Store Connect rejected the upload because bundle version `50` was already used. This is not a signing/license/provisioning failure. Status run `29641232924` then confirmed the existing build `50` remains `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and ready for internal testing.
+
+The paired iPhone was visible through CoreDevice on 2026-07-18, but it still had HoopClips build `49` installed. A launch attempt was denied because the phone was locked. Install/update build `50` through TestFlight on the trusted iPhone, unlock the device, then run the real-basketball installed smoke before claiming the internal-beta phone gate complete.
 
 Use `TESTFLIGHT_BLOCKER.md` as the resolved incident record and future rerun guide.
 
