@@ -70,6 +70,7 @@ struct AIEditView: View {
     @State private var showAdvancedAIEditDetails = false
     @State private var showAllDurationOptions = false
     @State private var showMoreQuickPrompts = false
+    @State private var selectedQuickPromptID: String?
     @State private var activeCloudEditInputSignature: String?
     @State private var foregroundRefreshTask: Task<Void, Never>?
 
@@ -201,6 +202,7 @@ struct AIEditView: View {
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
+        selectedQuickPromptID = nil
         viewModel.latestCloudEditRenderStatus = nil
     }
 
@@ -476,6 +478,11 @@ struct AIEditView: View {
                         .accessibilityIdentifier("export.aiEdit.setup.formatSummary")
                     exportSetupChip(formattedDuration(selectedDuration), icon: "timer")
                         .accessibilityIdentifier("export.aiEdit.setup.durationSummary")
+                }
+
+                if let selectedQuickPrompt {
+                    exportSetupChip(selectedQuickPrompt.title, icon: selectedQuickPrompt.icon)
+                        .accessibilityIdentifier("export.aiEdit.setup.quickFocusSummary")
                 }
             }
 
@@ -1039,6 +1046,9 @@ struct AIEditView: View {
                     .onChange(of: userEditPrompt) { _, newValue in
                         if newValue.count > Self.maxUserPromptCharacters {
                             userEditPrompt = String(newValue.prefix(Self.maxUserPromptCharacters))
+                        } else if let selectedQuickPrompt,
+                                  !newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().contains(selectedQuickPrompt.prompt.lowercased()) {
+                            selectedQuickPromptID = nil
                         }
                 }
 
@@ -1121,17 +1131,19 @@ struct AIEditView: View {
     }
 
     private func quickPromptCard(_ quickPrompt: AIEditQuickPrompt, isPrimary: Bool) -> some View {
-        Button {
+        let isSelected = selectedQuickPromptID == quickPrompt.id
+        let tint = isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple
+        return Button {
             applyQuickPrompt(quickPrompt)
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill((isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(0.14))
+                        .fill(tint.opacity(isSelected ? 0.24 : 0.14))
                         .frame(width: 34, height: 34)
-                    Image(systemName: quickPrompt.icon)
+                    Image(systemName: isSelected ? "checkmark" : quickPrompt.icon)
                         .font(.caption.weight(.heavy))
-                        .foregroundStyle(isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple)
+                        .foregroundStyle(tint)
                 }
                 .accessibilityHidden(true)
 
@@ -1155,15 +1167,16 @@ struct AIEditView: View {
             .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 76 : 62, alignment: .topLeading)
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
-            .background(AppTheme.accentPurple.opacity(isPrimary ? 0.22 : 0.13), in: .rect(cornerRadius: 14))
+            .background(AppTheme.accentPurple.opacity(isSelected ? 0.34 : (isPrimary ? 0.22 : 0.13)), in: .rect(cornerRadius: 14))
             .overlay {
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke((isPrimary ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(isPrimary ? 0.24 : 0.18), lineWidth: 1)
+                    .stroke(tint.opacity(isSelected ? 0.5 : (isPrimary ? 0.24 : 0.18)), lineWidth: isSelected ? 1.5 : 1)
             }
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
         .accessibilityLabel("Use \(quickPrompt.title) style")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
     }
 
@@ -2754,6 +2767,11 @@ struct AIEditView: View {
         )
     }
 
+    private var selectedQuickPrompt: AIEditQuickPrompt? {
+        guard let selectedQuickPromptID else { return nil }
+        return Self.quickPrompts.first { $0.id == selectedQuickPromptID }
+    }
+
     private var smartSetupSummary: String? {
         let intent = CloudEditUserIntent.parse(userEditPrompt)
         guard intent.hasStructuredChoices else { return nil }
@@ -2800,15 +2818,20 @@ struct AIEditView: View {
     private func applyQuickPrompt(_ quickPrompt: AIEditQuickPrompt) {
         let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            selectedQuickPromptID = quickPrompt.id
             userEditPrompt = quickPrompt.prompt
             applyStructuredUserPromptIntent()
             return
         }
 
         let normalizedPrompt = quickPrompt.prompt.lowercased()
-        guard !trimmed.lowercased().contains(normalizedPrompt) else { return }
+        guard !trimmed.lowercased().contains(normalizedPrompt) else {
+            selectedQuickPromptID = quickPrompt.id
+            return
+        }
 
         let separator = trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") ? " " : ". "
+        selectedQuickPromptID = quickPrompt.id
         userEditPrompt = String((trimmed + separator + quickPrompt.prompt).prefix(Self.maxUserPromptCharacters))
         applyStructuredUserPromptIntent()
     }
