@@ -6,7 +6,7 @@ Date: 2026-07-18
 
 PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`. The enhancement integration workstream is complete on `main`; do not redo that integration.
 
-Build `49` installed on a trusted iPhone and reproduced the large-upload failure near 15% on a real 380 MB source: its 15-minute saved upload plan expired with `0/24` completed parts after background handoff. PR #74 merged the build `50` recovery at `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`: one-hour signed URLs, bounded multipart lease renewal, and active/completed background-session reconciliation. PR #81 merged build `51` at `60eda29b7989e97a93ebdf973c0d80446caa07bf`; upload run `29644918870` and status run `29645129050` prove build `51` is deployed to App Store Connect, `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testers. The remaining internal-beta gate is installed real-basketball phone smoke on build `51`. App Store submission also remains blocked by the independent human-reviewed 85% team/highlight accuracy gate.
+Build `49` installed on a trusted iPhone and reproduced the large-upload failure near 15% on a real 380 MB source: its 15-minute saved upload plan expired with `0/24` completed parts after background handoff. PR #74 merged the build `50` recovery at `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`: one-hour signed URLs, bounded multipart lease renewal, and active/completed background-session reconciliation. PR #81 merged build `51` at `60eda29b7989e97a93ebdf973c0d80446caa07bf`; upload run `29644918870` and status run `29645129050` prove build `51` was deployed to App Store Connect. PR #85 then added upload-status declutter, PR #86 prepared build `52`, and PR #87 corrected the archive metadata guard. Upload run `29656420482` and status run `29656700078` prove build `52` is deployed to App Store Connect, `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testers. The remaining internal-beta gate is installed real-basketball phone smoke on build `52`. App Store submission also remains blocked by the independent human-reviewed 85% team/highlight accuracy gate.
 
 ## Confirmed Main State
 
@@ -26,6 +26,9 @@ Build `49` installed on a trusted iPhone and reproduced the large-upload failure
 - PR #77: merged at `e7379227760627ed07410edb728b4eff7c72625b`; upload-time Review waiting UI now stays focused on upload progress and hides redundant analysis/ETA copy until the upload stage completes.
 - PR #80: merged at `ca82e6b8552844c149f84157b043bf8f0d6c7f46`; AI Edit selected-style polish.
 - PR #81: merged at `60eda29b7989e97a93ebdf973c0d80446caa07bf`; build `51` TestFlight prep and proof docs.
+- PR #85: merged at `202b56c5d332529b7bae0006eb743f45bccd9b70`; upload pipeline banner declutter and fresh-upload wording.
+- PR #86: merged at `fdb482d334b0a063a508e3e52c843dfa32ecd906`; build `52` TestFlight prep.
+- PR #87: merged at `f46705959eb1d792e93d03999eb43c828de114f0`; build `52` archive metadata guard correction.
 - Branch posture: `main` contains the integration; follow-up work should stay scoped to launch gates, docs, signing, and smoke proof.
 
 ## GitHub Actions State
@@ -70,6 +73,11 @@ Build `49` installed on a trusted iPhone and reproduced the large-upload failure
 - `iOS Internal TestFlight Upload` push/codecheck run `29644908038`: success for build `51` main SHA `60eda29b7989e97a93ebdf973c0d80446caa07bf`; build settings, export options, and 12 focused simulator tests passed.
 - `iOS Internal TestFlight Upload` upload run `29644918870`: success for build `51`; signed archive, metadata/privacy checks, App Store Connect upload, and certificate cleanup passed.
 - `iOS Internal TestFlight Upload` status run `29645129050`: success; build `51` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing.
+- `iOS Internal TestFlight Upload` push/codecheck run `29655523209`: success for build `52` prep on merged main.
+- `iOS Internal TestFlight Upload` upload run `29655548305`: signed archive passed, but archive metadata verification failed because the workflow still expected build `51`; no App Store upload was attempted.
+- `iOS Internal TestFlight Upload` push/codecheck run `29656404272`: success after PR #87 corrected the build `52` metadata guard.
+- `iOS Internal TestFlight Upload` upload run `29656420482`: success for build `52`; signed archive, metadata/privacy checks, App Store Connect upload, and certificate cleanup passed.
+- `iOS Internal TestFlight Upload` status run `29656700078`: success; build `52` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing.
 
 ## Staging Deploy And Version Proof
 
@@ -129,15 +137,17 @@ Build `50` upload run `29632723114` passed signed archive, metadata/privacy, pro
 
 After PR #77, rerunning `operation=upload` on `main` produced a new signed archive and passed archive metadata checks, but App Store Connect rejected the upload because bundle version `50` was already used. This is not a signing/license/provisioning failure. Status run `29641232924` then confirmed the existing build `50` remains `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, and ready for internal testing.
 
-Build `51` upload run `29644918870` passed signed archive, metadata/privacy, upload, and certificate cleanup on main SHA `60eda29b7989e97a93ebdf973c0d80446caa07bf`. Status run `29645129050` confirmed build `51` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing. Apple account state is not the remaining blocker.
+Build `51` upload run `29644918870` passed signed archive, metadata/privacy, upload, and certificate cleanup on main SHA `60eda29b7989e97a93ebdf973c0d80446caa07bf`. Status run `29645129050` confirmed build `51` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing.
 
-The paired iPhone was visible through CoreDevice on 2026-07-18, but it still had HoopClips build `49` installed. A launch attempt was denied because the phone was locked. PR #85 merged newer iOS upload-status declutter after build `51` upload proof, so upload/status-check build `52`, install/update build `52` on the trusted iPhone, unlock the device, then run the real-basketball installed smoke before claiming the internal-beta phone gate complete.
+Build `52` upload run `29656420482` passed signed archive, metadata/privacy, upload, and certificate cleanup on main SHA `f46705959eb1d792e93d03999eb43c828de114f0`. Status run `29656700078` confirmed build `52` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and ready for internal testing. Apple account state is not the remaining blocker.
+
+The paired iPhone was visible through CoreDevice on 2026-07-18, but it still had HoopClips build `49` installed during the last successful metadata read. A later `devicectl` device list showed the same iPhone as `unavailable`, with `tunnelState=unavailable`. Install/update build `52` on the trusted iPhone, unlock the device, restore USB or same-network CoreDevice connectivity, then run the real-basketball installed smoke before claiming the internal-beta phone gate complete.
 
 Use `TESTFLIGHT_BLOCKER.md` as the resolved incident record and future rerun guide.
 
 ## Real-Basketball TestFlight Smoke Checklist
 
-Run this against internal TestFlight build `1.0.0 (52)` after its upload and App Store Connect status proof pass. Earlier builds are retained as launch evidence but are superseded for this smoke by the one-hour upload lease, background-session recovery, AI Edit selected-style polish, and PR #85 upload-status declutter.
+Run this against internal TestFlight build `1.0.0 (52)`, whose upload and App Store Connect status proof have passed. Earlier builds are retained as launch evidence but are superseded for this smoke by the one-hour upload lease, background-session recovery, AI Edit selected-style polish, and PR #85 upload-status declutter.
 
 1. Install internal TestFlight build `1.0.0 (52)` on a trusted iPhone.
 2. Confirm the build is `1.0.0 (52)` from the current merged main SHA.
@@ -162,4 +172,4 @@ Run this against internal TestFlight build `1.0.0 (52)` after its upload and App
 
 ## Next Gate
 
-Upload and status-check build `52`, install it, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. App Store submission remains blocked until that installed flow passes and the human-reviewed 85% team/highlight accuracy report is complete. Public launch remains separately gated by production identity/quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
+Install build `52`, complete the real-basketball TestFlight smoke checklist above, and update `ios/docs/reports/release-device-smoke-report.md` with the result. App Store submission remains blocked until that installed flow passes and the human-reviewed 85% team/highlight accuracy report is complete. Public launch remains separately gated by production identity/quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
