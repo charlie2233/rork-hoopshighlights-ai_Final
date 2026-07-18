@@ -1455,6 +1455,79 @@ Current device information:
         self.assertFalse(has_failures(collector.findings))
         self.assertIn("Successful internal TestFlight upload log proof exists", collector.findings[0].detail)
 
+    def test_upload_artifact_accepts_duplicate_upload_when_status_proves_internal_testing(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 999,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-07-18T10:40:28Z",
+            },
+            {
+                "databaseId": 555,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-07-18T10:33:27Z",
+            },
+        ]
+        status_log = "App Store Connect confirms this build is ready for internal TestFlight."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘50’."
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=status_log if command[3] == "999" else duplicate_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(Path(temp_dir), collector, None)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("already exists", collector.findings[0].detail)
+        self.assertIn("ready for internal testing", collector.findings[0].detail)
+
+    def test_upload_artifact_rejects_duplicate_upload_without_status_proof(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 555,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-07-18T10:33:27Z",
+            },
+        ]
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘50’."
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=duplicate_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(Path(temp_dir), collector, None)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("already uploaded", collector.findings[0].detail)
+        self.assertIn("status operation", collector.findings[0].detail)
+
     def test_live_editing_version_fails_when_required_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

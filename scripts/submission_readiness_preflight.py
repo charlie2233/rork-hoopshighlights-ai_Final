@@ -94,6 +94,10 @@ TESTFLIGHT_UPLOAD_LOG_MARKERS = (
     "Internal TestFlight upload command completed",
 )
 TESTFLIGHT_STATUS_LOG_MARKER = "App Store Connect confirms this build is ready for internal TestFlight."
+TESTFLIGHT_DUPLICATE_UPLOAD_LOG_MARKERS = (
+    "bundle version must be higher than the previously uploaded version",
+    f"previously uploaded version: ‘{EXPECTED_IOS_BUILD_NUMBER}’",
+)
 TESTFLIGHT_SIGNING_FAILURE_MARKERS = (
     "maximum number of certificates",
     "No profiles for 'atrak.charlie.hoopsclips' were found",
@@ -915,6 +919,12 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
     elif current_testflight_upload_proof(repo_root):
         collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
+    elif current_testflight_duplicate_upload_status_proof(repo_root):
+        collector.pass_(
+            "upload artifact",
+            "GitHub Actions",
+            f"Internal TestFlight build {EXPECTED_IOS_BUILD_NUMBER} already exists and a current App Store Connect status run proves it is ready for internal testing.",
+        )
     elif workflow_missing_upload_detail := current_testflight_workflow_missing_upload_detail(repo_root):
         collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_missing_upload_detail)
     elif workflow_failure_detail := current_testflight_workflow_failure_detail(repo_root):
@@ -945,6 +955,38 @@ def current_testflight_upload_proof(repo_root: Path) -> bool:
         if testflight_upload_log_has_markers(run.get("databaseId")):
             return True
     return False
+
+
+def current_testflight_duplicate_upload_status_proof(repo_root: Path) -> bool:
+    runs = current_testflight_workflow_dispatch_runs(repo_root)
+    current_sha = current_git_sha(repo_root)
+    if not current_sha:
+        return False
+
+    matching_runs = [
+        run
+        for run in runs
+        if isinstance(run, dict)
+        and commit_is_current_or_unchanged_for_paths(
+            repo_root,
+            str(run.get("headSha") or ""),
+            current_sha,
+            IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES,
+        )
+    ]
+    has_duplicate_upload = any(
+        str(run.get("status") or "") == "completed"
+        and str(run.get("conclusion") or "") == "failure"
+        and testflight_duplicate_upload_log_has_markers(run.get("databaseId"))
+        for run in matching_runs
+    )
+    has_status_proof = any(
+        str(run.get("status") or "") == "completed"
+        and str(run.get("conclusion") or "") == "success"
+        and testflight_status_log_has_marker(run.get("databaseId"))
+        for run in matching_runs
+    )
+    return has_duplicate_upload and has_status_proof
 
 
 def current_testflight_workflow_failure_detail(repo_root: Path) -> str:
@@ -1083,6 +1125,15 @@ def testflight_upload_log_has_markers(run_id: object) -> bool:
     return all(marker in run_log for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
 
 
+def testflight_status_log_has_marker(run_id: object) -> bool:
+    return TESTFLIGHT_STATUS_LOG_MARKER in testflight_run_log(run_id)
+
+
+def testflight_duplicate_upload_log_has_markers(run_id: object) -> bool:
+    run_log = testflight_run_log(run_id)
+    return all(marker in run_log for marker in TESTFLIGHT_DUPLICATE_UPLOAD_LOG_MARKERS)
+
+
 def testflight_workflow_failure_log_detail(run_id: object) -> str:
     if run_id in (None, ""):
         return ""
@@ -1114,6 +1165,11 @@ def testflight_workflow_failure_log_detail(run_id: object) -> str:
     ]
     if matched:
         return "signing/provisioning failure markers found: " + ", ".join(matched) + "."
+    if all(marker in result.stdout for marker in TESTFLIGHT_DUPLICATE_UPLOAD_LOG_MARKERS):
+        return (
+            f"build {EXPECTED_IOS_BUILD_NUMBER} was already uploaded; run the status operation "
+            "and confirm App Store Connect internal testing readiness instead of re-uploading the same build."
+        )
     return ""
 
 
