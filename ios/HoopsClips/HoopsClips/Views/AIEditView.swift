@@ -21,6 +21,29 @@ private enum AIEditProInfoSheet: Identifiable {
     }
 }
 
+enum AIEditSurfaceDisplayPolicy {
+    static let progressStageTitles = ["Plan", "Render", "Share"]
+
+    static func showsStudio(
+        phase: CloudEditRenderState,
+        isWorking: Bool,
+        hasStartedJob: Bool
+    ) -> Bool {
+        if isWorking {
+            return false
+        }
+
+        switch phase {
+        case .planning:
+            return !hasStartedJob
+        case .planReady, .renderRequested, .created, .queued, .rendering:
+            return false
+        case .rendered, .failed, .failedTimeout, .cancelled:
+            return true
+        }
+    }
+}
+
 struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
@@ -240,15 +263,15 @@ struct AIEditView: View {
 
     private var workflowContent: some View {
         VStack(spacing: 18) {
-            heroCard
-            compactExportSetupCard
-            if showSetupControls {
+            if shouldShowAIEditStudioCard {
+                aiEditStudioCard
+            }
+            if shouldShowAIEditStudioCard && showSetupControls {
                 stylePicker
                 formatPicker
                 durationPicker
                 promptCard
             }
-            actionCard
             if shouldShowExportProgressCard {
                 exportProgressCard
             }
@@ -284,6 +307,30 @@ struct AIEditView: View {
                 }
             }
         }
+    }
+
+    private var aiEditStudioCard: some View {
+        VStack(spacing: 14) {
+            heroCard
+
+            Divider()
+                .overlay(aiEditHeroTint.opacity(0.24))
+
+            compactExportSetupCard
+
+            Divider()
+                .overlay(Color.white.opacity(0.08))
+
+            actionCard
+        }
+        .padding(16)
+        .background(AppTheme.accentCardFill(aiEditHeroTint, opacity: 0.18), in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(aiEditHeroTint.opacity(0.30), lineWidth: 1)
+        }
+        .shadow(color: aiEditHeroTint.opacity(0.10), radius: 18, y: 10)
+        .accessibilityIdentifier("export.aiEdit.studioCard")
     }
 
     private var aiEditDetailsToggle: some View {
@@ -367,12 +414,6 @@ struct AIEditView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(AppTheme.cardBg.opacity(0.82), in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(aiEditHeroTint.opacity(0.24), lineWidth: 1)
-        )
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("export.aiEdit.section")
     }
@@ -427,7 +468,7 @@ struct AIEditView: View {
         case .failed, .failedTimeout, .cancelled:
             return AppTheme.warningYellow
         default:
-            return AppTheme.neonPurple
+            return AppTheme.rimOrange
         }
     }
 
@@ -446,7 +487,7 @@ struct AIEditView: View {
     private var compactExportSetupCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 10) {
-                Label("Setup", systemImage: "slider.horizontal.3")
+                Label("Reel setup", systemImage: "slider.horizontal.3")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .accessibilityIdentifier("export.aiEdit.smartSetupCard")
@@ -458,30 +499,30 @@ struct AIEditView: View {
                         showSetupControls.toggle()
                     }
                 } label: {
-                    Text(showSetupControls ? "Done" : "Change")
+                    Label(showSetupControls ? "Done" : "Change", systemImage: showSetupControls ? "checkmark" : "slider.horizontal.3")
                         .font(.caption.bold())
-                        .foregroundStyle(AppTheme.warningYellow)
+                        .foregroundStyle(AppTheme.rimOrange)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
-                        .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+                        .background(AppTheme.rimOrange.opacity(0.13), in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("export.aiEdit.smartSetup.changeButton")
             }
 
             VStack(spacing: 8) {
-                exportSetupChip(selectedTemplateTitle, icon: "sparkles")
+                exportSetupChip(selectedTemplateTitle, icon: "sparkles", tint: AppTheme.rimOrange)
                     .accessibilityIdentifier("export.aiEdit.setup.styleSummary")
 
                 HStack(spacing: 8) {
-                    exportSetupChip(selectedAspectRatio.rawValue, icon: selectedAspectRatio.icon)
+                    exportSetupChip(selectedAspectRatio.rawValue, icon: selectedAspectRatio.icon, tint: AppTheme.courtBlue)
                         .accessibilityIdentifier("export.aiEdit.setup.formatSummary")
-                    exportSetupChip(formattedDuration(selectedDuration), icon: "timer")
+                    exportSetupChip(formattedDuration(selectedDuration), icon: "timer", tint: AppTheme.mintGlow)
                         .accessibilityIdentifier("export.aiEdit.setup.durationSummary")
                 }
 
                 if let selectedQuickPrompt {
-                    exportSetupChip(selectedQuickPrompt.title, icon: selectedQuickPrompt.icon)
+                    exportSetupChip(selectedQuickPrompt.title, icon: selectedQuickPrompt.icon, tint: AppTheme.warningYellow)
                         .accessibilityIdentifier("export.aiEdit.setup.quickFocusSummary")
                 }
             }
@@ -504,24 +545,22 @@ struct AIEditView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(AppTheme.cardBg.opacity(0.78), in: .rect(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
-        )
     }
 
-    private func exportSetupChip(_ text: String, icon: String) -> some View {
+    private func exportSetupChip(_ text: String, icon: String, tint: Color) -> some View {
         Label(text, systemImage: icon)
-            .font(.caption.bold())
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white)
             .lineLimit(1)
             .minimumScaleFactor(0.74)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .background(AppTheme.accentPurple.opacity(0.26), in: .rect(cornerRadius: 12))
+            .background(tint.opacity(0.15), in: .rect(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(tint.opacity(0.22), lineWidth: 1)
+            }
     }
 
     private var exportProgressCard: some View {
@@ -534,7 +573,7 @@ struct AIEditView: View {
                         .trim(from: 0, to: exportProgressValue)
                         .stroke(
                             LinearGradient(
-                                colors: [AppTheme.neonPurple, AppTheme.warningYellow],
+                                colors: [AppTheme.courtBlue, AppTheme.rimOrange],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
@@ -580,10 +619,10 @@ struct AIEditView: View {
             }
         }
         .padding(14)
-        .background(AppTheme.cardBg.opacity(0.74), in: .rect(cornerRadius: 18))
+        .background(AppTheme.accentCardFill(exportProgressTint, opacity: 0.16), in: .rect(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(exportProgressTint.opacity(0.18), lineWidth: 1)
+                .stroke(exportProgressTint.opacity(0.30), lineWidth: 1)
         )
         .accessibilityIdentifier("export.aiEdit.renderProgressCard")
     }
@@ -1861,15 +1900,17 @@ struct AIEditView: View {
 
             Button(action: startEdit) {
                 fullWidthActionLabel(primaryActionTitle, systemImage: primaryActionIcon)
+                    .foregroundStyle(primaryActionDisabled ? AppTheme.subtleText : .black)
+                    .background(
+                        primaryActionDisabled ? AppTheme.surfaceBg.opacity(0.78) : AppTheme.rimOrange,
+                        in: .rect(cornerRadius: 14)
+                    )
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.accentPurple)
+            .buttonStyle(.plain)
             .disabled(primaryActionDisabled)
             .accessibilityIdentifier(primaryActionAccessibilityIdentifier)
             .accessibilityHint(primaryActionHint)
         }
-        .padding(14)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
     }
 
     private func fullWidthActionLabel(
@@ -2074,7 +2115,8 @@ struct AIEditView: View {
     }
 
     private var shouldShowAIEditDetailsToggle: Bool {
-        hasStartedAIEditJob
+        guard !shouldShowExportProgressCard else { return false }
+        return hasStartedAIEditJob
             || shouldShowCloudLocker
             || activeWorkReceipt != nil
     }
@@ -2467,19 +2509,26 @@ struct AIEditView: View {
     private var shouldShowStatusNoticeCard: Bool {
         cloudEditActionBlockedMessage != nil
             || serviceStatusBlocksRendering
-            || (hasStartedAIEditJob && !serviceStatusIsChecking && serviceStatusErrorMessage != nil)
+    }
+
+    private var shouldShowAIEditStudioCard: Bool {
+        AIEditSurfaceDisplayPolicy.showsStudio(
+            phase: phase,
+            isWorking: isWorking,
+            hasStartedJob: hasStartedAIEditJob
+        )
     }
 
     private var exportProgressValue: CGFloat {
         switch phase {
         case .planning:
-            return hasStartedAIEditJob ? 0.22 : 0.08
+            return hasStartedAIEditJob ? 0.26 : 0.08
         case .planReady:
-            return 0.38
+            return 0.48
         case .renderRequested, .created, .queued:
-            return 0.58
+            return 0.64
         case .rendering:
-            return 0.78
+            return 0.84
         case .rendered:
             return 1
         case .failed, .failedTimeout, .cancelled:
@@ -2490,9 +2539,9 @@ struct AIEditView: View {
     private var exportProgressTitle: String {
         switch phase {
         case .planning:
-            return hasStartedAIEditJob || isWorking ? "Building reel" : "Ready to make reel"
+            return hasStartedAIEditJob || isWorking ? "Planning reel" : "Ready to make reel"
         case .planReady:
-            return "Edit plan ready"
+            return "Plan ready"
         case .renderRequested, .created, .queued:
             return "Reel queued"
         case .rendering:
@@ -2513,8 +2562,15 @@ struct AIEditView: View {
         if phase == .failed || phase == .failedTimeout || phase == .cancelled {
             return "Try again when cloud render is available."
         }
-        if isWorking || hasStartedAIEditJob {
-            return "Cloud status updates here."
+        switch phase {
+        case .planning:
+            return "Choosing the strongest reviewed plays."
+        case .planReady, .renderRequested, .created, .queued:
+            return "Waiting for the cloud render."
+        case .rendering:
+            return "Finishing the video."
+        case .rendered, .failed, .failedTimeout, .cancelled:
+            break
         }
         return "Pick setup, then make the reel."
     }
@@ -2539,9 +2595,9 @@ struct AIEditView: View {
         case .failed, .failedTimeout, .cancelled:
             return AppTheme.dangerRed
         case .rendering, .renderRequested, .created, .queued:
-            return AppTheme.warningYellow
+            return AppTheme.courtBlue
         default:
-            return AppTheme.neonPurple
+            return AppTheme.rimOrange
         }
     }
 
@@ -2550,15 +2606,13 @@ struct AIEditView: View {
         switch phase {
         case .planning:
             activeIndex = 0
-        case .planReady:
+        case .planReady, .renderRequested, .created, .queued, .rendering, .failed, .failedTimeout, .cancelled:
             activeIndex = 1
-        case .renderRequested, .created, .queued, .rendering, .failed, .failedTimeout, .cancelled:
-            activeIndex = 2
         case .rendered:
-            activeIndex = 3
+            activeIndex = 2
         }
 
-        let steps = ["Analyze", "Edit", "Render", "Share"]
+        let steps = AIEditSurfaceDisplayPolicy.progressStageTitles
         return steps.enumerated().map { index, title in
             (
                 title: title,
