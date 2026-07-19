@@ -39,6 +39,7 @@ ALLOWED_SCREENSHOT_DIMENSIONS = {
 }
 READY_STATUS = "ready"
 CANONICAL_PUBLIC_URLS = {
+    "marketingURL": "https://atrak.dev/apps/hoopsclips/",
     "supportURL": "https://atrak.dev/apps/hoopsclips/support.html",
     "privacyPolicyURL": "https://atrak.dev/apps/hoopsclips/privacy.html",
     "termsOfServiceURL": "https://atrak.dev/apps/hoopsclips/terms.html",
@@ -46,6 +47,40 @@ CANONICAL_PUBLIC_URLS = {
 EXPECTED_CATEGORIES = {
     "primary": "Photo & Video",
     "secondary": "Sports",
+}
+EXPECTED_PRIVACY_DATA_TYPES = {
+    "Email Address": True,
+    "Photos or Videos": True,
+    "User ID": True,
+    "Device ID": True,
+    "Purchase History": False,
+    "Customer Support": True,
+    "Product Interaction": False,
+    "Other Diagnostic Data": False,
+}
+EXPECTED_AGE_FEATURES = {
+    "parentalControls",
+    "ageAssurance",
+    "unrestrictedWebAccess",
+    "broadUserGeneratedContentDistribution",
+    "socialMedia",
+    "messagingAndChat",
+    "advertising",
+}
+REQUIRED_OPERATOR_GATES = {
+    "app_review_account",
+    "app_store_listing",
+    "app_store_screenshots",
+    "build_selection",
+    "pricing_availability",
+    "app_privacy",
+    "age_rating",
+    "content_rights",
+    "digital_services_act",
+    "first_subscription_review",
+    "installed_testflight_smoke",
+    "shared_backend_accuracy",
+    "final_add_for_review",
 }
 
 
@@ -218,11 +253,104 @@ def validate_package(
                 Finding(
                     "pass",
                     "urls",
-                    "Canonical HoopClips support, privacy, and terms URLs are ready.",
+                    "Canonical HoopClips product, support, privacy, and terms URLs are ready.",
                 )
             )
     except PackageValidationError as error:
         findings.append(Finding("error", "urls", str(error)))
+
+    try:
+        privacy = _mapping(root.get("privacyDeclaration"), "privacyDeclaration")
+        privacy_manifest_path = resolve_repo_path(
+            repo_root,
+            privacy.get("privacyManifestPath"),
+            "privacyDeclaration.privacyManifestPath",
+        )
+        if not privacy_manifest_path.is_file():
+            findings.append(
+                Finding("error", "privacyDeclaration", "The first-party privacy manifest is missing.")
+            )
+        privacy_errors: list[str] = []
+        if privacy.get("collectsData") is not True:
+            privacy_errors.append("collectsData must be true")
+        if privacy.get("tracking") is not False:
+            privacy_errors.append("tracking must be false")
+        declared_types: dict[str, bool] = {}
+        for index, raw_entry in enumerate(_list(privacy.get("dataTypes"), "privacyDeclaration.dataTypes")):
+            entry = _mapping(raw_entry, f"privacyDeclaration.dataTypes[{index}]")
+            data_type = _text(entry.get("type"), f"privacyDeclaration.dataTypes[{index}].type")
+            if data_type in declared_types:
+                privacy_errors.append(f"duplicate data type {data_type}")
+                continue
+            linked = entry.get("linkedToUser")
+            if not isinstance(linked, bool):
+                privacy_errors.append(f"{data_type} linkedToUser must be boolean")
+                continue
+            declared_types[data_type] = linked
+            if entry.get("tracking") is not False:
+                privacy_errors.append(f"{data_type} must not be marked for tracking")
+            purposes = _list(entry.get("purposes"), f"privacyDeclaration.dataTypes[{index}].purposes")
+            if purposes != ["App Functionality"]:
+                privacy_errors.append(f"{data_type} must use App Functionality only")
+        if declared_types != EXPECTED_PRIVACY_DATA_TYPES:
+            missing = sorted(set(EXPECTED_PRIVACY_DATA_TYPES) - set(declared_types))
+            extra = sorted(set(declared_types) - set(EXPECTED_PRIVACY_DATA_TYPES))
+            mismatched = sorted(
+                data_type
+                for data_type in set(declared_types) & set(EXPECTED_PRIVACY_DATA_TYPES)
+                if declared_types[data_type] != EXPECTED_PRIVACY_DATA_TYPES[data_type]
+            )
+            if missing:
+                privacy_errors.append(f"missing data types: {', '.join(missing)}")
+            if extra:
+                privacy_errors.append(f"unexpected data types: {', '.join(extra)}")
+            if mismatched:
+                privacy_errors.append(f"incorrect linked-to-user values: {', '.join(mismatched)}")
+        if privacy_errors:
+            findings.append(Finding("error", "privacyDeclaration", "; ".join(privacy_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "privacyDeclaration",
+                    "No-tracking App Privacy data map matches the iOS and RevenueCat manifests.",
+                )
+            )
+    except (OSError, PackageValidationError) as error:
+        findings.append(Finding("error", "privacyDeclaration", str(error)))
+
+    try:
+        pricing = _mapping(root.get("pricingAvailabilityDraft"), "pricingAvailabilityDraft")
+        content_rights = _mapping(root.get("contentRightsDraft"), "contentRightsDraft")
+        age_rating = _mapping(root.get("ageRatingDraft"), "ageRatingDraft")
+        age_features = _mapping(age_rating.get("features"), "ageRatingDraft.features")
+        draft_errors: list[str] = []
+        if pricing.get("appPrice") != "Free":
+            draft_errors.append("appPrice must be Free")
+        if pricing.get("availability") != "all_countries_or_regions":
+            draft_errors.append("availability must be all_countries_or_regions")
+        if content_rights.get("containsOrAccessesThirdPartyContent") is not True:
+            draft_errors.append("content-rights draft must acknowledge user-uploaded content")
+        if content_rights.get("necessaryRightsRequired") is not True:
+            draft_errors.append("content-rights draft must require necessary rights")
+        if set(age_features) != EXPECTED_AGE_FEATURES:
+            draft_errors.append("age-rating feature set is incomplete or contains unexpected keys")
+        if any(value is not False for value in age_features.values()):
+            draft_errors.append("all declared age-rating capability flags must be false")
+        if age_rating.get("contentFrequency") != "none":
+            draft_errors.append("age-rating content frequency must be none")
+        if draft_errors:
+            findings.append(Finding("error", "submissionDrafts", "; ".join(draft_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "submissionDrafts",
+                    "Free pricing, content-rights, and age-rating answers are explicitly prepared for operator confirmation.",
+                )
+            )
+    except PackageValidationError as error:
+        findings.append(Finding("error", "submissionDrafts", str(error)))
 
     seen_device_classes: set[str] = set()
     try:
@@ -348,16 +476,67 @@ def validate_package(
         findings.append(Finding("error", "release", str(error)))
 
     try:
+        audit = _mapping(root.get("appStoreConnectAudit"), "appStoreConnectAudit")
+        audit_build = _mapping(audit.get("testFlightBuild"), "appStoreConnectAudit.testFlightBuild")
+        dsa = _mapping(audit.get("digitalServicesAct"), "appStoreConnectAudit.digitalServicesAct")
+        subscription = _mapping(audit.get("subscription"), "appStoreConnectAudit.subscription")
+        release = _mapping(root.get("release"), "release")
+        audit_errors: list[str] = []
+        if audit.get("versionState") != "prepare_for_submission":
+            audit_errors.append("version state must remain prepare_for_submission until review submission")
+        if audit_build.get("version") != release.get("version") or audit_build.get("build") != release.get("build"):
+            audit_errors.append("TestFlight build evidence must match the release version and build")
+        if audit_build.get("processingState") != "valid":
+            audit_errors.append("TestFlight build must be valid")
+        if dsa != {"status": "ready", "declaration": "non_trader"}:
+            audit_errors.append("DSA non-trader declaration must be recorded as ready")
+        if subscription.get("productId") != "monthly_premium":
+            audit_errors.append("monthly_premium subscription evidence is missing")
+        if subscription.get("basePriceUSD") != "9.99":
+            audit_errors.append("subscription base price evidence must be USD 9.99")
+        if subscription.get("availability") != "all_countries_or_regions":
+            audit_errors.append("subscription availability evidence must cover all countries or regions")
+        if audit_errors:
+            findings.append(Finding("error", "appStoreConnectAudit", "; ".join(audit_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "appStoreConnectAudit",
+                    "Live build, DSA, and subscription evidence is recorded without credentials.",
+                )
+            )
+    except PackageValidationError as error:
+        findings.append(Finding("error", "appStoreConnectAudit", str(error)))
+
+    try:
         operator_gates = _list(root.get("operatorGates"), "operatorGates")
         if not operator_gates:
             findings.append(Finding("error", "operatorGates", "At least one explicit operator gate is required."))
+        seen_gate_ids: set[str] = set()
         for index, raw_gate in enumerate(operator_gates):
             gate = _mapping(raw_gate, f"operatorGates[{index}]")
             gate_id = _text(gate.get("id"), f"operatorGates[{index}].id")
             status = _text(gate.get("status"), f"operatorGates[{index}].status")
             detail = _text(gate.get("detail"), f"operatorGates[{index}].detail")
+            if gate_id in seen_gate_ids:
+                findings.append(Finding("error", "operatorGates", f"Duplicate operator gate {gate_id}."))
+            seen_gate_ids.add(gate_id)
+            if status not in {READY_STATUS, "operator_review_required"}:
+                findings.append(
+                    Finding("error", "operatorGates", f"Gate {gate_id} has unsupported status {status}.")
+                )
             if status != READY_STATUS:
                 findings.append(Finding("blocked", gate_id, detail))
+        missing_gate_ids = sorted(REQUIRED_OPERATOR_GATES - seen_gate_ids)
+        if missing_gate_ids:
+            findings.append(
+                Finding(
+                    "error",
+                    "operatorGates",
+                    f"Missing required operator gates: {', '.join(missing_gate_ids)}.",
+                )
+            )
     except PackageValidationError as error:
         findings.append(Finding("error", "operatorGates", str(error)))
 
