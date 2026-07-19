@@ -5,16 +5,18 @@ HoopClips now has an asset-first upload path for scalable video intake.
 ## Flow
 
 1. Client calls `POST /v1/uploads/init`.
-2. Backend creates an asset record and returns a single PUT or multipart upload plan.
-3. Client uploads directly to the returned target.
+2. Backend creates an asset record and returns either one signed PUT target or the full multipart plan, including every signed part target.
+3. Client uploads directly to Cloudflare R2. Multipart uploads can transfer up to six parts concurrently on an unconstrained network.
 4. Client calls `POST /v1/uploads/{assetId}/complete`.
-5. Backend runs post-upload processing:
+5. The Worker verifies or assembles the R2 source object. Backends with an artifact-processing lane can then run:
    - proxy MP4 generation
    - thumbnail generation
    - waveform metadata generation
 6. Client polls `GET /v1/assets/{assetId}`.
-7. Client can scan teams with `POST /v1/assets/{assetId}/team-scan` only after `proxy_ready`.
-8. Client starts AI with `POST /v1/assets/{assetId}/analysis-jobs` only after `proxy_ready`.
+7. Client can scan teams with `POST /v1/assets/{assetId}/team-scan` once the source is ready.
+8. Client starts AI with `POST /v1/assets/{assetId}/analysis-jobs` once the source is ready.
+
+The Cloudflare Worker asset route is a compatibility bridge over the existing job state, queue, and R2 objects. It returns the owner-scoped source `storageKey` required by the current iOS asset decoder while the legacy public job-poll response continues to redact storage keys. The Worker currently marks a verified source as `ready` with empty optional proxy, thumbnail, and waveform artifacts; iOS therefore uses the source object until a separate proxy artifact exists.
 
 ## Local Implementation
 
@@ -39,15 +41,15 @@ Legacy internal `sourceUrl` is still accepted as a compatibility path, but norma
 
 ## iOS Client Behavior
 
-The Swift client now attempts the asset upload path first:
+The Swift client attempts the asset upload path first:
 
 `uploads/init -> signed upload -> uploads/{assetId}/complete -> assets/{assetId} proxy_ready -> team-scan or analysis-jobs`
 
-If `/v1/uploads/init` is not available, the client falls back to the legacy `analysis/jobs -> uploadUrl -> start` path for current Worker compatibility. New resume manifests persist optional `assetId`, `storageKey`, and asset multipart targets so foreground-interrupted asset uploads complete through the asset API instead of the legacy job-start route.
+The Worker implements that complete route set. The client still falls back to `analysis/jobs -> uploadUrl -> start` when an older deployment returns an unavailable-route response, which keeps existing builds compatible during rollout. New resume manifests persist optional `assetId`, `storageKey`, and asset multipart targets so foreground-interrupted asset uploads complete through the asset API instead of the legacy job-start route.
 
 ## Upload Throughput Policy
 
-Large uploads use adaptive multipart sizing in both the live Worker compatibility path and the asset-first client contract. The planner uses 8–32 MiB parts and targets about 24 parts per upload. A 380 MiB basketball video therefore uses 24 parts at 16 MiB instead of 48 parts at 8 MiB, cutting presign, background-session, and chunk-staging overhead without changing the uploaded bytes.
+Large uploads use adaptive multipart sizing in both the Worker and the asset-first client contract. The planner uses 8–32 MiB parts and targets about 24 parts per upload. A 380 MiB basketball video therefore uses 24 parts at 16 MiB instead of 48 parts at 8 MiB, cutting signing, background-session, and chunk-staging overhead without changing the uploaded bytes. The canonical init response signs all part targets concurrently and returns them together, so the client does not need a control-plane request before each part.
 
 The iOS client runs up to six multipart lanes on a normal network. Expensive networks remain capped at two lanes, and Low Data Mode remains capped at one. It starts conservatively at one lane until iOS classifies the network and rechecks the cap between completed parts so Wi-Fi/cellular changes affect the remaining upload.
 

@@ -105,6 +105,7 @@ export async function createResumableUploadTarget(
     contentType: string;
     fileSizeBytes: number;
     expiresInSeconds: number;
+    preferredPartSizeBytes?: number | null;
   }
 ): Promise<ResumableUploadTarget | null> {
   if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
@@ -143,7 +144,10 @@ export async function createResumableUploadTarget(
     throw new Error("Resumable upload response was missing an upload ID.");
   }
 
-  const chunkSizeBytes = chooseMultipartChunkSize(params.fileSizeBytes);
+  const chunkSizeBytes = chooseMultipartChunkSize(
+    params.fileSizeBytes,
+    params.preferredPartSizeBytes
+  );
   return {
     uploadId,
     chunkSizeBytes,
@@ -281,13 +285,20 @@ function buildR2ObjectUrl(env: Env, bucketName: string, objectKey: string): URL 
   return new URL(`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${bucketName}/${objectKey}`);
 }
 
-export function chooseMultipartChunkSize(fileSizeBytes: number): number {
+export function chooseMultipartChunkSize(
+  fileSizeBytes: number,
+  preferredPartSizeBytes?: number | null
+): number {
   const partSizeQuantumBytes = 8 * 1024 * 1024;
   const preferredPartCount = 24;
   const maxPreferredPartBytes = 32 * 1024 * 1024;
   const maxPartCount = 10000;
   const safeFileSizeBytes = Number.isFinite(fileSizeBytes) ? Math.max(Math.floor(fileSizeBytes), 1) : 1;
-  const targetPartBytes = Math.ceil(safeFileSizeBytes / preferredPartCount);
+  const requestedPartBytes =
+    typeof preferredPartSizeBytes === "number" && Number.isFinite(preferredPartSizeBytes) && preferredPartSizeBytes > 0
+      ? Math.floor(preferredPartSizeBytes)
+      : null;
+  const targetPartBytes = requestedPartBytes ?? Math.ceil(safeFileSizeBytes / preferredPartCount);
   const quantizedPartBytes = Math.ceil(targetPartBytes / partSizeQuantumBytes) * partSizeQuantumBytes;
   const preferredPartBytes = Math.min(
     Math.max(quantizedPartBytes, partSizeQuantumBytes),

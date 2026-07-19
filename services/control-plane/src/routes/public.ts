@@ -1,7 +1,11 @@
 import type { Env } from "../env";
 import type {
+  AssetAnalysisJobResponse,
+  AssetStatus,
+  AssetStatusResponse,
   CloudAnalysisCapabilitiesResponse,
   CloudAnalysisJobResponse,
+  CreateAssetAnalysisJobRequest,
   CreateCloudAnalysisJobRequest,
   CreateCloudAnalysisJobResponse,
   CreateCloudJobRequest,
@@ -17,6 +21,10 @@ import type {
   StartCloudAnalysisJobResponse,
   TeamOption,
   TeamSelection,
+  UploadCompleteRequest,
+  UploadCompleteResponse,
+  UploadInitRequest,
+  UploadInitResponse,
   UploadPresignResponse
 } from "../types";
 import { bootstrapJob, deleteJobState, getJobSnapshot, updateJobState } from "../do/job-state-client";
@@ -102,6 +110,10 @@ export async function routePublicRequest(
     return handleCapabilities(requestId, runtime);
   }
 
+  if (request.method === "POST" && route === "/uploads/init") {
+    return handleAssetUploadInit(request, env, requestId, runtime.schemaVersion);
+  }
+
   if (request.method === "POST" && (route === "/uploads/presign" || isLegacyPresign)) {
     return handlePresign(request, env, requestId, runtime.schemaVersion, url);
   }
@@ -176,6 +188,39 @@ export async function routePublicRequest(
     }
   }
 
+  const assetMatch = matchAssetPath(route);
+  if (assetMatch) {
+    if (request.method === "GET" && assetMatch.kind === "status") {
+      return handleAssetStatus(
+        env,
+        requestId,
+        runtime.schemaVersion,
+        assetMatch.assetId,
+        url.searchParams.get("installId")
+      );
+    }
+    if (request.method === "POST" && assetMatch.kind === "complete") {
+      return handleAssetUploadComplete(request, env, requestId, runtime.schemaVersion, assetMatch.assetId);
+    }
+    if (request.method === "POST" && assetMatch.kind === "analysis-jobs") {
+      const body = await readJson<CreateAssetAnalysisJobRequest>(request);
+      return handleAssetAnalysisJob(
+        request,
+        env,
+        ctx,
+        requestId,
+        runtime.schemaVersion,
+        url,
+        assetMatch.assetId,
+        body
+      );
+    }
+    if (request.method === "POST" && assetMatch.kind === "team-scan") {
+      const body = await readJson<ScanCloudAnalysisTeamsRequest>(request);
+      return handleTeamScanJob(env, requestId, runtime.schemaVersion, assetMatch.assetId, body);
+    }
+  }
+
   const jobMatch = matchJobPath(route);
   if (!jobMatch) {
     return null;
@@ -223,6 +268,403 @@ export async function routePublicRequest(
   }
 
   return null;
+}
+
+async function handleAssetUploadInit(
+  request: Request,
+  env: Env,
+  requestId: string,
+  schemaVersion: string
+): Promise<Response> {
+  try {
+    const body = await readJson<UploadInitRequest>(request);
+    if (
+      body.uploadPreference != null
+      && body.uploadPreference !== "single"
+      && body.uploadPreference !== "multipart"
+      && body.uploadPreference !== "auto"
+    ) {
+      throw new Error("uploadPreference must be single, multipart, or auto.");
+    }
+
+    const legacyUploadPreference: CreateCloudAnalysisJobRequest["uploadPreference"] =
+      body.uploadPreference === "single" ? "single" : "resumable";
+    const legacyHeaders = new Headers(request.headers);
+    legacyHeaders.delete("content-length");
+    legacyHeaders.set("content-type", "application/json");
+    const legacyRequest = new Request(request.url, {
+      method: "POST",
+      headers: legacyHeaders,
+      body: JSON.stringify({
+        filename: body.filename,
+        contentType: body.contentType,
+        fileSizeBytes: body.fileSizeBytes,
+        durationSeconds: body.durationSeconds,
+        installId: body.installId,
+        appVersion: body.appVersion,
+        analysisVersion: body.analysisVersion,
+        uploadPreference: legacyUploadPreference,
+        partSizeBytes: body.partSizeBytes ?? null
+      } satisfies CreateCloudAnalysisJobRequest)
+    });
+    const presignResponse = await handlePresign(
+      legacyRequest,
+      env,
+      requestId,
+      schemaVersion,
+      new URL(request.url)
+    );
+    if (!presignResponse.ok) {
+      return presignResponse;
+    }
+
+    const presign = (await presignResponse.json()) as UploadPresignResponse & CreateCloudAnalysisJobResponse;
+    const assetId = presign.assetId ?? presign.jobId;
+    const storageKey = presign.sourceObjectKey;
+    if (!assetId || !storageKey) {
+      throw new Error("Upload initialization did not return an asset identity.");
+    }
+
+    const multipart = presign.resumableUpload
+      ? {
+          uploadId: presign.resumableUpload.uploadId,
+          partSizeBytes: presign.resumableUpload.chunkSizeBytes,
+          partCount: presign.resumableUpload.partCount,
+          parts: await buildAssetMultipartPartTargets(
+            env,
+            storageKey,
+            presign.resumableUpload.uploadId,
+            presign.resumableUpload.partCount
+          )
+        }
+      : null;
+    const uploadMode: UploadInitResponse["uploadMode"] = multipart ? "multipart" : "single";
+    const response: UploadInitResponse = {
+      requestId,
+      schemaVersion,
+      confidence: presign.confidence ?? null,
+      modelVersion: presign.modelVersion ?? null,
+      failureReason: presign.failureReason ?? null,
+      uploadTraceId: presign.uploadTraceId ?? null,
+      inferenceAttemptId: presign.inferenceAttemptId ?? null,
+      assetId,
+      storageKey,
+      status: "initialized",
+      uploadMode,
+      uploadUrl: uploadMode === "single" ? presign.uploadUrl : null,
+      uploadMethod: presign.uploadMethod,
+      uploadHeaders: uploadMode === "single" ? presign.uploadHeaders : {},
+      multipart,
+      expiresAt: presign.resumableUpload?.expiresAt ?? presign.expiresAt,
+      pollAfterSeconds: presign.pollAfterSeconds,
+      uploadState: "waiting_for_client_upload"
+    };
+    return jsonResponse(response, { status: 201 }, requestId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid asset upload request.";
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: message,
+        failureReason: message
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+}
+
+async function buildAssetMultipartPartTargets(
+  env: Env,
+  sourceObjectKey: string,
+  uploadId: string,
+  partCount: number
+): Promise<NonNullable<UploadInitResponse["multipart"]>["parts"]> {
+  if (!Number.isInteger(partCount) || partCount <= 0 || partCount > 10_000) {
+    throw new Error("Multipart upload returned an invalid part count.");
+  }
+
+  const expiresInSeconds = resolveRuntimeConfig(env).signedUploadTtlSeconds;
+  return Promise.all(
+    Array.from({ length: partCount }, async (_, index) => {
+      const partNumber = index + 1;
+      const target = await createPresignedMultipartPartTarget(env, {
+        objectKey: sourceObjectKey,
+        uploadId,
+        partNumber,
+        expiresInSeconds
+      });
+      return {
+        uploadUrl: target.uploadUrl,
+        uploadMethod: target.uploadMethod,
+        uploadHeaders: target.uploadHeaders,
+        partNumber
+      };
+    })
+  );
+}
+
+async function handleAssetUploadComplete(
+  request: Request,
+  env: Env,
+  requestId: string,
+  schemaVersion: string,
+  assetId: string
+): Promise<Response> {
+  try {
+    const body = await readJson<UploadCompleteRequest>(request);
+    if (!body.installId || typeof body.installId !== "string") {
+      throw new Error("installId is required.");
+    }
+
+    const jobOrResponse = await getUploadOwnedJob(
+      env,
+      requestId,
+      schemaVersion,
+      assetId,
+      body.installId,
+      {
+        expiredUploadGraceSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds,
+        allowReadyUploadStatuses: true
+      }
+    );
+    if (jobOrResponse instanceof Response) {
+      return jobOrResponse;
+    }
+    if (isReadyUploadStatus(jobOrResponse.status)) {
+      return jsonResponse(
+        toAssetUploadCompleteResponse(
+          jobOrResponse,
+          requestId,
+          schemaVersion,
+          resolveRuntimeConfig(env).defaultPollAfterSeconds
+        ),
+        { status: 200 },
+        requestId
+      );
+    }
+
+    const rawParts = Array.isArray(body.parts) ? body.parts : [];
+    const parts = rawParts
+      .map((part) => ({
+        partNumber: Number(part.partNumber),
+        etag: typeof part.etag === "string" ? part.etag.trim() : ""
+      }))
+      .filter((part) => Number.isInteger(part.partNumber) && part.partNumber > 0 && part.etag.length > 0)
+      .sort((a, b) => a.partNumber - b.partNumber);
+    if (parts.length !== rawParts.length || new Set(parts.map((part) => part.partNumber)).size !== parts.length) {
+      throw new Error("Each uploaded part needs a unique partNumber and ETag.");
+    }
+
+    const uploadId = typeof body.uploadId === "string" ? body.uploadId.trim() : "";
+    const isMultipart = uploadId.length > 0 || parts.length > 0;
+    if (isMultipart && (uploadId.length === 0 || parts.length === 0)) {
+      throw new Error("Multipart completion requires uploadId and uploaded parts.");
+    }
+
+    let uploadAlreadyAssembled = (await env.R2_UPLOADS.head(jobOrResponse.sourceObjectKey)) != null;
+    if (isMultipart && !uploadAlreadyAssembled) {
+      try {
+        await completeMultipartUpload(env, {
+          objectKey: jobOrResponse.sourceObjectKey,
+          uploadId,
+          parts
+        });
+      } catch (error) {
+        uploadAlreadyAssembled = (await env.R2_UPLOADS.head(jobOrResponse.sourceObjectKey)) != null;
+        if (!uploadAlreadyAssembled) {
+          throw error;
+        }
+      }
+    }
+
+    const uploadExists = (await env.R2_UPLOADS.head(jobOrResponse.sourceObjectKey)) != null;
+    if (!uploadExists) {
+      throw new Error("Upload is missing. Complete the signed upload before completing the asset.");
+    }
+
+    const now = new Date().toISOString();
+    const patched = await updateJobState(
+      env,
+      jobOrResponse.jobId,
+      {
+        status: "uploaded",
+        stage: isMultipart ? "Resumable upload assembled" : "Upload verified",
+        progress: Math.max(jobOrResponse.progress, 0.35),
+        uploadedAt: jobOrResponse.uploadedAt ?? now,
+        updatedAt: now
+      },
+      {
+        requestId,
+        traceId: jobOrResponse.traceId,
+        eventType: isMultipart ? "asset.multipart_upload.completed" : "asset.upload.completed",
+        message: isMultipart
+          ? uploadAlreadyAssembled
+            ? "Asset resumable upload was already assembled."
+            : "Asset resumable upload parts assembled."
+          : "Asset upload verified.",
+        payload: {
+          partCount: parts.length,
+          alreadyAssembled: uploadAlreadyAssembled,
+          uploadTraceId: jobOrResponse.uploadTraceId ?? null
+        }
+      }
+    );
+
+    return jsonResponse(
+      toAssetUploadCompleteResponse(
+        patched,
+        requestId,
+        schemaVersion,
+        resolveRuntimeConfig(env).defaultPollAfterSeconds
+      ),
+      { status: 200 },
+      requestId
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid asset upload complete request.";
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: message,
+        failureReason: message
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+}
+
+async function handleAssetStatus(
+  env: Env,
+  requestId: string,
+  schemaVersion: string,
+  assetId: string,
+  installId: string | null
+): Promise<Response> {
+  if (!installId || installId.trim().length === 0) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: "installId is required.",
+        failureReason: "installId is required."
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+
+  const job = await getJobSnapshot(env, assetId);
+  if (!job) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "asset_not_found",
+        errorMessage: "Asset was not found.",
+        failureReason: "Asset was not found."
+      },
+      { status: 404 },
+      requestId
+    );
+  }
+  if (job.installId !== installId) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "install_mismatch",
+        errorMessage: "Install ID does not own this asset.",
+        failureReason: "Install ID does not own this asset."
+      },
+      { status: 403 },
+      requestId
+    );
+  }
+
+  return jsonResponse(toAssetStatusResponse(job, requestId, schemaVersion), { status: 200 }, requestId);
+}
+
+async function handleAssetAnalysisJob(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  requestId: string,
+  schemaVersion: string,
+  url: URL,
+  assetId: string,
+  body: CreateAssetAnalysisJobRequest
+): Promise<Response> {
+  const finalizeResponse = await handleFinalizeJob(
+    request,
+    env,
+    ctx,
+    requestId,
+    schemaVersion,
+    url,
+    assetId,
+    body.installId,
+    {
+      installId: body.installId,
+      teamSelection: body.teamSelection
+    }
+  );
+  if (!finalizeResponse.ok) {
+    return finalizeResponse;
+  }
+
+  const job = (await finalizeResponse.json()) as CloudAnalysisJobResponse;
+  const snapshot = await getJobSnapshot(env, assetId);
+  const storageKey = job.sourceObjectKey ?? snapshot?.sourceObjectKey;
+  if (!storageKey) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "asset_storage_missing",
+        errorMessage: "Asset storage is unavailable.",
+        failureReason: "Asset storage is unavailable."
+      },
+      { status: 500 },
+      requestId
+    );
+  }
+
+  const response: AssetAnalysisJobResponse = {
+    requestId,
+    schemaVersion,
+    confidence: job.confidence ?? null,
+    modelVersion: job.modelVersion ?? null,
+    failureReason: job.failureReason ?? null,
+    uploadTraceId: job.uploadTraceId ?? null,
+    inferenceAttemptId: job.inferenceAttemptId ?? null,
+    jobId: job.jobId,
+    assetId: job.assetId ?? assetId,
+    storageKey,
+    status: job.status,
+    pollAfterSeconds: resolveRuntimeConfig(env).defaultPollAfterSeconds,
+    quotaRemainingToday: DEFAULT_FREE_DAILY_QUOTA,
+    analysisMode: "cloud"
+  };
+  return jsonResponse(response, { status: 200 }, requestId);
 }
 
 async function handlePresign(
@@ -292,6 +734,7 @@ async function handlePresign(
       uploadUrl: upload.uploadUrl,
       uploadMethod: upload.uploadMethod,
       uploadHeaders: upload.uploadHeaders,
+      uploadMode: resumableUpload ? "multipart" : "single",
       expiresAt: upload.expiresAt,
       updatedAt: now,
       resultConfidence: null,
@@ -938,7 +1381,7 @@ async function handleTeamScanJob(
     );
   }
 
-  if (job.status !== "created" && job.status !== "upload_pending") {
+  if (job.status !== "created" && job.status !== "upload_pending" && job.status !== "uploaded") {
     return jsonResponse(
       {
         requestId,
@@ -1295,7 +1738,8 @@ async function maybeCreateResumableUpload(
       objectKey,
       contentType: body.contentType,
       fileSizeBytes: body.fileSizeBytes,
-      expiresInSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds
+      expiresInSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds,
+      preferredPartSizeBytes: body.partSizeBytes
     });
   } catch {
     return null;
@@ -1308,7 +1752,7 @@ async function getUploadOwnedJob(
   schemaVersion: string,
   jobId: string,
   installId: string,
-  options: { expiredUploadGraceSeconds?: number } = {},
+  options: { expiredUploadGraceSeconds?: number; allowReadyUploadStatuses?: boolean } = {},
 ): Promise<JobRecord | Response> {
   const job = await getJobSnapshot(env, jobId);
   if (!job) {
@@ -1359,6 +1803,9 @@ async function getUploadOwnedJob(
       { status: 410 },
       requestId
     );
+  }
+  if (options.allowReadyUploadStatuses && isReadyUploadStatus(job.status)) {
+    return job;
   }
   if (isTerminal(job.status) || job.status === "queued" || job.status === "processing") {
     return jsonResponse(
@@ -1568,6 +2015,32 @@ function matchJobPath(pathname: string): { jobId: string; kind: "get" | "delete"
   return { jobId: jobMatch[1]!, kind: "get" };
 }
 
+function matchAssetPath(
+  pathname: string
+): { assetId: string; kind: "status" | "complete" | "analysis-jobs" | "team-scan" } | null {
+  const completeMatch = pathname.match(/^\/uploads\/([^/]+)\/complete$/);
+  if (completeMatch) {
+    return { assetId: completeMatch[1]!, kind: "complete" };
+  }
+
+  const analysisMatch = pathname.match(/^\/assets\/([^/]+)\/analysis-jobs$/);
+  if (analysisMatch) {
+    return { assetId: analysisMatch[1]!, kind: "analysis-jobs" };
+  }
+
+  const teamScanMatch = pathname.match(/^\/assets\/([^/]+)\/team-scan$/);
+  if (teamScanMatch) {
+    return { assetId: teamScanMatch[1]!, kind: "team-scan" };
+  }
+
+  const statusMatch = pathname.match(/^\/assets\/([^/]+)$/);
+  if (statusMatch) {
+    return { assetId: statusMatch[1]!, kind: "status" };
+  }
+
+  return null;
+}
+
 function matchEditRevisionPath(pathname: string): { editJobId: string; revisionId?: string; kind: "revise" | "list" | "get" | "render" } | null {
   const reviseMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/revise$/);
   if (reviseMatch) {
@@ -1672,6 +2145,91 @@ async function hydrateResultIfNeeded(env: Env, job: JobRecord): Promise<JobRecor
 
 function isResultPayload(value: unknown): value is JobRecord["results"] {
   return value !== null && typeof value === "object" && "clipCount" in value && "clips" in value;
+}
+
+function toAssetStatusResponse(
+  job: JobRecord,
+  requestId: string,
+  schemaVersion: string | null
+): AssetStatusResponse {
+  const status = assetStatusForJob(job);
+  const uploadReady = isReadyUploadStatus(job.status);
+  return {
+    requestId,
+    schemaVersion: schemaVersion ?? job.schemaVersion,
+    confidence: job.confidence ?? job.resultConfidence ?? null,
+    modelVersion: job.modelVersion ?? null,
+    failureReason: job.failureReason ?? null,
+    uploadTraceId: job.uploadTraceId ?? null,
+    inferenceAttemptId: job.inferenceAttemptId ?? null,
+    assetId: job.assetId ?? job.jobId,
+    installId: job.installId,
+    filename: job.filename,
+    contentType: job.contentType,
+    fileSizeBytes: job.fileSizeBytes,
+    durationSeconds: job.durationSeconds,
+    storageKey: job.storageKey ?? job.sourceObjectKey,
+    status,
+    uploadMode: job.uploadMode ?? "single",
+    uploadedBytes: uploadReady ? job.fileSizeBytes : 0,
+    artifacts: {
+      proxyStorageKey: null,
+      thumbnailStorageKeys: [],
+      waveformStorageKey: null
+    },
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt
+  };
+}
+
+function toAssetUploadCompleteResponse(
+  job: JobRecord,
+  requestId: string,
+  schemaVersion: string | null,
+  pollAfterSeconds: number
+): UploadCompleteResponse {
+  const asset = toAssetStatusResponse(job, requestId, schemaVersion);
+  return {
+    requestId,
+    schemaVersion: asset.schemaVersion,
+    confidence: asset.confidence ?? null,
+    modelVersion: asset.modelVersion ?? null,
+    failureReason: asset.failureReason ?? null,
+    uploadTraceId: asset.uploadTraceId ?? null,
+    inferenceAttemptId: asset.inferenceAttemptId ?? null,
+    assetId: asset.assetId,
+    storageKey: asset.storageKey,
+    status: asset.status,
+    artifacts: asset.artifacts,
+    pollAfterSeconds
+  };
+}
+
+function assetStatusForJob(job: JobRecord): AssetStatus {
+  switch (job.status) {
+    case "created":
+      return "initialized";
+    case "upload_pending":
+      return "uploading";
+    case "failed":
+    case "cancelled":
+    case "expired":
+      return "failed";
+    case "uploaded":
+    case "queued":
+    case "processing":
+    case "completed":
+    case "succeeded":
+      return "ready";
+  }
+}
+
+function isReadyUploadStatus(status: JobStatus): boolean {
+  return status === "uploaded"
+    || status === "queued"
+    || status === "processing"
+    || status === "completed"
+    || status === "succeeded";
 }
 
 function toCloudAnalysisJobResponse(

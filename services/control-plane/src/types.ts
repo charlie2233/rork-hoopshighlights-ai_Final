@@ -46,6 +46,7 @@ export interface CreateCloudAnalysisJobRequest {
   analysisVersion: string;
   teamSelection?: TeamSelection | null;
   uploadPreference?: "single" | "resumable" | null;
+  partSizeBytes?: number | null;
   assetId?: string | null;
   storageKey?: string | null;
 }
@@ -600,6 +601,7 @@ export interface JobRecord extends ResponseEnvelope {
   uploadUrl: string;
   uploadMethod: "PUT";
   uploadHeaders: Record<string, string>;
+  uploadMode?: "single" | "multipart";
   expiresAt: string;
   updatedAt: string;
   resultConfidence?: number | null;
