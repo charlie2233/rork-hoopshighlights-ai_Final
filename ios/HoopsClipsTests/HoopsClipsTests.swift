@@ -1641,6 +1641,119 @@ struct HoopsClipsTests {
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
     }
 
+    @Test @MainActor func testAssetMultipartUploadSharesOneBackgroundSessionAcrossParts() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "shared-multipart-\(UUID().uuidString).mp4")
+        try Data("123456789".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let sessionProbe = CloudAnalysisUploadSessionFactoryProbe()
+        let service = CloudAnalysisService(
+            session: makeCloudAnalysisSession { request in
+                let url = try #require(request.url)
+
+                if request.httpMethod == "POST", url.path == "/v1/uploads/init" {
+                    return try cloudAnalysisJSONResponse(for: request, body: """
+                    {
+                      "assetId": "asset_shared_session",
+                      "storageKey": "assets/asset_shared_session/source/game.mp4",
+                      "status": "initialized",
+                      "uploadMode": "multipart",
+                      "uploadUrl": null,
+                      "uploadMethod": "PUT",
+                      "uploadHeaders": {},
+                      "multipart": {
+                        "uploadId": "upload_shared_session",
+                        "partSizeBytes": 3,
+                        "partCount": 3,
+                        "parts": [
+                          {"partNumber": 1, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/1", "uploadMethod": "PUT", "uploadHeaders": {}},
+                          {"partNumber": 2, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/2", "uploadMethod": "PUT", "uploadHeaders": {}},
+                          {"partNumber": 3, "uploadUrl": "https://analysis.hoopsclips.test/asset/part/3", "uploadMethod": "PUT", "uploadHeaders": {}}
+                        ]
+                      },
+                      "expiresAt": "2030-01-01T00:00:00Z",
+                      "pollAfterSeconds": 1,
+                      "uploadState": "waiting_for_client_upload"
+                    }
+                    """)
+                }
+
+                if request.httpMethod == "PUT", url.path.hasPrefix("/asset/part/") {
+                    let partNumber = try #require(Int(url.lastPathComponent))
+                    return try cloudAnalysisEmptyResponse(
+                        for: request,
+                        statusCode: 200,
+                        headerFields: ["ETag": "etag-\(partNumber)"]
+                    )
+                }
+
+                if request.httpMethod == "POST", url.path == "/v1/uploads/asset_shared_session/complete" {
+                    let payload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                    let completedParts = try #require(payload["parts"] as? [[String: Any]])
+                    let partNumbers = completedParts.compactMap { $0["partNumber"] as? Int }.sorted()
+                    let etags = completedParts.compactMap { $0["etag"] as? String }.sorted()
+                    #expect(payload["uploadId"] as? String == "upload_shared_session")
+                    #expect(partNumbers == [1, 2, 3])
+                    #expect(etags == ["etag-1", "etag-2", "etag-3"])
+                    return try cloudAnalysisJSONResponse(for: request, body: """
+                    {
+                      "assetId": "asset_shared_session",
+                      "storageKey": "assets/asset_shared_session/source/game.mp4",
+                      "status": "proxy_ready",
+                      "artifacts": {
+                        "proxyStorageKey": "assets/asset_shared_session/proxy/proxy.mp4",
+                        "thumbnailStorageKeys": [],
+                        "waveformStorageKey": null
+                      },
+                      "pollAfterSeconds": 1
+                    }
+                    """)
+                }
+
+                if request.httpMethod == "POST", url.path == "/v1/assets/asset_shared_session/team-scan" {
+                    return try cloudAnalysisJSONResponse(for: request, body: """
+                    {
+                      "jobId": "asset_shared_session",
+                      "status": "scanned",
+                      "detectedTeams": [
+                        {"teamId": "team_blue", "label": "Blue jerseys", "colorLabel": "blue", "primaryColorHex": "#0057FF", "confidence": 0.92, "source": "quick_scan"}
+                      ]
+                    }
+                    """)
+                }
+
+                throw CloudAnalysisError.invalidResponse
+            },
+            uploadSessionFactory: { identifier, delegate in
+                sessionProbe.makeSession(backgroundIdentifier: identifier, delegate: delegate)
+            }
+        )
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let prepared = try await service.prepareTeamScan(
+            url: tempURL,
+            duration: 10,
+            installID: "install-shared-session"
+        ) { _, _ in }
+
+        #expect(prepared.job.assetId == "asset_shared_session")
+        #expect(prepared.detectedTeams.map(\.teamId) == ["team_blue"])
+        #expect(sessionProbe.sessionCount == 1)
+        #expect(sessionProbe.sessionIdentifiers.count == 1)
+        #expect(
+            sessionProbe.sessionIdentifiers.first
+                == CloudAnalysisService.multipartUploadSessionIdentifier(
+                    jobID: "asset_shared_session",
+                    uploadID: "upload_shared_session"
+                )
+        )
+    }
+
     @Test @MainActor func testCloudTeamScanAllTeamsChoiceStartsPreparedJobInAllTeamsMode() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-all-\(UUID().uuidString).mp4")
         try Data("fake video".utf8).write(to: tempURL)
@@ -5622,6 +5735,146 @@ struct HoopsClipsTests {
 
 @Suite(.serialized)
 struct UploadThroughputPolicyTests {
+    @Test func cancelledMultipartCoordinatorDetachesWithoutDeletingActiveUploadFile() async throws {
+        let stagedURL = FileManager.default.temporaryDirectory
+            .appending(path: "cancelled-shared-upload-\(UUID().uuidString).tmp")
+        try Data("background upload body".utf8).write(to: stagedURL)
+        defer {
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+            try? FileManager.default.removeItem(at: stagedURL)
+        }
+
+        let probe = CloudAnalysisDelayedUploadProbe()
+        CloudAnalysisMockURLProtocol.requestHandler = { request in
+            probe.markStarted()
+            Thread.sleep(forTimeInterval: 1)
+            return try cloudAnalysisEmptyResponse(
+                for: request,
+                statusCode: 200,
+                headerFields: ["ETag": "etag-detached"]
+            )
+        }
+
+        let delegate = CloudMultipartUploadProgressDelegate()
+        let session = makeCloudAnalysisUploadSession(
+            backgroundIdentifier: nil,
+            delegate: delegate
+        )
+        var request = URLRequest(url: try #require(URL(string: "https://analysis.hoopsclips.test/asset/part/1")))
+        request.httpMethod = "PUT"
+        let operation = Task {
+            try await delegate.upload(
+                request: request,
+                fromFile: stagedURL,
+                taskDescription: CloudAnalysisService.multipartUploadTaskDescription(partNumber: 1, attempt: 1),
+                onProgress: { _, _ in },
+                onWaitingForConnectivity: {},
+                using: session
+            )
+        }
+
+        for _ in 0..<200 where !probe.hasStarted {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(probe.hasStarted)
+
+        let cancelledAt = Date()
+        operation.cancel()
+        do {
+            _ = try await operation.value
+            Issue.record("Expected the coordinating upload task to cancel.")
+        } catch is CancellationError {
+            // The file-backed URLSession task continues independently.
+        }
+
+        #expect(Date().timeIntervalSince(cancelledAt) < 0.5)
+        #expect(FileManager.default.fileExists(atPath: stagedURL.path))
+
+        session.finishTasksAndInvalidate()
+        try await Task.sleep(for: .milliseconds(1_200))
+        #expect(!FileManager.default.fileExists(atPath: stagedURL.path))
+    }
+
+    @Test func sharedMultipartTaskIdentitySupportsRelaunchAndLegacySessions() throws {
+        let taskDescription = CloudAnalysisService.multipartUploadTaskDescription(partNumber: 3, attempt: 2)
+        #expect(taskDescription == "part-3.try-2")
+        #expect(CloudAnalysisService.multipartUploadPartNumber(taskDescription: taskDescription) == 3)
+        #expect(CloudAnalysisService.multipartUploadPartNumber(taskDescription: "part-0.try-1") == nil)
+
+        let sharedIdentifier = CloudAnalysisService.multipartUploadSessionIdentifier(
+            jobID: "job-123",
+            uploadID: "upload-current"
+        )
+        let shared = try #require(
+            CloudAnalysisService.multipartUploadSessionIdentity(
+                sessionIdentifier: sharedIdentifier,
+                taskDescription: taskDescription
+            )
+        )
+        #expect(shared.jobID == "job-123")
+        #expect(shared.partNumber == 3)
+        #expect(shared.isSharedSession)
+
+        let legacy = try #require(
+            CloudAnalysisService.multipartUploadSessionIdentity(
+                sessionIdentifier: "atrak.charlie.hoopsclips.cloud-upload.job-123.part-4.try-1"
+            )
+        )
+        #expect(legacy.jobID == "job-123")
+        #expect(legacy.partNumber == 4)
+        #expect(!legacy.isSharedSession)
+        #expect(
+            CloudAnalysisService.multipartUploadSessionBelongsToManifest(
+                sessionIdentifier: sharedIdentifier,
+                taskDescription: taskDescription,
+                manifestJobID: "job-123",
+                manifestUploadID: "upload-current",
+                partCount: 4,
+                activeSessionIdentifiers: [sharedIdentifier]
+            )
+        )
+        #expect(
+            !CloudAnalysisService.multipartUploadSessionBelongsToManifest(
+                sessionIdentifier: sharedIdentifier,
+                taskDescription: taskDescription,
+                manifestJobID: "job-123",
+                manifestUploadID: "upload-replaced",
+                partCount: 4,
+                activeSessionIdentifiers: [sharedIdentifier]
+            )
+        )
+        #expect(
+            !CloudAnalysisService.multipartUploadSessionBelongsToManifest(
+                sessionIdentifier: sharedIdentifier,
+                taskDescription: taskDescription,
+                manifestJobID: "job-123",
+                manifestUploadID: "upload-current",
+                partCount: 2,
+                activeSessionIdentifiers: [sharedIdentifier]
+            )
+        )
+        #expect(
+            !CloudAnalysisService.multipartUploadSessionBelongsToManifest(
+                sessionIdentifier: sharedIdentifier,
+                taskDescription: taskDescription,
+                manifestJobID: "job-123",
+                manifestUploadID: "upload-current",
+                partCount: 4,
+                activeSessionIdentifiers: []
+            )
+        )
+        #expect(
+            CloudAnalysisService.multipartUploadSessionIdentity(
+                sessionIdentifier: "atrak.charlie.hoopsclips.cloud-upload.job-123.multipart",
+                taskDescription: nil
+            ) == nil
+        )
+
+        let summary = CloudAnalysisService.multipartUploadPolicySummary()
+        #expect(summary.contains("backgroundSessionPolicy=one_per_multipart_upload"))
+        #expect(summary.contains("taskIdentity=part_description"))
+    }
+
     @Test func adaptivePartsAndNetworkLanesStayBounded() {
         let mebibyte = Int64(1024 * 1024)
 
@@ -5781,7 +6034,8 @@ private func cloudAnalysisJSONResponse(for request: URLRequest, body: String) th
 
 private func cloudAnalysisEmptyResponse(
     for request: URLRequest,
-    statusCode: Int
+    statusCode: Int,
+    headerFields: [String: String]? = nil
 ) throws -> (HTTPURLResponse, Data) {
     let url = try #require(request.url)
     let response = try #require(
@@ -5789,7 +6043,7 @@ private func cloudAnalysisEmptyResponse(
             url: url,
             statusCode: statusCode,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headerFields
         )
     )
     return (response, Data())
@@ -5823,6 +6077,47 @@ private func cloudAnalysisRequestBodyData(from request: URLRequest) throws -> Da
         data.append(buffer, count: count)
     }
     return data
+}
+
+private final class CloudAnalysisUploadSessionFactoryProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var identifiers: [String] = []
+
+    var sessionCount: Int {
+        lock.withLock { identifiers.count }
+    }
+
+    var sessionIdentifiers: [String] {
+        lock.withLock { identifiers }
+    }
+
+    func makeSession(
+        backgroundIdentifier: String?,
+        delegate: URLSessionDelegate?
+    ) -> URLSession {
+        lock.withLock {
+            identifiers.append(backgroundIdentifier ?? "foreground")
+        }
+        return makeCloudAnalysisUploadSession(
+            backgroundIdentifier: backgroundIdentifier,
+            delegate: delegate
+        )
+    }
+}
+
+private final class CloudAnalysisDelayedUploadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+
+    var hasStarted: Bool {
+        lock.withLock { started }
+    }
+
+    func markStarted() {
+        lock.withLock {
+            started = true
+        }
+    }
 }
 
 private final class CloudAnalysisMockURLProtocol: URLProtocol {
