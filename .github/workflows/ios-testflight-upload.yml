@@ -63,14 +63,14 @@ jobs:
             -skipPackagePluginValidation
 
           xcrun xcresulttool get test-results summary --path "$result_bundle" \
-            | jq -e '.totalTestCount == 12 and .passedTests == 12 and .failedTests == 0 and .skippedTests == 0'
+            | jq -e '.totalTestCount == 14 and .passedTests == 14 and .failedTests == 0 and .skippedTests == 0'
 
       - name: Print codecheck summary
         run: |
           set -euo pipefail
           cat <<'SUMMARY'
           No-secret codecheck completed.
-          This proves internal staging build settings, export-options syntax, and twelve focused unsigned Debug simulator tests.
+          This proves internal staging build settings, export-options syntax, and fourteen focused unsigned Debug simulator tests.
           It does not create a signed archive, upload to App Store Connect, or prove installed TestFlight smoke.
           SUMMARY
 

@@ -1,4 +1,5 @@
 import AVFoundation
+import CryptoKit
 import Foundation
 import Network
 import UniformTypeIdentifiers
@@ -93,7 +94,7 @@ struct CloudAnalysisService {
     private static let maxPollDelaySeconds = 5
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
-    private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
+    nonisolated private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
     private static let maxConcurrentMultipartUploads = 6
     private let session: URLSession
     private let uploadSessionFactory: @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession
@@ -145,6 +146,94 @@ struct CloudAnalysisService {
             return min(safeMaximum, 2)
         }
         return safeMaximum
+    }
+
+    nonisolated static func multipartUploadTaskDescription(partNumber: Int, attempt: Int) -> String {
+        "part-\(max(partNumber, 1)).try-\(max(attempt, 1))"
+    }
+
+    nonisolated static func multipartUploadPartNumber(taskDescription: String?) -> Int? {
+        guard let taskDescription else { return nil }
+        let component = taskDescription.split(separator: ".").first.map(String.init) ?? taskDescription
+        guard component.hasPrefix("part-"),
+              let partNumber = Int(component.dropFirst("part-".count)),
+              partNumber > 0 else {
+            return nil
+        }
+        return partNumber
+    }
+
+    nonisolated static func multipartUploadSessionIdentity(
+        sessionIdentifier: String,
+        taskDescription: String? = nil
+    ) -> (jobID: String, partNumber: Int, isSharedSession: Bool)? {
+        let components = sessionIdentifier.split(separator: ".").map(String.init)
+        guard let markerIndex = components.firstIndex(of: "cloud-upload"),
+              components.indices.contains(markerIndex + 2) else {
+            return nil
+        }
+
+        let jobID = components[markerIndex + 1]
+        let partComponent = components[markerIndex + 2]
+        if partComponent == "multipart",
+           let partNumber = multipartUploadPartNumber(taskDescription: taskDescription) {
+            return (jobID, partNumber, true)
+        }
+        if partComponent.hasPrefix("upload-"),
+           components.indices.contains(markerIndex + 3),
+           components[markerIndex + 3] == "multipart",
+           let partNumber = multipartUploadPartNumber(taskDescription: taskDescription) {
+            return (jobID, partNumber, true)
+        }
+        guard partComponent.hasPrefix("part-"),
+              let partNumber = Int(partComponent.dropFirst("part-".count)),
+              partNumber > 0 else {
+            return nil
+        }
+
+        return (jobID, partNumber, false)
+    }
+
+    nonisolated static func multipartUploadSessionIdentifier(jobID: String, uploadID: String) -> String {
+        let baseIdentifier = Bundle.main.bundleIdentifier ?? fallbackBackgroundSessionPrefix
+        let uploadScope = SHA256.hash(data: Data(uploadID.utf8))
+            .prefix(12)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return [
+            baseIdentifier,
+            "cloud-upload",
+            sanitizedSessionComponent(jobID),
+            "upload-\(uploadScope)",
+            "multipart"
+        ].joined(separator: ".")
+    }
+
+    nonisolated static func multipartUploadSessionBelongsToManifest(
+        sessionIdentifier: String,
+        taskDescription: String?,
+        manifestJobID: String,
+        manifestUploadID: String,
+        partCount: Int,
+        activeSessionIdentifiers: [String]
+    ) -> Bool {
+        guard activeSessionIdentifiers.contains(sessionIdentifier),
+              let identity = multipartUploadSessionIdentity(
+                sessionIdentifier: sessionIdentifier,
+                taskDescription: taskDescription
+              ),
+              identity.partNumber <= partCount else {
+            return false
+        }
+
+        let jobMatches = identity.jobID == manifestJobID
+            || identity.jobID == sanitizedSessionComponent(manifestJobID)
+        guard jobMatches else { return false }
+        guard identity.isSharedSession else { return true }
+        return sessionIdentifier == multipartUploadSessionIdentifier(
+            jobID: manifestJobID,
+            uploadID: manifestUploadID
+        )
     }
 
     nonisolated static func renewedUploadExpiration(current: Date?, candidate: Date) -> Date {
@@ -354,7 +443,9 @@ struct CloudAnalysisService {
             "lanePolicyRefresh=between_completed_parts",
             "progressAggregation=total_bytes_across_active_chunks",
             "memoryPolicy=bounded_chunk_data_per_lane",
-            "resumePolicy=persist_completed_parts"
+            "resumePolicy=persist_completed_parts",
+            "backgroundSessionPolicy=one_per_multipart_upload",
+            "taskIdentity=part_description"
         ].joined(separator: " ")
     }
 
@@ -2236,6 +2327,14 @@ struct CloudAnalysisService {
             "asset_multipart_parallel_upload_selected",
             metadata: "lanes=\(initialMaxConcurrentUploads) partCount=\(multipart.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
+        let multipartSession = await makeMultipartUploadSession(
+            jobID: asset.assetId,
+            uploadID: multipart.uploadId,
+            partCount: multipart.partCount
+        )
+        defer {
+            multipartSession.finishTasksAndInvalidate()
+        }
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
             var nextPartNumber = 1
@@ -2269,11 +2368,10 @@ struct CloudAnalysisService {
                             chunk: chunk,
                             alreadyUploadedBytes: min(Int64(offset), totalBytes),
                             totalBytes: totalBytes,
-                            uploadID: multipart.uploadId,
                             partCount: multipart.partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
-                            uploadSessionFactory: uploadSessionFactory,
+                            multipartSession: multipartSession,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2301,6 +2399,11 @@ struct CloudAnalysisService {
         guard uploadedParts.count == multipart.partCount else {
             throw CloudAnalysisError.uploadFailed
         }
+        await CloudUploadResumeStore.shared.clearActiveSession(
+            jobID: asset.assetId,
+            uploadID: multipart.uploadId,
+            sessionIdentifier: multipartSession.identifier
+        )
 
         await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
@@ -2734,6 +2837,14 @@ struct CloudAnalysisService {
             "multipart_parallel_upload_selected",
             metadata: "lanes=\(initialMaxConcurrentUploads) partCount=\(resumableUpload.partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
+        let multipartSession = await makeMultipartUploadSession(
+            jobID: job.jobId,
+            uploadID: resumableUpload.uploadId,
+            partCount: resumableUpload.partCount
+        )
+        defer {
+            multipartSession.finishTasksAndInvalidate()
+        }
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
             var nextPartNumber = 1
@@ -2770,11 +2881,10 @@ struct CloudAnalysisService {
                             chunk: chunk,
                             alreadyUploadedBytes: min(Int64(offset), totalBytes),
                             totalBytes: totalBytes,
-                            uploadID: resumableUpload.uploadId,
                             partCount: resumableUpload.partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
-                            uploadSessionFactory: uploadSessionFactory,
+                            multipartSession: multipartSession,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2802,6 +2912,11 @@ struct CloudAnalysisService {
         guard uploadedParts.count == resumableUpload.partCount else {
             throw CloudAnalysisError.uploadFailed
         }
+        await CloudUploadResumeStore.shared.clearActiveSession(
+            jobID: job.jobId,
+            uploadID: resumableUpload.uploadId,
+            sessionIdentifier: multipartSession.identifier
+        )
 
         try await completeMultipartUpload(
             baseURL: baseURL,
@@ -2894,6 +3009,14 @@ struct CloudAnalysisService {
             "resume_manifest_parallel_upload_selected",
             metadata: "lanes=\(initialMaxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
+        let multipartSession = await makeMultipartUploadSession(
+            jobID: jobID,
+            uploadID: uploadID,
+            partCount: partCount
+        )
+        defer {
+            multipartSession.finishTasksAndInvalidate()
+        }
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
             var nextPartNumber = 1
@@ -2938,11 +3061,10 @@ struct CloudAnalysisService {
                             chunk: chunk,
                             alreadyUploadedBytes: min(Int64(offset), totalBytes),
                             totalBytes: totalBytes,
-                            uploadID: uploadID,
                             partCount: partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
-                            uploadSessionFactory: uploadSessionFactory,
+                            multipartSession: multipartSession,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -2970,6 +3092,11 @@ struct CloudAnalysisService {
         guard uploadedParts.count == partCount else {
             throw CloudAnalysisError.uploadFailed
         }
+        await CloudUploadResumeStore.shared.clearActiveSession(
+            jobID: jobID,
+            uploadID: uploadID,
+            sessionIdentifier: multipartSession.identifier
+        )
 
         try await completeMultipartUpload(
             baseURL: baseURL,
@@ -3036,6 +3163,14 @@ struct CloudAnalysisService {
             "resume_asset_manifest_parallel_upload_selected",
             metadata: "lanes=\(initialMaxConcurrentUploads) completed=\(uploadedParts.count) partCount=\(partCount) reason=\(networkUploadPolicy.reason) networkExpensive=\(networkUploadPolicy.isExpensive) networkConstrained=\(networkUploadPolicy.isConstrained)"
         )
+        let multipartSession = await makeMultipartUploadSession(
+            jobID: assetID,
+            uploadID: uploadID,
+            partCount: partCount
+        )
+        defer {
+            multipartSession.finishTasksAndInvalidate()
+        }
 
         try await withThrowingTaskGroup(of: CloudMultipartCompletedPart.self) { group in
             var nextPartNumber = 1
@@ -3077,11 +3212,10 @@ struct CloudAnalysisService {
                             chunk: chunk,
                             alreadyUploadedBytes: min(Int64(offset), totalBytes),
                             totalBytes: totalBytes,
-                            uploadID: uploadID,
                             partCount: partCount,
                             tracker: tracker,
                             progressAggregator: progressAggregator,
-                            uploadSessionFactory: uploadSessionFactory,
+                            multipartSession: multipartSession,
                             reportUploadProgress: reportUploadProgress
                         )
                         return CloudMultipartCompletedPart(partNumber: partNumber, etag: etag)
@@ -3109,6 +3243,11 @@ struct CloudAnalysisService {
         guard uploadedParts.count == partCount else {
             throw CloudAnalysisError.uploadFailed
         }
+        await CloudUploadResumeStore.shared.clearActiveSession(
+            jobID: assetID,
+            uploadID: uploadID,
+            sessionIdentifier: multipartSession.identifier
+        )
 
         await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
@@ -3127,11 +3266,10 @@ struct CloudAnalysisService {
         chunk: Data,
         alreadyUploadedBytes: Int64,
         totalBytes: Int64,
-        uploadID: String,
         partCount: Int,
         tracker: CloudUploadProgressTracker,
         progressAggregator: CloudMultipartUploadProgressAggregator? = nil,
-        uploadSessionFactory: @escaping @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession = CloudAnalysisService.makeUploadSession,
+        multipartSession: CloudMultipartUploadSession,
         reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws -> String {
         guard let uploadURL = URL(string: partTarget.uploadUrl) else {
@@ -3143,11 +3281,6 @@ struct CloudAnalysisService {
         for attempt in 0..<maxAttempts {
             let attemptNumber = attempt + 1
             let transferContext = "chunk \(partTarget.partNumber)/\(partCount) try \(attemptNumber)"
-            let backgroundIdentifier = Self.backgroundUploadSessionIdentifier(
-                jobID: partTarget.jobId,
-                partNumber: partTarget.partNumber,
-                attempt: attemptNumber
-            )
             do {
                 var request = URLRequest(url: uploadURL)
                 request.httpMethod = partTarget.uploadMethod
@@ -3155,7 +3288,18 @@ struct CloudAnalysisService {
                     request.setValue(value, forHTTPHeaderField: header)
                 }
 
-                let delegate = CloudUploadProgressDelegate(
+                let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
+                Self.prepareFileForBackgroundUpload(chunkFileURL, context: "chunk_\(partTarget.partNumber)")
+
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "chunk_task_started",
+                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attemptNumber) session=shared_multipart"
+                )
+                let response = try await multipartSession.upload(
+                    request: request,
+                    fromFile: chunkFileURL,
+                    partNumber: partTarget.partNumber,
+                    attempt: attemptNumber,
                     onProgress: { sentBytes, _ in
                         Task {
                             let snapshot: CloudUploadProgressSnapshot
@@ -3190,28 +3334,6 @@ struct CloudAnalysisService {
                         }
                     }
                 )
-                let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
-                defer {
-                    try? FileManager.default.removeItem(at: chunkFileURL)
-                }
-                Self.prepareFileForBackgroundUpload(chunkFileURL, context: "chunk_\(partTarget.partNumber)")
-
-                await CloudUploadResumeStore.shared.recordSession(
-                    jobID: partTarget.jobId,
-                    uploadID: uploadID,
-                    sessionIdentifier: backgroundIdentifier
-                )
-
-                let uploadSession = uploadSessionFactory(backgroundIdentifier, delegate)
-                LaunchTelemetry.shared.recordBackgroundUploadProof(
-                    "chunk_session_started",
-                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attemptNumber)"
-                )
-                defer {
-                    uploadSession.finishTasksAndInvalidate()
-                }
-
-                let response = try await delegate.upload(request: request, fromFile: chunkFileURL, using: uploadSession)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw CloudAnalysisError.uploadFailed
                 }
@@ -3235,11 +3357,6 @@ struct CloudAnalysisService {
                     transferContext: transferContext,
                     stalled: false
                 )
-                await CloudUploadResumeStore.shared.clearActiveSession(
-                    jobID: partTarget.jobId,
-                    uploadID: uploadID,
-                    sessionIdentifier: backgroundIdentifier
-                )
                 return etag
             } catch {
                 lastError = error
@@ -3248,11 +3365,6 @@ struct CloudAnalysisService {
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "chunk_upload_attempt_failed",
                     metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attemptNumber) retrying=\(retrying) reason=\(retryReason)"
-                )
-                await CloudUploadResumeStore.shared.clearActiveSession(
-                    jobID: partTarget.jobId,
-                    uploadID: uploadID,
-                    sessionIdentifier: backgroundIdentifier
                 )
                 let snapshot = await tracker.snapshot()
                 let retryDelaySeconds = retrying ? Self.chunkRetryBackoffSeconds(afterAttempt: attemptNumber) : 0
@@ -3430,11 +3542,35 @@ struct CloudAnalysisService {
         return components.joined(separator: ".")
     }
 
+    private func makeMultipartUploadSession(
+        jobID: String,
+        uploadID: String,
+        partCount: Int
+    ) async -> CloudMultipartUploadSession {
+        let identifier = Self.multipartUploadSessionIdentifier(jobID: jobID, uploadID: uploadID)
+        let delegate = CloudMultipartUploadProgressDelegate()
+        let session = uploadSessionFactory(identifier, delegate)
+        await CloudUploadResumeStore.shared.recordSession(
+            jobID: jobID,
+            uploadID: uploadID,
+            sessionIdentifier: identifier
+        )
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "multipart_shared_session_started",
+            metadata: "partCount=\(partCount) sessionCount=1"
+        )
+        return CloudMultipartUploadSession(
+            identifier: identifier,
+            session: session,
+            delegate: delegate
+        )
+    }
+
     private static func singleSourceUploadID(jobID: String) -> String {
         "\(cloudUploadSingleSourcePrefix)\(sanitizedSessionComponent(jobID))"
     }
 
-    private static func sanitizedSessionComponent(_ value: String) -> String {
+    nonisolated private static func sanitizedSessionComponent(_ value: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let filtered = value.map { character -> Character in
             character.unicodeScalars.allSatisfy { allowed.contains($0) } ? character : "-"
@@ -4016,7 +4152,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 return
             }
 
-            if identifier.contains(".part-") {
+            if identifier.contains(".part-") || identifier.hasSuffix(".multipart") {
                 guard let etag = Self.headerValue("ETag", from: http), !etag.isEmpty else {
                     CloudAnalysisService.recordRelaunchedUploadProgressSummary(
                         event: "relaunch_task_missing_etag",
@@ -4033,6 +4169,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 Task {
                     let uploadCompleted = await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
                         sessionIdentifier: identifier,
+                        taskDescription: task.taskDescription,
                         etag: etag
                     )
                     if uploadCompleted {
@@ -4320,10 +4457,24 @@ private actor CloudUploadResumeStore {
         return result.isEmpty ? UUID().uuidString : result
     }
 
-    func recordRelaunchedCompletedPart(sessionIdentifier: String, etag: String) -> Bool {
-        guard let sessionPart = Self.parseMultipartSessionIdentifier(sessionIdentifier),
-              var manifest = loadManifest(),
-              Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: sessionPart.jobID) else {
+    func recordRelaunchedCompletedPart(
+        sessionIdentifier: String,
+        taskDescription: String? = nil,
+        etag: String
+    ) -> Bool {
+        guard var manifest = loadManifest(),
+              CloudAnalysisService.multipartUploadSessionBelongsToManifest(
+                sessionIdentifier: sessionIdentifier,
+                taskDescription: taskDescription,
+                manifestJobID: manifest.jobID,
+                manifestUploadID: manifest.uploadID,
+                partCount: manifest.partCount,
+                activeSessionIdentifiers: manifest.activeSessionIdentifiers
+              ),
+              let sessionPart = Self.parseMultipartSessionIdentifier(
+                sessionIdentifier,
+                taskDescription: taskDescription
+              ) else {
             Self.recordBackgroundUploadProof("resume_manifest_relaunch_part_ignored")
             return false
         }
@@ -4331,11 +4482,12 @@ private actor CloudUploadResumeStore {
         var parts = manifest.completedParts.filter { $0.partNumber != sessionPart.partNumber }
         parts.append(CloudMultipartCompletedPart(partNumber: sessionPart.partNumber, etag: etag))
         manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
-        manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
+        if !sessionPart.isSharedSession || manifest.completedParts.count == manifest.partCount {
+            manifest.activeSessionIdentifiers.removeAll { $0 == sessionIdentifier }
+        }
         manifest.updatedAt = Date()
         saveManifest(manifest)
         let uploadCompleted = manifest.completedParts.count == manifest.partCount
-            && manifest.activeSessionIdentifiers.isEmpty
         Self.recordBackgroundUploadProof(
             "resume_manifest_relaunch_part_completed",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount) activeSessions=\(manifest.activeSessionIdentifiers.count)"
@@ -4420,22 +4572,14 @@ private actor CloudUploadResumeStore {
         return manifest
     }
 
-    private static func parseMultipartSessionIdentifier(_ identifier: String) -> (jobID: String, partNumber: Int)? {
-        let components = identifier.split(separator: ".").map(String.init)
-        guard let markerIndex = components.firstIndex(of: "cloud-upload"),
-              components.indices.contains(markerIndex + 2) else {
-            return nil
-        }
-
-        let jobID = components[markerIndex + 1]
-        let partComponent = components[markerIndex + 2]
-        guard partComponent.hasPrefix("part-"),
-              let partNumber = Int(partComponent.dropFirst("part-".count)),
-              partNumber > 0 else {
-            return nil
-        }
-
-        return (jobID, partNumber)
+    private static func parseMultipartSessionIdentifier(
+        _ identifier: String,
+        taskDescription: String?
+    ) -> (jobID: String, partNumber: Int, isSharedSession: Bool)? {
+        CloudAnalysisService.multipartUploadSessionIdentity(
+            sessionIdentifier: identifier,
+            taskDescription: taskDescription
+        )
     }
 
     private static func parseSourceSessionIdentifier(_ identifier: String) -> String? {
@@ -4582,6 +4726,250 @@ private actor CloudMultipartUploadProgressAggregator {
         let uploadedBytes = min(totalBytes, completedBytes + activeBytes)
         await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
         return await tracker.snapshot()
+    }
+}
+
+private final class CloudMultipartUploadSession: @unchecked Sendable {
+    let identifier: String
+    private let session: URLSession
+    private let delegate: CloudMultipartUploadProgressDelegate
+
+    init(
+        identifier: String,
+        session: URLSession,
+        delegate: CloudMultipartUploadProgressDelegate
+    ) {
+        self.identifier = identifier
+        self.session = session
+        self.delegate = delegate
+    }
+
+    func upload(
+        request: URLRequest,
+        fromFile fileURL: URL,
+        partNumber: Int,
+        attempt: Int,
+        onProgress: @escaping @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void,
+        onWaitingForConnectivity: @escaping @Sendable () -> Void
+    ) async throws -> URLResponse {
+        try await delegate.upload(
+            request: request,
+            fromFile: fileURL,
+            taskDescription: CloudAnalysisService.multipartUploadTaskDescription(
+                partNumber: partNumber,
+                attempt: attempt
+            ),
+            onProgress: onProgress,
+            onWaitingForConnectivity: onWaitingForConnectivity,
+            using: session
+        )
+    }
+
+    func finishTasksAndInvalidate() {
+        session.finishTasksAndInvalidate()
+    }
+}
+
+nonisolated private final class CloudMultipartUploadCancellationState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCancelled = false
+    private var taskIdentifier: Int?
+
+    func register(taskIdentifier: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        self.taskIdentifier = taskIdentifier
+        return isCancelled
+    }
+
+    func cancel() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        isCancelled = true
+        return taskIdentifier
+    }
+}
+
+nonisolated final class CloudMultipartUploadProgressDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
+    private struct PendingTask {
+        var continuation: CheckedContinuation<URLResponse, Error>?
+        let onProgress: @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void
+        let onWaitingForConnectivity: @Sendable () -> Void
+        let fileURL: URL
+    }
+
+    private let lock = NSLock()
+    private var pendingTasks: [Int: PendingTask] = [:]
+
+    func upload(
+        request: URLRequest,
+        fromFile fileURL: URL,
+        taskDescription: String,
+        onProgress: @escaping @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void,
+        onWaitingForConnectivity: @escaping @Sendable () -> Void,
+        using session: URLSession
+    ) async throws -> URLResponse {
+        let cancellationState = CloudMultipartUploadCancellationState()
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = session.uploadTask(with: request, fromFile: fileURL)
+                task.taskDescription = taskDescription
+                lock.lock()
+                pendingTasks[task.taskIdentifier] = PendingTask(
+                    continuation: continuation,
+                    onProgress: onProgress,
+                    onWaitingForConnectivity: onWaitingForConnectivity,
+                    fileURL: fileURL
+                )
+                lock.unlock()
+                let shouldDetach = cancellationState.register(taskIdentifier: task.taskIdentifier)
+                task.resume()
+                if shouldDetach {
+                    detachTask(taskIdentifier: task.taskIdentifier)
+                }
+            }
+        }, onCancel: {
+            if let taskIdentifier = cancellationState.cancel() {
+                detachTask(taskIdentifier: taskIdentifier)
+            }
+        })
+    }
+
+    private func detachTask(taskIdentifier: Int) {
+        lock.lock()
+        guard var pendingTask = pendingTasks[taskIdentifier],
+              let continuation = pendingTask.continuation else {
+            lock.unlock()
+            return
+        }
+        pendingTask.continuation = nil
+        pendingTasks[taskIdentifier] = pendingTask
+        lock.unlock()
+
+        continuation.resume(throwing: CancellationError())
+        Task { @MainActor in
+            CloudAnalysisService.recordRelaunchedUploadProgressSummary(
+                event: "background_task_cancel_detached",
+                reason: "shared_multipart_session_kept_alive"
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "background_upload_task_cancel_detached",
+                metadata: "session=shared_multipart action=finish_tasks privacy=no_urls_no_object_keys_no_local_file_paths"
+            )
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        lock.lock()
+        let pendingTask = pendingTasks[task.taskIdentifier]
+        lock.unlock()
+        guard pendingTask?.continuation != nil else { return }
+        pendingTask?.onProgress(totalBytesSent, totalBytesExpectedToSend)
+    }
+
+    func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        lock.lock()
+        let pendingTask = pendingTasks[task.taskIdentifier]
+        lock.unlock()
+        guard pendingTask?.continuation != nil else { return }
+        pendingTask?.onWaitingForConnectivity()
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        guard let identifier = session.configuration.identifier else { return }
+        Task { @MainActor in
+            CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        lock.lock()
+        let pendingTask = pendingTasks.removeValue(forKey: task.taskIdentifier)
+        lock.unlock()
+
+        guard let pendingTask else { return }
+        try? FileManager.default.removeItem(at: pendingTask.fileURL)
+        guard let continuation = pendingTask.continuation else {
+            persistDetachedCompletion(session: session, task: task, error: error)
+            return
+        }
+        if let error {
+            continuation.resume(throwing: error)
+            return
+        }
+        guard let response = task.response else {
+            continuation.resume(throwing: CloudAnalysisError.invalidResponse)
+            return
+        }
+        continuation.resume(returning: response)
+    }
+
+    private func persistDetachedCompletion(
+        session: URLSession,
+        task: URLSessionTask,
+        error: Error?
+    ) {
+        guard error == nil,
+              let identifier = session.configuration.identifier,
+              let http = task.response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let etag = Self.headerValue("ETag", from: http),
+              !etag.isEmpty else {
+            Task { @MainActor in
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "detached_multipart_task_not_persisted",
+                    metadata: "privacy=no_urls_no_object_keys_no_local_file_paths"
+                )
+            }
+            return
+        }
+
+        Task {
+            let uploadCompleted = await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
+                sessionIdentifier: identifier,
+                taskDescription: task.taskDescription,
+                etag: etag
+            )
+            if uploadCompleted {
+                await MainActor.run {
+                    AnalysisNotificationService.shared.notifyBackgroundUploadCompleted()
+                }
+            }
+        }
+    }
+
+    private static func headerValue(_ name: String, from response: HTTPURLResponse) -> String? {
+        for (key, value) in response.allHeaderFields {
+            if String(describing: key).caseInsensitiveCompare(name) == .orderedSame {
+                return String(describing: value)
+            }
+        }
+        return nil
+    }
+
+    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+        lock.lock()
+        let pending = Array(pendingTasks.values)
+        pendingTasks.removeAll()
+        lock.unlock()
+
+        guard !pending.isEmpty else { return }
+        let terminalError = error ?? URLError(.cancelled)
+        pending.forEach { pendingTask in
+            try? FileManager.default.removeItem(at: pendingTask.fileURL)
+            pendingTask.continuation?.resume(throwing: terminalError)
+        }
     }
 }
 

@@ -1057,6 +1057,14 @@ struct ContentView: View {
 
     private func reconcileInitialAuthenticatedUserScope(_ currentScope: String, visibleScopeKey: String) {
         viewModel.applyAuthenticatedCloudScope(currentScope)
+
+        #if DEBUG
+        if AIEditUISmokeConfig.isEnabled || ImportProgressUISmokeConfig.isEnabled {
+            visibleProjectAuthScopeKey = visibleScopeKey
+            return
+        }
+        #endif
+
         guard visibleProjectAuthScopeKey != visibleScopeKey else { return }
 
         let reason: String
