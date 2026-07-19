@@ -23,9 +23,22 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
 
         self.assertFalse(has_errors(findings), findings)
         self.assertTrue(has_blockers(findings))
+        self.assertTrue(any(item.check == "categories" and item.status == "pass" for item in findings))
         self.assertTrue(any(item.check == "brand" and item.status == "pass" for item in findings))
+        self.assertTrue(any(item.check == "urls" and item.status == "pass" for item in findings))
         self.assertTrue(any(item.check == "screenshots" and item.status == "pass" for item in findings))
-        self.assertTrue(any(item.check == "support_url" for item in findings))
+        self.assertTrue(any(item.check == "screenshotContentReview" and item.status == "pass" for item in findings))
+        self.assertFalse(
+            any(
+                item.check in {
+                    "support_url",
+                    "privacy_terms_scope",
+                    "listing_categories",
+                    "screenshot_content_review",
+                }
+                for item in findings
+            )
+        )
 
     def test_require_ready_fails_while_operator_gates_remain(self) -> None:
         self.assertEqual(main(["--repo-root", str(REPO_ROOT), "--require-ready"]), 2)
@@ -50,6 +63,34 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
         self.assertTrue(has_errors(findings))
         self.assertTrue(any("unsupported dimensions" in item.detail for item in findings))
 
+    def test_generic_legal_url_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["urls"]["privacyPolicyURL"]["value"] = "https://rork.com/privacy"
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "urls" for item in findings))
+
+    def test_stale_store_build_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["release"]["build"] = "999"
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "release.build" for item in findings))
+
 
 def create_fixture(
     repo_root: Path,
@@ -61,6 +102,7 @@ def create_fixture(
     iphone_path = repo_root / "screens/iphone.png"
     ipad_path = repo_root / "screens/ipad.png"
     release_config_path = repo_root / "config/Release.xcconfig"
+    project_path = repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj"
     write_png(icon_path, 1024, 1024)
     write_png(mark_path, 512, 512)
     write_png(iphone_path, *iphone_dimensions, color_type=screenshot_color_type)
@@ -68,6 +110,11 @@ def create_fixture(
     release_config_path.parent.mkdir(parents=True, exist_ok=True)
     release_config_path.write_text(
         "HOOPS_APP_ENV = production\nHOOPS_CLOUD_LAUNCH_MODE = enabled\n",
+        encoding="utf-8",
+    )
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    project_path.write_text(
+        "MARKETING_VERSION = 1.0.0;\nCURRENT_PROJECT_VERSION = 54;\n",
         encoding="utf-8",
     )
     metadata_path = repo_root / DEFAULT_METADATA_PATH
@@ -83,15 +130,41 @@ def create_fixture(
                     "description": "Create, revise, preview, and share basketball highlight reels.",
                     "keywords": "basketball,highlights,reels",
                 },
+                "categories": {
+                    "primary": "Photo & Video",
+                    "secondary": "Sports",
+                    "status": "ready",
+                },
                 "brand": {
                     "appIconPath": "assets/icon.png",
                     "brandMarkPath": "assets/mark.png",
+                },
+                "urls": {
+                    "supportURL": {
+                        "value": "https://atrak.dev/apps/hoopsclips/support.html",
+                        "status": "ready",
+                    },
+                    "privacyPolicyURL": {
+                        "value": "https://atrak.dev/apps/hoopsclips/privacy.html",
+                        "status": "ready",
+                    },
+                    "termsOfServiceURL": {
+                        "value": "https://atrak.dev/apps/hoopsclips/terms.html",
+                        "status": "ready",
+                    },
                 },
                 "screenshots": [
                     {"deviceClass": "iphone_6_9", "paths": ["screens/iphone.png"]},
                     {"deviceClass": "ipad_13", "paths": ["screens/ipad.png"]},
                 ],
+                "screenshotContentReview": {
+                    "status": "ready",
+                    "reviewedAt": "2026-07-19",
+                    "evidence": "Fixture screenshots reviewed.",
+                },
                 "release": {
+                    "version": "1.0.0",
+                    "build": "54",
                     "configurationPath": "config/Release.xcconfig",
                     "backendMode": "production_cloud_only",
                     "localRenderFallback": False,

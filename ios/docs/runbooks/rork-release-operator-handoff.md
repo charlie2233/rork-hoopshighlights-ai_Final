@@ -11,8 +11,8 @@
 - `main` contains the public-launch cloud-required release plumbing.
 - GitHub Actions has a `production` environment.
 - GitHub `production` variables are populated for:
-  - `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
-  - `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
+  - `HOOPS_PRIVACY_POLICY_URL=https://atrak.dev/apps/hoopsclips/privacy.html`
+  - `HOOPS_TERMS_OF_SERVICE_URL=https://atrak.dev/apps/hoopsclips/terms.html`
 - The Release build is configured to require `HOOPS_CLOUD_LAUNCH_MODE=enabled`, `HOOPS_CLOUD_ANALYSIS_BASE_URL`, and `HOOPS_CLOUD_EDIT_BASE_URL`.
 - Google callback routing, RevenueCat readiness checks, legal links, and launch-status UI are wired in app code.
 
@@ -75,8 +75,8 @@ export HOOPS_GOOGLE_CLIENT_ID="..."
 export HOOPS_GOOGLE_REVERSED_CLIENT_ID="..."
 export HOOPS_FIREBASE_AUTH_API_KEY="..."
 export HOOPS_SENTRY_DSN="..."
-export HOOPS_PRIVACY_POLICY_URL="https://rork.com/privacy"
-export HOOPS_TERMS_OF_SERVICE_URL="https://rork.com/terms"
+export HOOPS_PRIVACY_POLICY_URL="https://atrak.dev/apps/hoopsclips/privacy.html"
+export HOOPS_TERMS_OF_SERVICE_URL="https://atrak.dev/apps/hoopsclips/terms.html"
 export HOOPS_CLOUD_ANALYSIS_BASE_URL="https://..."
 export HOOPS_CLOUD_EDIT_BASE_URL="https://..."
 

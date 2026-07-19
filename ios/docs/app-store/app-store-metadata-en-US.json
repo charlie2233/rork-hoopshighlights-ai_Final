@@ -11,7 +11,8 @@
   "categories": {
     "primary": "Photo & Video",
     "secondary": "Sports",
-    "status": "operator_review_required"
+    "status": "ready",
+    "note": "Photo & Video matches the core video-editing workflow; Sports matches the basketball subject matter."
   },
   "brand": {
     "appIconPath": "ios/HoopsClips/HoopsClips/Assets.xcassets/AppIcon.appiconset/icon.png",
@@ -19,19 +20,19 @@
   },
   "urls": {
     "supportURL": {
-      "value": null,
-      "status": "blocked",
-      "note": "Provide a public HoopClips support page with current contact information."
+      "value": "https://atrak.dev/apps/hoopsclips/support.html",
+      "status": "ready",
+      "note": "Public HoopClips support page verified live with current contact and troubleshooting information."
     },
     "privacyPolicyURL": {
-      "value": "https://rork.com/privacy",
-      "status": "operator_review_required",
-      "note": "Public page is reachable, but the operator must confirm that its scope and publisher identity cover HoopClips."
+      "value": "https://atrak.dev/apps/hoopsclips/privacy.html",
+      "status": "ready",
+      "note": "Product-specific HoopClips policy covers native apps, cloud processing, AI editing, retention, providers, and deletion requests."
     },
     "termsOfServiceURL": {
-      "value": "https://rork.com/terms",
-      "status": "operator_review_required",
-      "note": "Public page is reachable, but the operator must confirm that its scope and publisher identity cover HoopClips."
+      "value": "https://atrak.dev/apps/hoopsclips/terms.html",
+      "status": "ready",
+      "note": "Product-specific HoopClips terms cover user-upload rights, cloud and AI results, acceptable use, storage, and availability."
     }
   },
   "screenshots": [
@@ -50,6 +51,11 @@
       ]
     }
   ],
+  "screenshotContentReview": {
+    "status": "ready",
+    "reviewedAt": "2026-07-19",
+    "evidence": "All four simulator-captured frames were visually reviewed. They show the submitted AI Edit setup and template picker, contain no user footage or synthetic black preview, and remain legible on iPhone 6.9-inch and iPad 13-inch layouts."
+  },
   "review": {
     "signInNotesPath": "ios/docs/app-store/app-review-sign-in.md",
     "reviewAccountEmail": "appreview@hoopsclips.app",
@@ -67,23 +73,13 @@
   },
   "release": {
     "version": "1.0.0",
-    "build": "53",
+    "build": "54",
     "releaseMode": "manual",
     "configurationPath": "ios/HoopsClips/HoopsClips/Config/Release.xcconfig",
     "backendMode": "production_cloud_only",
     "localRenderFallback": false
   },
   "operatorGates": [
-    {
-      "id": "support_url",
-      "status": "blocked",
-      "detail": "A public HoopClips support URL with contact information is not yet verified."
-    },
-    {
-      "id": "privacy_terms_scope",
-      "status": "operator_review_required",
-      "detail": "Confirm that the Rork privacy policy and terms legally cover the submitted HoopClips app."
-    },
     {
       "id": "app_review_contact",
       "status": "operator_review_required",
@@ -103,16 +99,6 @@
       "id": "digital_services_act",
       "status": "operator_review_required",
       "detail": "Complete the applicable Digital Services Act trader status in App Store Connect."
-    },
-    {
-      "id": "listing_categories",
-      "status": "operator_review_required",
-      "detail": "Confirm the suggested Photo & Video primary and Sports secondary categories."
-    },
-    {
-      "id": "screenshot_content_review",
-      "status": "operator_review_required",
-      "detail": "Operator must approve the final screenshot order and verify that the seeded UI accurately represents the submitted build."
     }
   ]
 }

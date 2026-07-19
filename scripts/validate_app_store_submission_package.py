@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 DEFAULT_METADATA_PATH = Path("ios/docs/app-store/app-store-metadata-en-US.json")
+DEFAULT_PROJECT_FILE = Path("ios/HoopsClips.xcodeproj/project.pbxproj")
 EXPECTED_SCHEMA_VERSION = "hoopclips-app-store-metadata-v1"
 TEXT_LIMITS = {
     "name": 30,
@@ -35,6 +38,15 @@ ALLOWED_SCREENSHOT_DIMENSIONS = {
     },
 }
 READY_STATUS = "ready"
+CANONICAL_PUBLIC_URLS = {
+    "supportURL": "https://atrak.dev/apps/hoopsclips/support.html",
+    "privacyPolicyURL": "https://atrak.dev/apps/hoopsclips/privacy.html",
+    "termsOfServiceURL": "https://atrak.dev/apps/hoopsclips/terms.html",
+}
+EXPECTED_CATEGORIES = {
+    "primary": "Photo & Video",
+    "secondary": "Sports",
+}
 
 
 @dataclass(frozen=True)
@@ -148,6 +160,23 @@ def validate_package(
         findings.append(Finding("error", "listing", str(error)))
 
     try:
+        categories = _mapping(root.get("categories"), "categories")
+        category_errors: list[str] = []
+        for field, expected in EXPECTED_CATEGORIES.items():
+            if _text(categories.get(field), f"categories.{field}") != expected:
+                category_errors.append(f"{field} must be {expected}")
+        if _text(categories.get("status"), "categories.status") != READY_STATUS:
+            category_errors.append("category selection must be marked ready")
+        if category_errors:
+            findings.append(Finding("error", "categories", "; ".join(category_errors) + "."))
+        else:
+            findings.append(
+                Finding("pass", "categories", "Photo & Video primary and Sports secondary categories are finalized.")
+            )
+    except PackageValidationError as error:
+        findings.append(Finding("error", "categories", str(error)))
+
+    try:
         brand = _mapping(root.get("brand"), "brand")
         app_icon = resolve_repo_path(repo_root, brand.get("appIconPath"), "brand.appIconPath")
         brand_mark = resolve_repo_path(repo_root, brand.get("brandMarkPath"), "brand.brandMarkPath")
@@ -167,6 +196,33 @@ def validate_package(
             )
     except (OSError, PackageValidationError) as error:
         findings.append(Finding("error", "brand", str(error)))
+
+    try:
+        urls = _mapping(root.get("urls"), "urls")
+        url_errors: list[str] = []
+        for field, expected in CANONICAL_PUBLIC_URLS.items():
+            entry = _mapping(urls.get(field), f"urls.{field}")
+            value = _text(entry.get("value"), f"urls.{field}.value")
+            status = _text(entry.get("status"), f"urls.{field}.status")
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+                url_errors.append(f"{field} must be a plain public HTTPS URL")
+            if value != expected:
+                url_errors.append(f"{field} must use the canonical HoopClips page")
+            if status != READY_STATUS:
+                url_errors.append(f"{field} must be marked ready after live verification")
+        if url_errors:
+            findings.append(Finding("error", "urls", "; ".join(url_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "urls",
+                    "Canonical HoopClips support, privacy, and terms URLs are ready.",
+                )
+            )
+    except PackageValidationError as error:
+        findings.append(Finding("error", "urls", str(error)))
 
     seen_device_classes: set[str] = set()
     try:
@@ -232,7 +288,21 @@ def validate_package(
         findings.append(Finding("error", "screenshots", str(error)))
 
     try:
+        screenshot_review = _mapping(root.get("screenshotContentReview"), "screenshotContentReview")
+        status = _text(screenshot_review.get("status"), "screenshotContentReview.status")
+        _text(screenshot_review.get("reviewedAt"), "screenshotContentReview.reviewedAt")
+        _text(screenshot_review.get("evidence"), "screenshotContentReview.evidence")
+        if status != READY_STATUS:
+            findings.append(Finding("error", "screenshotContentReview", "Screenshot content review must be ready."))
+        else:
+            findings.append(Finding("pass", "screenshotContentReview", "Screenshot order and content review are recorded."))
+    except PackageValidationError as error:
+        findings.append(Finding("error", "screenshotContentReview", str(error)))
+
+    try:
         release = _mapping(root.get("release"), "release")
+        release_version = _text(release.get("version"), "release.version")
+        release_build = _text(release.get("build"), "release.build")
         release_config_path = resolve_repo_path(
             repo_root,
             release.get("configurationPath"),
@@ -255,9 +325,24 @@ def validate_package(
             findings.append(
                 Finding("error", "release.configuration", "Release.xcconfig must require enabled cloud launch mode.")
             )
+        project_text = (repo_root / DEFAULT_PROJECT_FILE).read_text(encoding="utf-8")
+        marketing_versions = set(re.findall(r"MARKETING_VERSION\s*=\s*([^;\s]+)\s*;", project_text))
+        build_versions = set(re.findall(r"CURRENT_PROJECT_VERSION\s*=\s*([^;\s]+)\s*;", project_text))
+        if release_version not in marketing_versions:
+            findings.append(
+                Finding("error", "release.version", "Metadata version does not match an Xcode target marketing version.")
+            )
+        if release_build not in build_versions:
+            findings.append(
+                Finding("error", "release.build", "Metadata build does not match an Xcode target build number.")
+            )
         if not any(item.status == "error" and item.check.startswith("release.") for item in findings):
             findings.append(
-                Finding("pass", "release", "Listing declares the submitted app as cloud-only.")
+                Finding(
+                    "pass",
+                    "release",
+                    f"Listing matches Xcode version/build {release_version} ({release_build}) and declares cloud-only mode.",
+                )
             )
     except (OSError, PackageValidationError) as error:
         findings.append(Finding("error", "release", str(error)))
