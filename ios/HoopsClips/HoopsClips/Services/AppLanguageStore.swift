@@ -179,6 +179,17 @@ enum AppTextKey {
     case settingsMembershipDetailSubtitle
     case settingsSupportDetailSubtitle
     case settingsAboutDetailSubtitle
+    case settingsMacAppTitle
+    case settingsMacAppSubtitle
+    case settingsMacAppBadge
+    case settingsMacAppDetailSubtitle
+    case settingsMacAppDescription
+    case settingsMacAppFeatureReview
+    case settingsMacAppFeatureCloud
+    case settingsMacAppFeatureExport
+    case settingsMacAppBetaNote
+    case settingsMacAppRequestAccess
+    case settingsMacAppRequestPrefill
     case settingsLegal
     case settingsLegalSubtitle
     case settingsPrivacyPolicySubtitle
@@ -483,6 +494,17 @@ extension AppLanguage {
         .settingsMembershipDetailSubtitle: "See how you're signed in and manage access.",
         .settingsSupportDetailSubtitle: "Help, bug reports, and quick answers.",
         .settingsAboutDetailSubtitle: "Core app details, cloud AI processing, and local history notes.",
+        .settingsMacAppTitle: "Try HoopClips on Mac",
+        .settingsMacAppSubtitle: "Review game film and build AI edits on a bigger screen.",
+        .settingsMacAppBadge: "Private beta",
+        .settingsMacAppDetailSubtitle: "A desktop workspace for basketball film, review, and cloud AI Edit.",
+        .settingsMacAppDescription: "Bring longer game-film sessions to your Mac while HoopClips keeps analysis and rendering in the cloud.",
+        .settingsMacAppFeatureReview: "Review clips with more room for timelines and decisions.",
+        .settingsMacAppFeatureCloud: "Use the same cloud-first analysis and AI Edit workflow.",
+        .settingsMacAppFeatureExport: "Preview, download, and share finished MP4 exports.",
+        .settingsMacAppBetaNote: "The Mac app is in private beta while we finish signing and TestFlight access. Tell us you're interested and we'll follow up when access is available.",
+        .settingsMacAppRequestAccess: "Join the Mac beta",
+        .settingsMacAppRequestPrefill: "I'd like to try HoopClips for Mac. Please let me know when private beta access is available.",
         .settingsLegal: "Legal",
         .settingsLegalSubtitle: "Open the policies that stay reachable from the shipped app and App Store listing.",
         .settingsPrivacyPolicySubtitle: "Review how account, billing, cloud AI processing, and local history are described.",
@@ -751,6 +773,17 @@ extension AppLanguage {
         .settingsMembershipDetailSubtitle: "查看登录方式并管理访问权限。",
         .settingsSupportDetailSubtitle: "帮助、问题报告和快速答案都在这里。",
         .settingsAboutDetailSubtitle: "应用信息、云端 AI 处理和本机历史说明。",
+        .settingsMacAppTitle: "试用 Mac 版 HoopClips",
+        .settingsMacAppSubtitle: "在更大的屏幕上回看比赛并制作 AI 剪辑。",
+        .settingsMacAppBadge: "内测",
+        .settingsMacAppDetailSubtitle: "为篮球比赛录像、片段审核和云端 AI 剪辑打造的桌面工作区。",
+        .settingsMacAppDescription: "在 Mac 上处理更长的比赛录像；分析和最终渲染仍由 HoopClips 云端完成。",
+        .settingsMacAppFeatureReview: "更宽敞地查看片段、时间线和审核选择。",
+        .settingsMacAppFeatureCloud: "沿用同一套云端优先分析与 AI 剪辑流程。",
+        .settingsMacAppFeatureExport: "预览、下载并分享完成的 MP4 导出。",
+        .settingsMacAppBetaNote: "Mac 版目前处于内测阶段，签名和 TestFlight 访问仍在完善。提交兴趣后，我们会在可用时联系你。",
+        .settingsMacAppRequestAccess: "申请 Mac 内测",
+        .settingsMacAppRequestPrefill: "我想试用 Mac 版 HoopClips。内测开放后请通知我。",
         .settingsLegal: "法律信息",
         .settingsLegalSubtitle: "打开正式 App 和 App Store 页面需要可访问的政策链接。",
         .settingsPrivacyPolicySubtitle: "查看账号、订阅、云端 AI 处理和本机历史的说明。",
@@ -1019,6 +1052,17 @@ extension AppLanguage {
         .settingsMembershipDetailSubtitle: "Revisa cómo iniciaste sesión y gestiona el acceso.",
         .settingsSupportDetailSubtitle: "Ayuda, reportes de errores y respuestas rápidas.",
         .settingsAboutDetailSubtitle: "Detalles de la app, IA en la nube e historial local.",
+        .settingsMacAppTitle: "Prueba HoopClips para Mac",
+        .settingsMacAppSubtitle: "Revisa partidos y crea ediciones con IA en una pantalla más grande.",
+        .settingsMacAppBadge: "Beta privada",
+        .settingsMacAppDetailSubtitle: "Un espacio de escritorio para video de básquet, revisión y edición con IA en la nube.",
+        .settingsMacAppDescription: "Lleva sesiones de partidos más largas a tu Mac mientras HoopClips mantiene el análisis y el renderizado en la nube.",
+        .settingsMacAppFeatureReview: "Revisa clips con más espacio para líneas de tiempo y decisiones.",
+        .settingsMacAppFeatureCloud: "Usa el mismo flujo de análisis y edición con IA centrado en la nube.",
+        .settingsMacAppFeatureExport: "Previsualiza, descarga y comparte exportaciones MP4 terminadas.",
+        .settingsMacAppBetaNote: "La app para Mac está en beta privada mientras terminamos la firma y el acceso por TestFlight. Dinos que te interesa y te avisaremos cuando haya acceso.",
+        .settingsMacAppRequestAccess: "Unirme a la beta para Mac",
+        .settingsMacAppRequestPrefill: "Me gustaría probar HoopClips para Mac. Avísenme cuando haya acceso a la beta privada.",
         .settingsLegal: "Legal",
         .settingsLegalSubtitle: "Abre las políticas que deben estar disponibles en la app publicada y en App Store.",
         .settingsPrivacyPolicySubtitle: "Revisa cómo se explican la cuenta, la facturación, la IA en la nube y el historial local.",
@@ -1287,6 +1331,17 @@ extension AppLanguage {
         .settingsMembershipDetailSubtitle: "Vois comment tu es connecté et gère l'accès.",
         .settingsSupportDetailSubtitle: "Aide, bugs et réponses rapides.",
         .settingsAboutDetailSubtitle: "Détails de l'app, IA dans le cloud et historique local.",
+        .settingsMacAppTitle: "Essaie HoopClips sur Mac",
+        .settingsMacAppSubtitle: "Revois les matchs et crée des montages IA sur un écran plus grand.",
+        .settingsMacAppBadge: "Bêta privée",
+        .settingsMacAppDetailSubtitle: "Un espace de bureau pour les matchs, la revue et le montage IA dans le cloud.",
+        .settingsMacAppDescription: "Travaille sur de plus longues sessions de match sur ton Mac pendant que HoopClips garde l'analyse et le rendu dans le cloud.",
+        .settingsMacAppFeatureReview: "Revois les clips avec plus d'espace pour la timeline et les décisions.",
+        .settingsMacAppFeatureCloud: "Utilise le même flux d'analyse et de montage IA centré sur le cloud.",
+        .settingsMacAppFeatureExport: "Prévisualise, télécharge et partage les exports MP4 terminés.",
+        .settingsMacAppBetaNote: "L'app Mac est en bêta privée pendant la finalisation de la signature et de l'accès TestFlight. Dis-nous que tu es intéressé et nous te contacterons dès que l'accès sera disponible.",
+        .settingsMacAppRequestAccess: "Rejoindre la bêta Mac",
+        .settingsMacAppRequestPrefill: "J'aimerais essayer HoopClips sur Mac. Prévenez-moi quand la bêta privée sera disponible.",
         .settingsLegal: "Mentions légales",
         .settingsLegalSubtitle: "Ouvre les politiques qui doivent rester accessibles dans l'app publiée et sur l'App Store.",
         .settingsPrivacyPolicySubtitle: "Consulte la façon dont le compte, la facturation, l'IA dans le cloud et l'historique local sont expliqués.",

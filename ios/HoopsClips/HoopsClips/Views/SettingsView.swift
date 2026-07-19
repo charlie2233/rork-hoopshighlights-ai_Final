@@ -148,6 +148,7 @@ struct SettingsView: View {
                         AnyView(membershipHubLink)
                         AnyView(languageSettingsCard)
                         AnyView(workflowHubLink)
+                        AnyView(macAppHubLink)
                         AnyView(supportHubLink)
                         AnyView(aboutHubLink)
                         #if DEBUG
@@ -357,6 +358,26 @@ struct SettingsView: View {
         ) {
             workflowSettingsPage
         }
+    }
+
+    private var macAppHubLink: some View {
+        settingsHubLink(
+            title: languageStore.text(.settingsMacAppTitle),
+            subtitle: languageStore.text(.settingsMacAppSubtitle),
+            icon: "macbook",
+            accent: AppTheme.courtBlue,
+            stats: [
+                SettingsPreviewStat(
+                    icon: "person.2.fill",
+                    value: languageStore.text(.settingsMacAppBadge),
+                    label: languageStore.text(.settingsMacAppTitle),
+                    tint: AppTheme.rimOrange
+                )
+            ]
+        ) {
+            macAppSettingsPage
+        }
+        .accessibilityIdentifier("settings.macApp.card")
     }
 
     private var runtimeStatusCard: some View {
@@ -1962,6 +1983,95 @@ struct SettingsView: View {
         }
     }
 
+    private var macAppSettingsPage: some View {
+        settingsDetailPage(
+            title: languageStore.text(.settingsMacAppTitle),
+            subtitle: languageStore.text(.settingsMacAppDetailSubtitle),
+            icon: "macbook",
+            accent: AppTheme.courtBlue
+        ) {
+            macAppRecommendationSection
+        }
+    }
+
+    private var macBetaSupportPage: some View {
+        supportSettingsPage
+            .onAppear {
+                prefillMacBetaRequestIfNeeded()
+            }
+    }
+
+    private var macAppRecommendationSection: some View {
+        settingsCard(title: languageStore.text(.settingsMacAppBadge), icon: "desktopcomputer") {
+            Text(languageStore.text(.settingsMacAppDescription))
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: 10) {
+                macAppFeatureRow(
+                    languageStore.text(.settingsMacAppFeatureReview),
+                    icon: "rectangle.split.3x1.fill"
+                )
+                Divider()
+                    .overlay(AppTheme.softBorder)
+                macAppFeatureRow(
+                    languageStore.text(.settingsMacAppFeatureCloud),
+                    icon: "cloud.fill"
+                )
+                Divider()
+                    .overlay(AppTheme.softBorder)
+                macAppFeatureRow(
+                    languageStore.text(.settingsMacAppFeatureExport),
+                    icon: "square.and.arrow.down.fill"
+                )
+            }
+
+            Text(languageStore.text(.settingsMacAppBetaNote))
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            NavigationLink(destination: macBetaSupportPage) {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.crop.circle.badge.plus")
+                    Text(languageStore.text(.settingsMacAppRequestAccess))
+                        .font(.subheadline.bold())
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                }
+                .foregroundStyle(.white)
+                .padding(14)
+                .background(AppTheme.rimOrange, in: .rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.macApp.requestAccess")
+        }
+    }
+
+    private func macAppFeatureRow(_ text: String, icon: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.courtBlue)
+                .frame(width: 22)
+
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Color.white.opacity(0.78))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 4)
+    }
+
     private var supportSettingsPage: some View {
         settingsDetailPage(
             title: languageStore.text(.supportCenter),
@@ -2683,6 +2793,7 @@ struct SettingsView: View {
                         .padding(.vertical, 8)
                         .frame(minHeight: 120)
                         .background(Color.clear)
+                        .accessibilityIdentifier("settings.feedback.message")
                 }
                 .frame(minHeight: 120)
             }
@@ -3151,6 +3262,14 @@ struct SettingsView: View {
 
     private var feedbackCharacterCount: Int {
         feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines).count
+    }
+
+    @MainActor
+    private func prefillMacBetaRequestIfNeeded() {
+        guard feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        feedbackType = .suggestion
+        feedbackMessage = languageStore.text(.settingsMacAppRequestPrefill)
+        setFeedbackBanner(nil)
     }
 
     private var canSubmitFeedback: Bool {
