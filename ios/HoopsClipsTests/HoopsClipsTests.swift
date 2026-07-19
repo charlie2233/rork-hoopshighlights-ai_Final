@@ -206,6 +206,11 @@ struct HoopsClipsTests {
         viewModel.isVideoLoaded = true
         viewModel.cloudAnalysisJobID = "analysis_old_account"
         viewModel.cloudEditSourceObjectKey = "uploads/old-account/source.mp4"
+        viewModel.updateCloudEditSession(
+            editJobID: "edit_old_account",
+            renderJobID: "render_old_account",
+            revisionID: nil
+        )
         viewModel.cloudDetectedTeams = [
             CloudTeamOption(
                 teamId: "team_old",
@@ -251,10 +256,30 @@ struct HoopsClipsTests {
         #expect(viewModel.exportService.exportedURL == nil)
         #expect(viewModel.cloudAnalysisJobID == nil)
         #expect(viewModel.cloudEditSourceObjectKey == nil)
+        #expect(viewModel.cloudEditSession == nil)
         #expect(viewModel.cloudDetectedTeams.isEmpty)
         #expect(viewModel.hasConfirmedHighlightTeamSelection == false)
         #expect(viewModel.settings.highlightTeamSelection.mode == .all)
         #expect(viewModel.settings.opponentTeamName == nil)
+    }
+
+    @Test @MainActor func testCloudEditSessionCheckpointClearsWhenSourceChanges() {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/game-a/source.mp4"
+        viewModel.updateCloudEditSession(
+            editJobID: "edit-game-a",
+            renderJobID: "render-game-a",
+            revisionID: "revision-game-a"
+        )
+
+        #expect(viewModel.cloudEditSession?.editJobID == "edit-game-a")
+        #expect(viewModel.cloudEditSession?.renderJobID == "render-game-a")
+        #expect(viewModel.cloudEditSession?.revisionID == "revision-game-a")
+
+        viewModel.cloudEditSourceObjectKey = "uploads/game-b/source.mp4"
+
+        #expect(viewModel.cloudEditSession == nil)
+        #expect(viewModel.latestCloudEditRenderStatus == nil)
     }
 
     @Test @MainActor func testImportRecoveryReloadsPersistedProjectWithoutRelaunch() throws {
@@ -2017,6 +2042,34 @@ struct HoopsClipsTests {
         #expect(project.historyExportBadgeText == "Saved reel")
     }
 
+    @Test func testPersistedProjectRecordRoundTripsCloudEditSessionCheckpoint() throws {
+        let now = Date(timeIntervalSince1970: 1_777_200_000)
+        let project = PersistedProjectRecord(
+            title: "Saved AI Edit",
+            sourceFilename: "game.mov",
+            sourceRelativePath: "projects/source.mov",
+            sourceDuration: 96,
+            thumbnailRelativePath: "projects/thumb.jpg",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now,
+            cloudEditSourceObjectKey: "uploads/game/source.mp4",
+            cloudEditSession: CloudEditSessionCheckpoint(
+                editJobID: "edit-saved",
+                renderJobID: "render-saved",
+                revisionID: "revision-saved"
+            )
+        )
+
+        let data = try JSONEncoder().encode(project)
+        let decoded = try JSONDecoder().decode(PersistedProjectRecord.self, from: data)
+
+        #expect(decoded.cloudEditSourceObjectKey == "uploads/game/source.mp4")
+        #expect(decoded.cloudEditSession?.editJobID == "edit-saved")
+        #expect(decoded.cloudEditSession?.renderJobID == "render-saved")
+        #expect(decoded.cloudEditSession?.revisionID == "revision-saved")
+    }
+
     @Test func testFriendlyProjectTitleFallsBackForGenericImportedNames() {
         let title = PersistedProjectRecord.friendlyProjectTitle(
             sourceFilename: "imported_video_1234.mp4",
@@ -3673,6 +3726,30 @@ struct HoopsClipsTests {
 
         #expect(match?.renderJobId == "render-revision")
         #expect(match?.revisionId == "rev-more-hype")
+        #expect(match?.status == .rendering)
+    }
+
+    @Test func testCloudEditForegroundRefreshPrefersPersistedRenderJobAfterRelaunch() {
+        let olderRender = makeCloudEditRenderStatus(
+            editJobId: "edit-3",
+            renderJobId: "render-older",
+            status: .rendered
+        )
+        let persistedRender = makeCloudEditRenderStatus(
+            editJobId: "edit-3",
+            renderJobId: "render-persisted",
+            status: .rendering
+        )
+
+        let match = CloudEditForegroundRefreshPolicy.matchingRenderStatus(
+            currentRender: nil,
+            activeEditJobID: "edit-3",
+            activeRevisionID: nil,
+            activeRenderJobID: "render-persisted",
+            history: [olderRender, persistedRender]
+        )
+
+        #expect(match?.renderJobId == "render-persisted")
         #expect(match?.status == .rendering)
     }
 

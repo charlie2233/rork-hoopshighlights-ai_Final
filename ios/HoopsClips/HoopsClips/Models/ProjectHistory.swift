@@ -22,6 +22,12 @@ nonisolated struct PersistedProjectLibrary: Codable, Sendable {
     }
 }
 
+nonisolated struct CloudEditSessionCheckpoint: Codable, Sendable, Equatable {
+    let editJobID: String
+    var renderJobID: String?
+    var revisionID: String?
+}
+
 nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     let id: UUID
     var title: String
@@ -41,6 +47,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     var analysisStatusSummary: String?
     var cloudAnalysisJobID: String?
     var cloudEditSourceObjectKey: String?
+    var cloudEditSession: CloudEditSessionCheckpoint?
     var highlightTeamSelection: HighlightTeamSelection?
     var opponentTeamName: String?
     var cloudDetectedTeams: [CloudTeamOption]?
@@ -74,6 +81,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         analysisStatusSummary: String? = nil,
         cloudAnalysisJobID: String? = nil,
         cloudEditSourceObjectKey: String? = nil,
+        cloudEditSession: CloudEditSessionCheckpoint? = nil,
         highlightTeamSelection: HighlightTeamSelection? = nil,
         opponentTeamName: String? = nil,
         cloudDetectedTeams: [CloudTeamOption]? = nil,
@@ -106,6 +114,7 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         self.analysisStatusSummary = analysisStatusSummary
         self.cloudAnalysisJobID = cloudAnalysisJobID
         self.cloudEditSourceObjectKey = cloudEditSourceObjectKey
+        self.cloudEditSession = cloudEditSession
         self.highlightTeamSelection = highlightTeamSelection
         self.opponentTeamName = opponentTeamName
         self.cloudDetectedTeams = cloudDetectedTeams
