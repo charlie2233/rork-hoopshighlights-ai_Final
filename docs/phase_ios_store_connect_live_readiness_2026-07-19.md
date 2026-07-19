@@ -6,7 +6,7 @@ Branch: `codex/ios-store-connect-live-readiness-20260719`
 
 ## Scope
 
-This audit reconciles the current iOS source, internal-staging build 54
+This audit reconciles the current iOS source, internal-staging build 55
 TestFlight evidence, the public HoopClips legal pages, and the live App Store
 Connect record. It does not submit the app, expose review credentials, or claim
 that internal-staging/source proof is an installed-device or App Review result.
@@ -25,11 +25,14 @@ that internal-staging/source proof is an installed-device or App Review result.
 
 ## Live App Store Connect Evidence
 
-The authenticated in-app side browser showed:
+The authenticated in-app side browser established the Store listing state.
+Read-only App Store Connect status run `29706397510` subsequently refreshed the
+internal build evidence:
 
 - App Apple ID `6763813635`, version `1.0`, state `Prepare for Submission`.
-- Build `1.0.0 (54)` is `VALID`, internal TestFlight, not expired, and has no
-  non-exempt encryption declaration. It is not yet selected for the version.
+- Build `1.0.0 (55)` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired,
+  and has no non-exempt encryption declaration. It is not eligible for public
+  version selection because it uses the internal-staging configuration.
 - Both screenshot sets are empty. Media Manager explicitly accepts the prepared
   1320 x 2868 iPhone 6.9-inch and 2064 x 2752 iPad 13-inch assets.
 - Subtitle, promotional text, description, keywords, and categories are blank.
@@ -54,14 +57,15 @@ No `Add for Review` action was taken.
 
 ## Store Binary Distinction
 
-Build 54 is not the production App Store binary. The signed workflow archived
+Build 55 is not the production App Store binary. The signed workflow archived
 it with `InternalStaging.xcconfig`, `HOOPS_APP_ENV=internal_staging`,
 `HOOPS_CLOUD_LAUNCH_MODE=internal_only`, and the staging Worker for both cloud
 URLs. It remains useful internal TestFlight evidence, but selecting it for
 public review would contradict the production-cloud release contract.
 
-Build 55 is reserved for the production Store candidate. The production GitHub
-environment has both cloud URL variable names, but a secret-safe shape check on
+Build 56 is reserved for the production Store candidate. Build 55 was consumed
+by the internal-staging upload-resume fix and cannot be reused. The production
+GitHub environment has both cloud URL variable names, but a secret-safe shape check on
 July 19 found staging markers in both values. It also lacks the three App Store
 Connect API credential secret names used by the staging signing lane. The new
 production archive workflow therefore fails closed until approved production
@@ -148,9 +152,9 @@ macOS.
 1. Approve production endpoint cutover. Replace the staging-marked production
    cloud URL variables and add App Store Connect upload secrets to the
    production GitHub environment.
-2. Run the fail-closed production archive workflow for reserved build 55,
+2. Run the fail-closed production archive workflow for reserved build 56,
    upload it, wait for Valid processing, and select that build. Never select
-   internal-staging build 54 for public review.
+   internal-staging build 55 for public review.
 3. Save the prepared listing, categories, URLs, cloud-only review notes, manual
    release mode, screenshots, Free price, and availability.
 4. Save and publish App Privacy after confirming the prepared declaration.

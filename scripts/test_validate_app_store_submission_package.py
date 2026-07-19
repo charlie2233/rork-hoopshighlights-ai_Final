@@ -206,7 +206,7 @@ on:
   workflow_dispatch:
     inputs:
       build_number:
-        default: \"55\"
+        default: \"56\"
 jobs:
   archive:
     environment: production
@@ -266,7 +266,7 @@ jobs:
     privacy_manifest_path.write_text("<plist><dict/></plist>\n", encoding="utf-8")
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(
-        "MARKETING_VERSION = 1.0.0;\nCURRENT_PROJECT_VERSION = 54;\n",
+        "MARKETING_VERSION = 1.0.0;\nCURRENT_PROJECT_VERSION = 55;\n",
         encoding="utf-8",
     )
     metadata_path = repo_root / DEFAULT_METADATA_PATH
@@ -365,7 +365,7 @@ jobs:
                     "versionState": "prepare_for_submission",
                     "testFlightBuild": {
                         "version": "1.0.0",
-                        "build": "54",
+                        "build": "55",
                         "processingState": "valid",
                         "configuration": "internal_staging",
                         "backendMode": "staging_cloud_only",
@@ -373,7 +373,7 @@ jobs:
                     },
                     "productionStoreBuild": {
                         "version": "1.0.0",
-                        "build": "55",
+                        "build": "56",
                         "configuration": "production",
                         "backendMode": "production_cloud_only",
                         "status": "pending_archive_upload",
@@ -406,7 +406,7 @@ jobs:
                 },
                 "release": {
                     "version": "1.0.0",
-                    "build": "55",
+                    "build": "56",
                     "configurationPath": "config/Release.xcconfig",
                     "archiveWorkflowPath": ".github/workflows/ios-app-store-production-upload.yml",
                     "exportOptionsPath": "config/exportOptions.plist",
