@@ -13,6 +13,10 @@ API keys.
 - `screenshots/en-US/ipad-13`: current 2064 x 2752 iPad frames.
 - `app-review-sign-in.md`: review-account and reviewer-flow instructions. The
   real password belongs only in App Store Connect.
+- `shared-backend-accuracy-2026-07-19.json`: current aggregate launch-gate
+  evidence shared by iOS and macOS. It reuses the completed iOS human labels,
+  remaps stale cloud prediction identifiers one-to-one by reviewed time overlap,
+  does not create a duplicate Mac labeling set, and truthfully remains failed.
 
 The screenshots use the current Debug-only seeded workflow so they can show the
 real Review-to-AI-Edit product UI without uploading user footage or exposing

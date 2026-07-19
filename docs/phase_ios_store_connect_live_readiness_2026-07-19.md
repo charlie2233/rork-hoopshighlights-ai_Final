@@ -118,12 +118,25 @@ release owner's action-time confirmation in App Store Connect.
 ## Shared Accuracy Evidence
 
 The completed shared iOS/macOS label bundle contains 43 reviewed clips from one
-case and is launch-evidence eligible, but its current report fails:
+case and is launch-evidence eligible. A July 19 refresh mapped those same human
+labels onto the newer `cloud-v1` analysis by one-to-one reviewed time-window
+overlap, because prediction indexes and IDs changed between runs. Each current
+prediction can be used at most once. All 11 current predictions matched distinct
+reviewed moments; 32 historical labels had no current prediction. The refreshed
+report at `ios/docs/app-store/shared-backend-accuracy-2026-07-19.json` still
+fails:
 
-- highlight precision: `0.1163` versus required `0.85`
+- highlight precision: `0.2727` versus required `0.85`
+- highlight recall: `0.6` versus required `0.85`
 - shot outcome evidence quality: `0.0` versus required `0.85`
 - case coverage: `1` versus required `2`
-- required positive, opponent, and defensive-event coverage is missing
+- required selected-team, opponent, and defensive-event coverage is missing
+
+This refresh improves on the older `0.1163` precision result, but it is not a
+pass. Reproduce the mapping with `--allow-unlabeled-predictions` and
+`--remap-stale-predictions-by-time`. The remaining unlabeled second-game bundle
+contains eight clips and can supply the second case only after genuine human
+review; labels must not be inferred or copied where the moments differ.
 
 This must not be described as an 85% pass. Before submission, either produce a
 current passing shared backend report or record an explicit release-owner risk

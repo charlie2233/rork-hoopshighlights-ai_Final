@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "hoopclips-shared-backend-accuracy-evidence-v1",
+  "evaluatedAt": "2026-07-19",
+  "status": "fail",
+  "platformScope": ["ios", "macos"],
+  "duplicateMacLabelsRequired": false,
+  "humanLabels": {
+    "source": "artifacts/team_highlight_accuracy_troy/launch_label_troy_white_slice_10m_15m_all_001/manual_labels_template.json",
+    "status": "complete",
+    "caseCount": 1,
+    "clipCount": 43,
+    "reviewedByHumanCount": 43
+  },
+  "analysis": {
+    "source": "artifacts/team_highlight_accuracy_troy_current/launch_label_troy_white_slice_10m_15m_all_001/analysis_result.json",
+    "schemaVersion": "cloud-analysis-export-v1",
+    "backendModelVersion": "cloud-v1",
+    "returnedClipCount": 11,
+    "teamMode": "all"
+  },
+  "mapping": {
+    "method": "one_to_one_time_overlap_after_ignoring_stale_prediction_identifiers",
+    "predictionMatchingMode": "one_to_one_time_overlap",
+    "minimumOverlapRatio": 0.25,
+    "allowUnlabeledPredictions": true,
+    "matchedCurrentPredictionCount": 11,
+    "unmatchedHumanLabelCount": 32,
+    "unlabeledCurrentPredictionCount": 0,
+    "reason": "Prediction indexes and IDs changed between analysis runs; each current cloud prediction was assigned to at most one completed human label using the highest qualifying reviewed time-window overlap."
+  },
+  "metrics": {
+    "caseCount": 1,
+    "clipCount": 43,
+    "highlightPrecision": 0.2727,
+    "highlightRecall": 0.6,
+    "shotOutcomeEvidenceQuality": 0.0,
+    "clipTimingQuality": 1.0,
+    "selectedTeamPrecision": 1.0,
+    "selectedTeamRecallWithUncertain": 1.0,
+    "selectedTeamHighlightCount": 0,
+    "opponentHighlightCount": 0,
+    "defensiveEventCount": 0,
+    "negativeClipCount": 38,
+    "uncertainReviewCount": 11
+  },
+  "thresholds": {
+    "minimumCaseCount": 2,
+    "minimumHighlightPrecision": 0.85,
+    "minimumHighlightRecall": 0.85,
+    "minimumShotOutcomeEvidenceQuality": 0.85,
+    "minimumSelectedTeamHighlights": 6,
+    "minimumOpponentHighlights": 2,
+    "minimumSelectedTeamDefensiveEvents": 2
+  },
+  "blockingFailures": [
+    "highlightPrecision 0.2727 is below required 0.85",
+    "highlightRecall 0.6 is below required 0.85",
+    "shotOutcomeEvidenceQuality 0.0 is below required 0.85",
+    "caseCount 1 is below required 2",
+    "selectedTeamHighlightCount 0 is below required 6",
+    "opponentHighlightCount 0 is below required 2",
+    "selectedTeamDefensiveEventCount 0 is below required 2"
+  ],
+  "submissionDecision": {
+    "status": "operator_review_required",
+    "acceptablePaths": [
+      "Produce a passing shared backend report with a second human-reviewed selected-team case and required event coverage.",
+      "Record an explicit release-owner risk acceptance for the exact production Store candidate."
+    ]
+  },
+  "reproduction": {
+    "payloadBuilder": "scripts/build_team_highlight_eval_payload.py",
+    "evaluator": "scripts/evaluate_team_highlight_accuracy.py",
+    "payloadBuilderFlags": [
+      "--allow-unlabeled-predictions",
+      "--remap-stale-predictions-by-time"
+    ],
+    "note": "Source analysis and label artifacts are local launch evidence and are not committed with this aggregate report."
+  }
+}

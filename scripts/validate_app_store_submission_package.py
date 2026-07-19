@@ -115,6 +115,12 @@ def _text(value: Any, field: str) -> str:
     return value.strip()
 
 
+def _number(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PackageValidationError(f"{field} must be a number")
+    return float(value)
+
+
 def resolve_repo_path(repo_root: Path, raw_path: Any, field: str) -> Path:
     if isinstance(raw_path, Path):
         relative = raw_path
@@ -612,6 +618,75 @@ def validate_package(
             )
     except PackageValidationError as error:
         findings.append(Finding("error", "appStoreConnectAudit", str(error)))
+
+    try:
+        accuracy = _mapping(root.get("sharedBackendAccuracyEvidence"), "sharedBackendAccuracyEvidence")
+        report_path = resolve_repo_path(
+            repo_root,
+            accuracy.get("reportPath"),
+            "sharedBackendAccuracyEvidence.reportPath",
+        )
+        report = _mapping(
+            json.loads(report_path.read_text(encoding="utf-8")),
+            "sharedBackendAccuracyEvidence.report",
+        )
+        report_labels = _mapping(report.get("humanLabels"), "sharedBackendAccuracyEvidence.report.humanLabels")
+        report_metrics = _mapping(report.get("metrics"), "sharedBackendAccuracyEvidence.report.metrics")
+        report_thresholds = _mapping(report.get("thresholds"), "sharedBackendAccuracyEvidence.report.thresholds")
+        report_decision = _mapping(
+            report.get("submissionDecision"),
+            "sharedBackendAccuracyEvidence.report.submissionDecision",
+        )
+        accuracy_errors: list[str] = []
+        if report.get("schemaVersion") != "hoopclips-shared-backend-accuracy-evidence-v1":
+            accuracy_errors.append("shared accuracy report schema is unsupported")
+        if accuracy.get("status") != report.get("status"):
+            accuracy_errors.append("metadata and report status do not match")
+        if accuracy.get("evaluatedAt") != report.get("evaluatedAt"):
+            accuracy_errors.append("metadata and report evaluation dates do not match")
+        if accuracy.get("platformScope") != ["ios", "macos"] or report.get("platformScope") != ["ios", "macos"]:
+            accuracy_errors.append("shared evidence must explicitly cover iOS and macOS")
+        if accuracy.get("duplicateMacLabelsRequired") is not False or report.get("duplicateMacLabelsRequired") is not False:
+            accuracy_errors.append("shared backend evidence must not require duplicate Mac labels")
+        if report_labels.get("status") != "complete" or report_labels.get("reviewedByHumanCount") != 43:
+            accuracy_errors.append("all 43 source labels must remain recorded as human-reviewed and complete")
+        for field in (
+            "caseCount",
+            "clipCount",
+            "highlightPrecision",
+            "highlightRecall",
+            "shotOutcomeEvidenceQuality",
+        ):
+            metadata_value = _number(accuracy.get(field), f"sharedBackendAccuracyEvidence.{field}")
+            report_value = _number(report_metrics.get(field), f"sharedBackendAccuracyEvidence.report.metrics.{field}")
+            if metadata_value != report_value:
+                accuracy_errors.append(f"metadata and report {field} do not match")
+        for field in (
+            "minimumHighlightPrecision",
+            "minimumHighlightRecall",
+            "minimumShotOutcomeEvidenceQuality",
+        ):
+            if _number(report_thresholds.get(field), f"sharedBackendAccuracyEvidence.report.thresholds.{field}") < 0.85:
+                accuracy_errors.append(f"{field} cannot weaken the 85% launch gate")
+        if report.get("status") == "fail":
+            if not _list(report.get("blockingFailures"), "sharedBackendAccuracyEvidence.report.blockingFailures"):
+                accuracy_errors.append("failed report must list blocking failures")
+            if report_decision.get("status") != "operator_review_required":
+                accuracy_errors.append("failed report must remain operator_review_required")
+        elif report.get("status") != "pass":
+            accuracy_errors.append("shared accuracy status must be pass or fail")
+        if accuracy_errors:
+            findings.append(Finding("error", "sharedBackendAccuracyEvidence", "; ".join(accuracy_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "sharedBackendAccuracyEvidence",
+                    "Current shared iOS/macOS human-label evidence is recorded without duplicating Mac labels or hiding the failed gate.",
+                )
+            )
+    except (OSError, json.JSONDecodeError, PackageValidationError) as error:
+        findings.append(Finding("error", "sharedBackendAccuracyEvidence", str(error)))
 
     try:
         operator_gates = _list(root.get("operatorGates"), "operatorGates")

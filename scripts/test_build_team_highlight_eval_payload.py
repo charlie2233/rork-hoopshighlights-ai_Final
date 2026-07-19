@@ -45,6 +45,30 @@ def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str
     }
 
 
+def reviewed_label(
+    label_id: str,
+    prediction_index: int,
+    prediction_clip_id: str,
+    start: float,
+    end: float,
+) -> dict:
+    return {
+        "labelId": label_id,
+        "predictionIndex": prediction_index,
+        "predictionClipId": prediction_clip_id,
+        "start": start,
+        "end": end,
+        "needsLabel": False,
+        "reviewedByHuman": True,
+        "expected": {
+            "teamId": "team_dark",
+            "isHighlight": True,
+            "eventType": "made_shot",
+            "outcome": "made",
+        },
+    }
+
+
 class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
     def test_build_payload_matches_real_analysis_predictions_and_review_uncertain_clip(self) -> None:
         made = {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), **made_shot_evidence()}
@@ -212,6 +236,51 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                     ],
                 },
             )
+
+    def test_stale_prediction_identifiers_can_be_remapped_one_to_one_by_time(self) -> None:
+        payload = build_eval_payload(
+            analysis={
+                "clips": [
+                    {**analysis_clip(10.0, 14.0, "First Play", True, "team_dark", 0.94), "id": "clip_new_first"},
+                    {**analysis_clip(20.0, 24.0, "Second Play", True, "team_dark", 0.94), "id": "clip_new_second"},
+                ]
+            },
+            labels={
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    reviewed_label("old_first", 99, "clip_old_first", 9.0, 15.0),
+                    reviewed_label("old_second", 98, "clip_old_second", 19.0, 25.0),
+                ],
+            },
+            remap_stale_predictions_by_time=True,
+        )
+
+        self.assertEqual(payload["predictionMatchingMode"], "one_to_one_time_overlap")
+        self.assertEqual(
+            [clip["prediction"]["start"] for clip in payload["cases"][0]["clips"]],
+            [10.0, 20.0],
+        )
+
+    def test_time_remap_never_reuses_one_prediction_for_two_labels(self) -> None:
+        payload = build_eval_payload(
+            analysis={
+                "clips": [
+                    {**analysis_clip(10.0, 14.0, "One Play", True, "team_dark", 0.94), "id": "clip_new"},
+                ]
+            },
+            labels={
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    reviewed_label("old_first", 99, "clip_old_first", 9.0, 15.0),
+                    reviewed_label("old_second", 98, "clip_old_second", 9.5, 14.5),
+                ],
+            },
+            remap_stale_predictions_by_time=True,
+        )
+
+        prediction_starts = [clip["prediction"].get("start") for clip in payload["cases"][0]["clips"]]
+        self.assertEqual(prediction_starts.count(10.0), 1)
+        self.assertEqual(prediction_starts.count(None), 1)
 
     def test_label_template_marks_every_prediction_as_needing_human_labels(self) -> None:
         template = build_label_template(

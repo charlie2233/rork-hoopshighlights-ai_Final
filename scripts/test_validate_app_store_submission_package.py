@@ -33,6 +33,7 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
         self.assertTrue(any(item.check == "privacyDeclaration" and item.status == "pass" for item in findings))
         self.assertTrue(any(item.check == "submissionDrafts" and item.status == "pass" for item in findings))
         self.assertTrue(any(item.check == "appStoreConnectAudit" and item.status == "pass" for item in findings))
+        self.assertTrue(any(item.check == "sharedBackendAccuracyEvidence" and item.status == "pass" for item in findings))
         self.assertFalse(
             any(
                 item.check in {
@@ -143,6 +144,20 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
         self.assertTrue(has_errors(findings))
         self.assertTrue(any(item.check == "privacyDeclaration" for item in findings))
 
+    def test_shared_accuracy_metadata_cannot_hide_failed_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["sharedBackendAccuracyEvidence"]["status"] = "pass"
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "sharedBackendAccuracyEvidence" for item in findings))
+
     def test_missing_required_operator_gate_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
@@ -172,6 +187,7 @@ def create_fixture(
     release_config_path = repo_root / "config/Release.xcconfig"
     archive_workflow_path = repo_root / ".github/workflows/ios-app-store-production-upload.yml"
     export_options_path = repo_root / "config/exportOptions.plist"
+    accuracy_report_path = repo_root / "evidence/shared-accuracy.json"
     privacy_manifest_path = repo_root / "config/PrivacyInfo.xcprivacy"
     project_path = repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj"
     write_png(icon_path, 1024, 1024)
@@ -214,6 +230,39 @@ jobs:
             },
             export_options_file,
         )
+    accuracy_report_path.parent.mkdir(parents=True, exist_ok=True)
+    accuracy_report_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "hoopclips-shared-backend-accuracy-evidence-v1",
+                "evaluatedAt": "2026-07-19",
+                "status": "fail",
+                "platformScope": ["ios", "macos"],
+                "duplicateMacLabelsRequired": False,
+                "humanLabels": {
+                    "status": "complete",
+                    "reviewedByHumanCount": 43,
+                },
+                "metrics": {
+                    "caseCount": 1,
+                    "clipCount": 43,
+                    "highlightPrecision": 0.2727,
+                    "highlightRecall": 0.6,
+                    "shotOutcomeEvidenceQuality": 0.0,
+                },
+                "thresholds": {
+                    "minimumHighlightPrecision": 0.85,
+                    "minimumHighlightRecall": 0.85,
+                    "minimumShotOutcomeEvidenceQuality": 0.85,
+                },
+                "blockingFailures": ["Fixture remains below threshold."],
+                "submissionDecision": {
+                    "status": "operator_review_required",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     privacy_manifest_path.write_text("<plist><dict/></plist>\n", encoding="utf-8")
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(
@@ -342,6 +391,18 @@ jobs:
                         "basePriceUSD": "9.99",
                         "availability": "all_countries_or_regions",
                     },
+                },
+                "sharedBackendAccuracyEvidence": {
+                    "reportPath": "evidence/shared-accuracy.json",
+                    "evaluatedAt": "2026-07-19",
+                    "status": "fail",
+                    "platformScope": ["ios", "macos"],
+                    "duplicateMacLabelsRequired": False,
+                    "caseCount": 1,
+                    "clipCount": 43,
+                    "highlightPrecision": 0.2727,
+                    "highlightRecall": 0.6,
+                    "shotOutcomeEvidenceQuality": 0.0,
                 },
                 "release": {
                     "version": "1.0.0",

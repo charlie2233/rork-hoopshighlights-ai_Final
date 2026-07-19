@@ -21,6 +21,7 @@ def main() -> int:
         confidence_threshold=args.confidence_threshold,
         min_overlap_ratio=args.min_overlap_ratio,
         allow_unlabeled_predictions=args.allow_unlabeled_predictions,
+        remap_stale_predictions_by_time=args.remap_stale_predictions_by_time,
     )
     output = json.dumps(payload, indent=2, sort_keys=True)
     if args.output:
@@ -49,6 +50,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow prediction clips that were returned by analysis but not covered by manual labels.",
     )
+    parser.add_argument(
+        "--remap-stale-predictions-by-time",
+        action="store_true",
+        help=(
+            "Ignore stale prediction indexes/IDs and map reviewed labels one-to-one to current "
+            "predictions by highest time-window overlap."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -69,6 +78,7 @@ def build_eval_payload(
     confidence_threshold: float | None = None,
     min_overlap_ratio: float = DEFAULT_MIN_OVERLAP_RATIO,
     allow_unlabeled_predictions: bool = False,
+    remap_stale_predictions_by_time: bool = False,
 ) -> dict[str, Any]:
     result = extract_analysis_result(analysis)
     analysis_job_id = string_or_none(
@@ -120,13 +130,22 @@ def build_eval_payload(
             else number_or_none(label_case.get("confidenceThreshold"))
         )
         intentionally_omitted_prediction_indexes = omitted_duplicate_prediction_indexes(label_case)
+        raw_labels = [item for item in ensure_list(label_case.get("clips")) if isinstance(item, dict)]
+        for raw_label in raw_labels:
+            validate_manual_label_row(raw_label)
+        time_window_matches = (
+            match_labels_to_predictions_by_time(raw_labels, prediction_clips, min_overlap_ratio)
+            if remap_stale_predictions_by_time
+            else {}
+        )
         matched_prediction_indexes: set[int] = set()
         clips: list[dict[str, Any]] = []
-        for raw_label in ensure_list(label_case.get("clips")):
-            if not isinstance(raw_label, dict):
-                continue
-            validate_manual_label_row(raw_label)
-            prediction_index = resolve_prediction_index(raw_label, prediction_clips, min_overlap_ratio)
+        for label_index, raw_label in enumerate(raw_labels):
+            prediction_index = (
+                time_window_matches.get(label_index)
+                if remap_stale_predictions_by_time
+                else resolve_prediction_index(raw_label, prediction_clips, min_overlap_ratio)
+            )
             prediction = (
                 prediction_from_cloud_clip(prediction_clips[prediction_index])
                 if prediction_index is not None
@@ -173,6 +192,11 @@ def build_eval_payload(
     return {
         "schemaVersion": "team-highlight-eval-v1",
         "source": "real_cloud_analysis_with_manual_labels",
+        "predictionMatchingMode": (
+            "one_to_one_time_overlap"
+            if remap_stale_predictions_by_time
+            else "explicit_identifiers_or_time_overlap"
+        ),
         "cases": cases,
     }
 
@@ -293,6 +317,41 @@ def resolve_prediction_index(
             best_index = index
 
     return best_index if best_index is not None and best_ratio >= min_overlap_ratio else None
+
+
+def match_labels_to_predictions_by_time(
+    labels: list[dict[str, Any]],
+    prediction_clips: list[dict[str, Any]],
+    min_overlap_ratio: float,
+) -> dict[int, int]:
+    candidates: list[tuple[float, float, int, int]] = []
+    for label_index, label in enumerate(labels):
+        label_start = number_or_none(label.get("start"))
+        label_end = number_or_none(label.get("end"))
+        if label_start is None or label_end is None or label_end <= label_start:
+            continue
+        label_duration = max(label_end - label_start, 0.001)
+        for prediction_index, clip in enumerate(prediction_clips):
+            clip_start = number_or_none(clip.get("startTime", clip.get("start")))
+            clip_end = number_or_none(clip.get("endTime", clip.get("end")))
+            if clip_start is None or clip_end is None or clip_end <= clip_start:
+                continue
+            overlap = max(0.0, min(label_end, clip_end) - max(label_start, clip_start))
+            overlap_ratio = overlap / label_duration
+            if overlap_ratio >= min_overlap_ratio:
+                candidates.append((overlap_ratio, overlap, label_index, prediction_index))
+
+    matches: dict[int, int] = {}
+    used_predictions: set[int] = set()
+    for _, _, label_index, prediction_index in sorted(
+        candidates,
+        key=lambda item: (-item[0], -item[1], item[2], item[3]),
+    ):
+        if label_index in matches or prediction_index in used_predictions:
+            continue
+        matches[label_index] = prediction_index
+        used_predictions.add(prediction_index)
+    return matches
 
 
 def verify_explicit_prediction_match(label: dict[str, Any], clip: dict[str, Any], index: int, min_overlap_ratio: float) -> None:
