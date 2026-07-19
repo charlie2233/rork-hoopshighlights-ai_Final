@@ -484,7 +484,11 @@ final class HoopsClipsUITests: XCTestCase {
 
         let app = XCUIApplication()
         app.terminate()
-        app.launchArguments = ["--hoops-ai-edit-live-smoke"]
+        app.launchArguments = [
+            "--hoops-ai-edit-live-smoke",
+            "-hoopsclips.rookieGuide.completed.v1",
+            "YES",
+        ]
         app.launchEnvironment["HOOPS_UI_SMOKE_MODE"] = "1"
         app.launchEnvironment["HOOPS_AI_EDIT_TEST_FIXTURE"] = fixture
         app.launchEnvironment["HOOPS_CLOUD_ANALYSIS_BASE_URL"] = workerURL
