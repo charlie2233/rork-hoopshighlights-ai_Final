@@ -145,7 +145,13 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(focusedProgress.waitForExistence(timeout: 10))
         XCTAssertTrue(focusedProgress.label.localizedCaseInsensitiveContains("upload"))
         let progressValue = (focusedProgress.value as? String) ?? ""
-        XCTAssertTrue(progressValue.localizedCaseInsensitiveContains("14 percent"))
+        XCTAssertTrue(progressValue.localizedCaseInsensitiveContains("38 percent"))
+        XCTAssertFalse(progressValue.localizedCaseInsensitiveContains("14 percent"))
+        let transferMetrics = app.staticTexts["analysis.upload.metric"]
+        XCTAssertTrue(transferMetrics.waitForExistence(timeout: 5))
+        XCTAssertTrue(transferMetrics.label.contains("145/380 MB"))
+        XCTAssertTrue(transferMetrics.label.contains("2.1 MB/s"))
+        XCTAssertFalse(transferMetrics.label.localizedCaseInsensitiveContains("chunk"))
         XCTAssertTrue(app.buttons["analysis.cancelUploadButton"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["app.tabBar"].exists)
         XCTAssertFalse(app.buttons["uploads.historyButton"].exists)

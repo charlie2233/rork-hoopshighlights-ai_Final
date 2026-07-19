@@ -834,6 +834,39 @@ struct HoopsClipsTests {
         #expect(summary?.localizedCaseInsensitiveContains("thinking") == false)
     }
 
+    @Test func testCloudAnalysisUploadTransferPercentUsesUploadStageInsteadOfPipelineProgress() {
+        #expect(
+            CloudAnalysisProgressCopy.uploadTransferPercent(
+                statusMessage: "Uploading video for team scan 38% · 145/380 MB · 2.1 MB/s"
+            ) == 38
+        )
+        #expect(
+            CloudAnalysisProgressCopy.uploadTransferPercent(
+                statusMessage: "Resuming cloud upload 100% · saved chunks assembled"
+            ) == 100
+        )
+        #expect(
+            CloudAnalysisProgressCopy.uploadTransferPercent(
+                statusMessage: "Finding candidate clips 38%"
+            ) == nil
+        )
+        #expect(
+            CloudAnalysisProgressCopy.uploadTransferPercent(
+                statusMessage: "Preparing cloud upload · confidence 85%"
+            ) == nil
+        )
+    }
+
+    @Test func testCloudAnalysisCompactUploadTransferMetricsHidesChunkInternals() {
+        let metrics = CloudAnalysisProgressCopy.compactUploadTransferMetrics(
+            statusMessage: "Uploading video chunks 38% · chunk 9/24 try 1 · 145/380 MB · 2.1 MB/s · about 1m 52s left · 48s"
+        )
+
+        #expect(metrics == "145/380 MB · 2.1 MB/s · about 1m 52s left")
+        #expect(metrics?.localizedCaseInsensitiveContains("chunk") == false)
+        #expect(metrics?.localizedCaseInsensitiveContains("try") == false)
+    }
+
     @Test func testCloudAnalysisCompactUploadProgressSummaryHidesBackendProofFields() {
         let summary = CloudAnalysisProgressCopy.compactUploadProgressSummary(
             statusMessage: "Uploading large video to cloud 14% · source=HoopClips_Player_recovery_card · proofGeneratedAt=2026-06-30T21:27:34Z · 53/380 MB · 1.1 MB/s"
