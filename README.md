@@ -8,10 +8,10 @@ Cloud analysis, AI edit planning, and final rendering are the intended productio
 
 - PR #43 is merged into `main` at `449cd0907f62dd728741fb43a81e4f9e3815a4ff`; the enhancement integration workstream is complete on `main`.
 - Builds `44` through `49` established signing, ownership, upload recovery, adaptive multipart, and simplified upload/AI Edit baselines. PR #74 is merged into `main` at `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`, released as internal TestFlight build `50`.
-- Current internal-beta status: staging deploy run `29632345235` passed live Worker/direct editing version proof, and the deterministic Worker render smoke passed. Build `54` adds true byte-transfer progress, one shared background `URLSession` for multipart parts, and the canonical asset-first direct-to-R2 route. Signed upload run `29701267324` and read-only status run `29701467040` prove build `54` release SHA `80d2405582042da44cfec92022ab3a33212851b6` is available in App Store Connect as internal TestFlight build `1.0.0 (54)`, `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testers.
+- Current internal-beta status: staging deploy run `29632345235` passed live Worker/direct editing version proof, and the deterministic Worker render smoke passed. Build `55` keeps the direct-to-R2 byte-progress/shared-session path and fixes expired saved multipart uploads by renewing missing-part targets without discarding completed chunks. Signed upload run `29706183087` and read-only status run `29706397510` prove current main SHA `bc7218c6ca412cdc1241dd74772b8f84a27a2597` is available in App Store Connect as internal TestFlight build `1.0.0 (55)`, `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, and ready for internal testers.
 - PR #60 is merged. iOS sends its scoped `installId` on analysis polling, and the deployed strict Worker rejects missing or mismatched ownership on analysis job reads and cancellation. A live create/read/cancel ownership smoke passed after deployment.
 - Build `49` was installed and launched on a trusted iPhone, then reproduced the large-upload defect with a real 380 MB source: 24 parts were planned, upload reached about 15%, background transfer handed off, and the saved upload expired before any part completed. Build `50` is deployed with one-hour signed upload leases, bounded multipart lease renewal, and active/completed background-session reconciliation. Live capabilities and a fresh secret-safe presign probe both confirmed a 3,600-second lease.
-- Apple account agreements and certificates are active, and build `54` proved automatic signing, archive, provisioning, upload, processing, and internal TestFlight availability. Apple signing is not the current blocker; see `TESTFLIGHT_BLOCKER.md`.
+- Apple account agreements and certificates are active, and build `55` proved automatic signing, archive, provisioning, upload, processing, and internal TestFlight availability. Apple signing is not the current blocker; see `TESTFLIGHT_BLOCKER.md`.
 - App Store submission is not ready yet. The latest available internal TestFlight build must pass the installed real-basketball upload-through-export smoke, and the human-reviewed 85% team/highlight accuracy report remains an independent hard gate.
 - Production Release preflight run `29639140468` passed all required input checks, production-compatible RevenueCat validation, Release cloud-mode validation, an unsigned Release simulator build, and built `Info.plist` wiring checks. This is configuration/build proof only; it is not a signed production archive, App Store upload/submission, installed-device proof, or public cloud cutover proof.
 - Public submission posture: no on-device analysis fallback is approved; Release requires the production cloud analysis, edit-planning, and rendering gates to pass.
@@ -61,6 +61,8 @@ Last launch-gate verification: July 19, 2026.
 - PR #100: merged at `e72ebac3b1469387aa08af370395f887d8cd4e52`, canonical asset-first upload routes with legacy fallback compatibility.
 - PR #101: merged at `409e5c0c5f9700c3c75006804e7d5bdbe163b797`, signed-archive readiness proof recognition without treating archive proof as upload proof.
 - PR #102: merged at `80d2405582042da44cfec92022ab3a33212851b6`, internal TestFlight build `54` preparation.
+- PR #108: merged at `5ed46d26b023e40dde737fcd5597f61a40dcadf0`, expired canonical-asset multipart lease renewal and build `55` preparation.
+- PR #109: merged at `bc7218c6ca412cdc1241dd74772b8f84a27a2597`, shared backend accuracy-gate documentation; this is the exact source SHA archived for build `55`.
 - GitHub Actions on merged `main`:
   - `Cloud Edit Deploy Preflight` push run `29632159204`: success on build `50` main SHA `6c6ae4ffc267d7b4853dbb955c512f3a098fe601`.
   - `iOS Internal TestFlight Upload` push/codecheck run `29632159207`: success; all 12 focused tests passed.
@@ -80,6 +82,10 @@ Last launch-gate verification: July 19, 2026.
   - `iOS Internal TestFlight Upload` status run `29667648668`: success; build `53` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and is ready for internal testing.
   - `iOS Internal TestFlight Upload` upload run `29701267324`: success for build `54` on merged main SHA `80d2405582042da44cfec92022ab3a33212851b6`; signing capacity, signed archive, metadata/privacy verification, upload, and runner-owned certificate cleanup passed.
   - `iOS Internal TestFlight Upload` status run `29701467040`: success; build `54` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and is ready for internal testing.
+  - `Cloud Edit Deploy Preflight` push run `29706005325`: success on the PR #108 merged main SHA.
+  - `iOS Internal TestFlight Upload` push/codecheck run `29706005364`: success; all 14 focused tests passed for build `55` source.
+  - `iOS Internal TestFlight Upload` upload run `29706183087`: success for build `55` on current main SHA `bc7218c6ca412cdc1241dd74772b8f84a27a2597`; signing capacity, signed archive, metadata/privacy verification, upload, and runner-owned certificate cleanup passed.
+  - `iOS Internal TestFlight Upload` status run `29706397510`: success; build `55` is `VALID`, `IN_BETA_TESTING`, `INTERNAL_ONLY`, not expired, minimum iOS `17.0`, does not use non-exempt encryption, and is ready for internal testing.
   - `Release Secrets Preflight` run `29639140468`: success; required production inputs, production-compatible RevenueCat configuration, Release cloud mode, unsigned Release simulator compilation, and built `Info.plist` wiring passed without exposing secret values.
   - `iOS Internal TestFlight Upload` push/codecheck run `29623096223`: success for merged build `49` main.
   - `iOS Internal TestFlight Upload` upload run `29623108647`: success for build `49`; signed archive, metadata/privacy verification, upload, and runner-owned certificate cleanup passed.
@@ -112,7 +118,7 @@ Last launch-gate verification: July 19, 2026.
   - `iOS Internal TestFlight Upload` corrected automatic-signing upload rerun `28765926589`: failed the same signed archive gate because Apple certificate limit/provisioning still must be repaired.
   - `iOS Internal TestFlight Upload` diagnostic upload run `29297858325`: confirmed ten stale API-created development certificates were still consuming the Apple account limit.
   - `iOS Internal TestFlight Upload` upload run `29298033420`: success for build `44`; signed archive, archive metadata/privacy checks, and App Store Connect upload all passed.
-- App Store Connect build proof: `1.0.0 (54)` is available for internal TestFlight testing and matches build `54` release SHA `80d2405582042da44cfec92022ab3a33212851b6`. Installed phone smoke remains unproven because the trusted iPhone must install/update build `54` from TestFlight before the real-basketball smoke.
+- App Store Connect build proof: `1.0.0 (55)` is available for internal TestFlight testing and matches archived main SHA `bc7218c6ca412cdc1241dd74772b8f84a27a2597`. Installed phone smoke remains unproven because the trusted iPhone must install/update build `55` from TestFlight before the real-basketball smoke.
 - Live staging version proof: Worker `/v1/editing/version` and direct editing `/version` reported `6c6ae4ffc267d7b4853dbb955c512f3a098fe601` and the required AI Edit/GPT feature flags. Live analysis capabilities and a fresh presign probe reported a 3,600-second signed upload lease.
 - Deterministic Worker render smoke: passed through the active Worker render path and produced a valid H.264/AAC MP4.
 - Real-basketball cloud scan after the build `46` deploy: three consecutive team scans detected black/white teams and queued selected-team analysis; an all-teams collection completed with eight clips.
@@ -120,7 +126,7 @@ Last launch-gate verification: July 19, 2026.
 - Synthetic GPT client smoke: classified as an expected synthetic-video no-clips result (`empty_clip_list`), not evidence of a Worker/direct-edit contract bug. Real basketball TestFlight smoke remains required.
 - Real-device build `49` upload smoke: installed and launched successfully, then failed near 15% on a 380 MB source. The app created 24 16 MiB parts and four background sessions, but the 15-minute saved plan expired with `0/24` completed parts. This is classified as an upload lease/background reconciliation bug, not a detection-threshold problem.
 - Real-video quality diagnostic: one completed staging run returned 11 clips; conservative matching against prior reviewed moments found two known highlights and nine known negatives. Auto-keep selected one known highlight and eight negatives while missing the other known highlight. This does not satisfy the 85% gate and thresholds were not weakened.
-- Build `54` proof: carries build `53` UX/recovery work plus true byte-transfer progress, shared-session multipart transfer, canonical asset-first upload routing, and cloud edit resume recovery. Signed upload/status proof passed; installed phone proof remains required for current main.
+- Build `55` proof: carries build `54` throughput/routing work and renews expired canonical-asset multipart targets while preserving saved completed chunks. Signed upload/status proof passed; installed phone proof remains required for current main.
 
 Known beta launch gate: install the latest available internal TestFlight build, then exercise it with real basketball footage using the checklist below and cross the old 15-minute failure point. Public launch remains separately gated by production identity and quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
 
@@ -132,6 +138,7 @@ Known beta launch gate: install the latest available internal TestFlight build, 
 - `docs/video_editing_repo_audit.md` - current repo audit for the cloud editing pivot.
 - `docs/phase_beta_launch_gates_after_pr43.md` - post-merge beta launch gate report and real-basketball TestFlight smoke checklist.
 - `docs/phase_build54_testflight_proof_2026-07-19.md` - build `54` upload method, signed upload/status proof, and remaining device gates.
+- `docs/phase_build55_testflight_proof_2026-07-19.md` - build `55` saved-upload renewal fix, signed upload/status proof, and remaining device gates.
 - `skills/hoopclips-ai-edit-agent/SKILL.md` - repo-local Codex skill for cloud-backend edit-agent work.
 - `TESTFLIGHT_BLOCKER.md` - resolved Apple certificate-capacity incident and signing rerun guide.
 - `ios/docs/checklists/public-launch-cloud-gated.md` - public launch checklist.

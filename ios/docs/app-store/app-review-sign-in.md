@@ -7,7 +7,7 @@ Use these notes for App Store Connect > App Review Information > Sign-In Informa
 - Username: use the exact review-only username stored in App Store Connect
 - Password: use the exact review-only password stored in App Store Connect
 
-Do not copy either credential into this repo or duplicate the password in the Notes field. HoopClips uses Firebase Authentication for Release email/password sign-in when `HOOPS_FIREBASE_AUTH_API_KEY` is configured. Before submitting, sign in once with the exact App Store Connect account in the valid production-cloud Store candidate so the Firebase user is materialized and the credentials are proven. Build 54 is internal-staging evidence and is not the public review binary.
+Do not copy either credential into this repo or duplicate the password in the Notes field. HoopClips uses Firebase Authentication for Release email/password sign-in when `HOOPS_FIREBASE_AUTH_API_KEY` is configured. Before submitting, sign in once with the exact App Store Connect account in the valid production-cloud Store candidate so the Firebase user is materialized and the credentials are proven. Build 55 is internal-staging evidence and is not the public review binary.
 
 ## Reviewer Instructions
 

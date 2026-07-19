@@ -581,9 +581,9 @@ def validate_package(
         if audit_build.get("processingState") != "valid":
             audit_errors.append("internal TestFlight build evidence must be valid")
         if audit_build.get("configuration") != "internal_staging":
-            audit_errors.append("build 54 must be recorded as internal_staging")
+            audit_errors.append("internal TestFlight build must be recorded as internal_staging")
         if audit_build.get("backendMode") != "staging_cloud_only":
-            audit_errors.append("build 54 must be recorded as staging_cloud_only")
+            audit_errors.append("internal TestFlight build must be recorded as staging_cloud_only")
         if audit_build.get("storeVersionSelection") != "not_eligible_internal_staging":
             audit_errors.append("internal-staging build must be explicitly ineligible for public Store selection")
         if production_build.get("version") != release.get("version") or production_build.get("build") != release.get("build"):

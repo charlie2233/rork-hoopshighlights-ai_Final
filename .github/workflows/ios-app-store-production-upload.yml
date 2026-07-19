@@ -15,7 +15,7 @@ on:
       build_number:
         description: "Reserved App Store Connect build number. Must match the release package."
         required: true
-        default: "55"
+        default: "56"
         type: string
 
 permissions:
