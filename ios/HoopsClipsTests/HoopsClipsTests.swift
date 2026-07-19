@@ -5873,6 +5873,7 @@ struct UploadThroughputPolicyTests {
         let summary = CloudAnalysisService.multipartUploadPolicySummary()
         #expect(summary.contains("backgroundSessionPolicy=one_per_multipart_upload"))
         #expect(summary.contains("taskIdentity=part_description"))
+        #expect(summary.contains("assetPartLeaseRenewal=missing_parts_before_expiry"))
     }
 
     @Test func adaptivePartsAndNetworkLanesStayBounded() {
@@ -5923,7 +5924,7 @@ struct UploadThroughputPolicyTests {
                 partCount: 24,
                 completedPartCount: 0,
                 isAssetUpload: true
-            )
+            ) == false
         )
         #expect(
             CloudAnalysisService.shouldDiscardExpiredResumeManifest(
@@ -5933,6 +5934,27 @@ struct UploadThroughputPolicyTests {
                 isAssetUpload: false
             ) == false
         )
+
+        let now = Date(timeIntervalSince1970: 1_000)
+        #expect(
+            !CloudAnalysisService.multipartPartTargetsRequireRenewal(
+                expiresAt: now.addingTimeInterval(61),
+                now: now
+            )
+        )
+        #expect(
+            CloudAnalysisService.multipartPartTargetsRequireRenewal(
+                expiresAt: now.addingTimeInterval(60),
+                now: now
+            )
+        )
+        #expect(
+            CloudAnalysisService.multipartPartTargetsRequireRenewal(
+                expiresAt: now.addingTimeInterval(-1),
+                now: now
+            )
+        )
+        #expect(!CloudAnalysisService.multipartPartTargetsRequireRenewal(expiresAt: nil, now: now))
     }
 
     @Test func expiredActiveBackgroundUploadRemainsPendingWhenOriginalSourceIsMissing() {
@@ -5997,6 +6019,20 @@ struct UploadThroughputPolicyTests {
         #expect(singleSource.nextAction == .freshUploadRequired)
         #expect(multipart.resumeSafe)
         #expect(multipart.nextAction == .resumeUpload)
+
+        let assetMultipart = CloudAnalysisService.resumeManifestDisplayState(
+            uploadID: "asset-multipart-upload",
+            partCount: 24,
+            completedPartCount: 4,
+            isAssetUpload: true,
+            isTeamScan: false,
+            sourceFileExists: true,
+            activeSessionCount: 0,
+            uploadExpired: true,
+            staleWithoutActiveSession: false
+        )
+        #expect(assetMultipart.resumeSafe)
+        #expect(assetMultipart.nextAction == .resumeUpload)
     }
 }
 
