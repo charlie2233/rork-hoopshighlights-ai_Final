@@ -1345,6 +1345,55 @@ Current device information:
             self.assertNotIn("CFBundleVersion", detail)
             self.assertNotIn("maximum number of certificates", detail)
 
+    def test_upload_artifact_accepts_current_signed_archive_without_claiming_upload(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 444,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-07-19T15:06:10Z",
+            },
+        ]
+        archive_log = "\n".join(
+            [
+                "Archive created",
+                "CFBundleIdentifier=expected",
+                "CFBundleShortVersionString=expected",
+                "CFBundleVersion=expected",
+                "HOOPSAppEnvironment=expected",
+                "HOOPSCloudLaunchMode=expected",
+                "HOOPSCloudAnalysisBaseURL=expected",
+                "HOOPSCloudEditBaseURL=expected",
+                "PrivacyInfo.xcprivacy=present-and-valid",
+                "Archive signing certificate serial captured",
+                "Archive/preflight operation completed; no App Store Connect upload was attempted.",
+            ]
+        )
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=archive_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertFalse(has_failures(collector.findings))
+            detail = collector.findings[0].detail
+            self.assertIn("Successful signed internal staging archive log proof exists", detail)
+            self.assertIn("No App Store Connect upload is claimed", detail)
+            self.assertNotIn("Successful internal TestFlight upload", detail)
+
     def test_upload_artifact_prefers_current_upload_proof_over_stale_local_archive(self) -> None:
         run_list_payload = [
             {
