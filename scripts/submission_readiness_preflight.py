@@ -120,8 +120,6 @@ TESTFLIGHT_SIGNING_FAILURE_MARKERS = (
 IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES = (
     "ios/HoopsClips/",
     "ios/HoopsClips.xcodeproj/",
-    "ios/HoopsClipsTests/",
-    "ios/HoopsClipsUITests/",
     "ios/exportOptions.testflight-internal.plist",
     "ios/exportOptions.testflight-internal.example.plist",
     "ios/scripts/",
@@ -138,15 +136,22 @@ CLOUD_DEPLOY_RELEVANT_PREFIXES = (
     "services/editing/",
     "services/inference/",
 )
+EDITING_BACKEND_DEPLOY_RELEVANT_PREFIXES = (
+    "ios/backend/.dockerignore",
+    "ios/backend/Dockerfile",
+    "ios/backend/app/",
+    "ios/backend/cloudbuild.yaml",
+    "ios/backend/requirements.txt",
+)
 CLOUD_SECRET_DEPLOY_RELEVANT_PREFIXES = (
     ".github/workflows/cloud-edit-deploy-preflight.yml",
-    "ios/backend/",
+    *EDITING_BACKEND_DEPLOY_RELEVANT_PREFIXES,
     "services/control-plane/",
     "services/editing/",
     "services/inference/",
 )
 EDITING_SERVICE_DEPLOY_RELEVANT_PREFIXES = (
-    "ios/backend/",
+    *EDITING_BACKEND_DEPLOY_RELEVANT_PREFIXES,
     "ios/HoopsClips/HoopsClips/Resources/Audio/",
     "services/editing/",
 )
