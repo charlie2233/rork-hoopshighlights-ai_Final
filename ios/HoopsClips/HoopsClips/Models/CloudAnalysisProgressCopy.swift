@@ -245,6 +245,54 @@ nonisolated enum CloudAnalysisProgressCopy {
         return parts.joined(separator: " · ")
     }
 
+    static func uploadTransferPercent(statusMessage: String) -> Int? {
+        guard let stage = statusMessage
+            .components(separatedBy: " · ")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              stage.lowercased().contains("upload") else {
+            return nil
+        }
+
+        let pattern = #"\b(\d{1,3})\s*%"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(
+                  in: stage,
+                  range: NSRange(stage.startIndex..<stage.endIndex, in: stage)
+              ),
+              match.numberOfRanges >= 2,
+              let percentRange = Range(match.range(at: 1), in: stage),
+              let percent = Int(stage[percentRange]),
+              (0...100).contains(percent) else {
+            return nil
+        }
+
+        return percent
+    }
+
+    static func compactUploadTransferMetrics(statusMessage: String) -> String? {
+        guard statusMessage.lowercased().contains("upload") else { return nil }
+
+        let segments = statusMessage
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let byteProgress = segments.first { segment in
+            segment.contains("/")
+                && (segment.contains("MB") || segment.contains("GB") || segment.contains("KB"))
+        }
+        let speed = segments.first { $0.contains("/s") }
+        let remaining = segments.first { segment in
+            let lowercasedSegment = segment.lowercased()
+            return lowercasedSegment.hasPrefix("about ") && lowercasedSegment.contains(" left")
+        }
+
+        let parts = [byteProgress, speed, remaining].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
+    }
+
     static func uploadResumeProgressSummary(from summary: String) -> String? {
         var values: [String: String] = [:]
         for token in summary.split(separator: " ") {

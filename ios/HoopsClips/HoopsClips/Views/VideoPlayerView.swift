@@ -132,7 +132,13 @@ struct VideoPlayerView: View {
     private let videoImportRecoveryPollNanoseconds: UInt64 = 2 * 1_000_000_000
 
     private var analysisDisplayProgress: Double {
-        min(max(viewModel.analysisService.progress, 0), 1)
+        if isUploadProgressStage,
+           let uploadPercent = CloudAnalysisProgressCopy.uploadTransferPercent(
+               statusMessage: viewModel.analysisService.statusMessage
+           ) {
+            return Double(uploadPercent) / 100
+        }
+        return min(max(viewModel.analysisService.progress, 0), 1)
     }
 
     private var analysisDisplayPercent: Int {
@@ -2068,6 +2074,17 @@ struct VideoPlayerView: View {
                 .scaleEffect(y: 2)
                 .accessibilityLabel(analysisProgressTitle)
                 .accessibilityValue("\(analysisDisplayPercent) percent")
+
+            if isUploadProgressStage, let analysisUploadMetricText {
+                Text(analysisUploadMetricText)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("analysis.upload.metric")
+            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
@@ -2716,7 +2733,7 @@ struct VideoPlayerView: View {
     }
 
     private var analysisUploadMetricText: String? {
-        CloudAnalysisProgressCopy.compactUploadProgressSummary(
+        CloudAnalysisProgressCopy.compactUploadTransferMetrics(
             statusMessage: viewModel.analysisService.statusMessage
         )
     }

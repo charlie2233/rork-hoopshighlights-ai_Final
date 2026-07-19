@@ -2657,7 +2657,7 @@ final class HighlightsViewModel {
 
         analysisService.isAnalyzing = true
         analysisService.progress = 0.14
-        analysisService.statusMessage = "Uploading video 14%"
+        analysisService.statusMessage = "Uploading video for team scan 38% · 145/380 MB · 2.1 MB/s · about 1m 52s left · 48s"
         analysisService.lastRunDiagnostics = nil
         analysisService.clips = []
     }
