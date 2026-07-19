@@ -18,6 +18,12 @@ test("multipart planner targets about 24 parts for large basketball videos", () 
   assert.equal(chooseMultipartChunkSize(500 * MEBIBYTE), 24 * MEBIBYTE);
 });
 
+test("multipart planner honors a valid client preference within Worker bounds", () => {
+  assert.equal(chooseMultipartChunkSize(128 * MEBIBYTE, 16 * MEBIBYTE), 16 * MEBIBYTE);
+  assert.equal(chooseMultipartChunkSize(128 * MEBIBYTE, 1), 8 * MEBIBYTE);
+  assert.equal(chooseMultipartChunkSize(128 * MEBIBYTE, 64 * MEBIBYTE), 32 * MEBIBYTE);
+});
+
 test("multipart planner caps preferred memory while preserving the R2 part-count limit", () => {
   assert.equal(chooseMultipartChunkSize(2 * 1024 * MEBIBYTE), 32 * MEBIBYTE);
 
