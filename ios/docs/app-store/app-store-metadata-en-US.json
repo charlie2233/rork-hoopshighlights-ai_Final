@@ -24,6 +24,11 @@
       "status": "ready",
       "note": "Public HoopClips support page verified live with current contact and troubleshooting information."
     },
+    "marketingURL": {
+      "value": "https://atrak.dev/apps/hoopsclips/",
+      "status": "ready",
+      "note": "Public HoopClips product page verified live with the browser demo and product navigation."
+    },
     "privacyPolicyURL": {
       "value": "https://atrak.dev/apps/hoopsclips/privacy.html",
       "status": "ready",
@@ -58,12 +63,134 @@
   },
   "review": {
     "signInNotesPath": "ios/docs/app-store/app-review-sign-in.md",
-    "reviewAccountEmail": "appreview@hoopsclips.app",
+    "credentialStorage": "App Store Connect only",
     "passwordStorage": "App Store Connect only",
-    "contactName": null,
-    "contactEmail": null,
-    "contactPhone": null,
+    "credentialFieldsStatus": "present_unverified",
+    "contactFieldsStatus": "present",
+    "notesStatus": "stale_cloud_only_replacement_ready",
     "status": "operator_review_required"
+  },
+  "appStoreConnectAudit": {
+    "auditedAt": "2026-07-19",
+    "appleId": "6763813635",
+    "versionState": "prepare_for_submission",
+    "testFlightBuild": {
+      "version": "1.0.0",
+      "build": "54",
+      "processingState": "valid",
+      "audience": "internal",
+      "configuration": "internal_staging",
+      "backendMode": "staging_cloud_only",
+      "storeVersionSelection": "not_eligible_internal_staging"
+    },
+    "productionStoreBuild": {
+      "version": "1.0.0",
+      "build": "55",
+      "configuration": "production",
+      "backendMode": "production_cloud_only",
+      "status": "pending_archive_upload",
+      "storeVersionSelection": "blocked_until_valid"
+    },
+    "productionConfig": {
+      "cloudURLVariables": "configured_but_staging_marked",
+      "appStoreConnectUploadSecrets": "missing_from_production_environment",
+      "status": "blocked"
+    },
+    "screenshots": {
+      "iphone69": "pending_upload",
+      "ipad13": "pending_upload"
+    },
+    "digitalServicesAct": {
+      "status": "ready",
+      "declaration": "non_trader"
+    },
+    "subscription": {
+      "productId": "monthly_premium",
+      "duration": "one_month",
+      "basePriceUSD": "9.99",
+      "availability": "all_countries_or_regions",
+      "status": "prepare_for_submission"
+    }
+  },
+  "pricingAvailabilityDraft": {
+    "appPrice": "Free",
+    "availability": "all_countries_or_regions",
+    "status": "operator_confirmation_required"
+  },
+  "contentRightsDraft": {
+    "containsOrAccessesThirdPartyContent": true,
+    "necessaryRightsRequired": true,
+    "basis": "Users provide basketball footage and agree that they have permission from applicable athletes, guardians, schools, teams, leagues, venues, broadcasters, and music owners.",
+    "status": "operator_confirmation_required"
+  },
+  "ageRatingDraft": {
+    "features": {
+      "parentalControls": false,
+      "ageAssurance": false,
+      "unrestrictedWebAccess": false,
+      "broadUserGeneratedContentDistribution": false,
+      "socialMedia": false,
+      "messagingAndChat": false,
+      "advertising": false
+    },
+    "contentFrequency": "none",
+    "status": "operator_confirmation_required"
+  },
+  "privacyDeclaration": {
+    "collectsData": true,
+    "tracking": false,
+    "privacyManifestPath": "ios/HoopsClips/HoopsClips/PrivacyInfo.xcprivacy",
+    "dataTypes": [
+      {
+        "type": "Email Address",
+        "linkedToUser": true,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "Photos or Videos",
+        "linkedToUser": true,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "User ID",
+        "linkedToUser": true,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "Device ID",
+        "linkedToUser": true,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "Purchase History",
+        "linkedToUser": false,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "Customer Support",
+        "linkedToUser": true,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "Product Interaction",
+        "linkedToUser": false,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      },
+      {
+        "type": "Other Diagnostic Data",
+        "linkedToUser": false,
+        "tracking": false,
+        "purposes": ["App Functionality"]
+      }
+    ],
+    "status": "operator_confirmation_required"
   },
   "privacyCopy": {
     "cloudProcessing": "Your selected video is uploaded to HoopClips cloud services for AI analysis, edit planning, and rendering.",
@@ -73,17 +200,50 @@
   },
   "release": {
     "version": "1.0.0",
-    "build": "54",
+    "build": "55",
     "releaseMode": "manual",
     "configurationPath": "ios/HoopsClips/HoopsClips/Config/Release.xcconfig",
+    "archiveWorkflowPath": ".github/workflows/ios-app-store-production-upload.yml",
+    "exportOptionsPath": "ios/exportOptions.app-store-production.plist",
+    "buildNumberSource": "production_archive_workflow_input",
     "backendMode": "production_cloud_only",
     "localRenderFallback": false
   },
   "operatorGates": [
     {
-      "id": "app_review_contact",
+      "id": "app_review_account",
       "status": "operator_review_required",
-      "detail": "Enter App Review contact name, email, phone, and the review-only password directly in App Store Connect."
+      "detail": "Verify the exact review-only credentials already stored in App Store Connect against the valid production-cloud Store candidate without copying them into the repo."
+    },
+    {
+      "id": "app_store_listing",
+      "status": "operator_review_required",
+      "detail": "Save the prepared subtitle, listing copy, categories, support URL, marketing URL, cloud-only review notes, and manual release choice."
+    },
+    {
+      "id": "app_store_screenshots",
+      "status": "operator_review_required",
+      "detail": "Upload the reviewed iPhone 6.9-inch and iPad 13-inch screenshot sets."
+    },
+    {
+      "id": "build_selection",
+      "status": "operator_review_required",
+      "detail": "Archive and upload production-cloud build 1.0.0 (55), wait for Valid processing, and select that build for App Store version 1.0. Never select internal-staging build 54 for public review."
+    },
+    {
+      "id": "production_backend_cutover",
+      "status": "operator_review_required",
+      "detail": "Replace the staging-marked production cloud URL variables with approved production endpoints and add the required App Store Connect upload secrets to the production GitHub environment before dispatching the production archive workflow."
+    },
+    {
+      "id": "pricing_availability",
+      "status": "operator_review_required",
+      "detail": "Confirm and save Free app pricing and all-countries-or-regions availability."
+    },
+    {
+      "id": "app_privacy",
+      "status": "operator_review_required",
+      "detail": "Save and publish the verified no-tracking App Privacy declaration and product-specific privacy policy URL."
     },
     {
       "id": "age_rating",
@@ -97,8 +257,28 @@
     },
     {
       "id": "digital_services_act",
+      "status": "ready",
+      "detail": "App Store Connect currently identifies this app as non-trader."
+    },
+    {
+      "id": "first_subscription_review",
       "status": "operator_review_required",
-      "detail": "Complete the applicable Digital Services Act trader status in App Store Connect."
+      "detail": "Include the existing monthly_premium subscription with the first app version submission without changing its configured price or regions."
+    },
+    {
+      "id": "installed_testflight_smoke",
+      "status": "operator_review_required",
+      "detail": "After production-cloud build 55 is uploaded, run that exact build from TestFlight on an iPhone through cloud upload, analysis, Review, AI Edit, render, preview, save, and share, or record an explicit release-owner waiver. Build 54 remains internal-staging evidence only."
+    },
+    {
+      "id": "shared_backend_accuracy",
+      "status": "operator_review_required",
+      "detail": "The shared iOS/macOS backend report is complete but fails the 85% launch gate; pass it or record an explicit current-release risk acceptance. Do not create duplicate macOS labels."
+    },
+    {
+      "id": "final_add_for_review",
+      "status": "operator_review_required",
+      "detail": "Add for Review requires explicit release-owner confirmation after every other gate is resolved."
     }
   ]
 }

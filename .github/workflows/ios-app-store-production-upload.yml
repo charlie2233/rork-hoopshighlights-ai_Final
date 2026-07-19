@@ -1,0 +1,335 @@
+name: iOS App Store production candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Production Store operation to run."
+        required: true
+        default: config-check
+        type: choice
+        options:
+          - config-check
+          - archive
+          - upload
+      build_number:
+        description: "Reserved App Store Connect build number. Must match the release package."
+        required: true
+        default: "55"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  production-store-candidate:
+    name: Validate or build production Store candidate
+    runs-on: macos-26
+    environment: production
+    concurrency:
+      group: hoopclips-ios-automatic-signing
+      cancel-in-progress: false
+    env:
+      OPERATION: ${{ inputs.operation }}
+      STORE_BUILD_NUMBER: ${{ inputs.build_number }}
+      HOOPS_DEVELOPMENT_TEAM: ${{ secrets.HOOPS_DEVELOPMENT_TEAM }}
+      HOOPS_REVENUECAT_API_KEY: ${{ secrets.HOOPS_REVENUECAT_API_KEY }}
+      HOOPS_GOOGLE_CLIENT_ID: ${{ secrets.HOOPS_GOOGLE_CLIENT_ID }}
+      HOOPS_GOOGLE_REVERSED_CLIENT_ID: ${{ secrets.HOOPS_GOOGLE_REVERSED_CLIENT_ID }}
+      HOOPS_FIREBASE_AUTH_API_KEY: ${{ secrets.HOOPS_FIREBASE_AUTH_API_KEY }}
+      HOOPS_PRIVACY_POLICY_URL: ${{ vars.HOOPS_PRIVACY_POLICY_URL }}
+      HOOPS_TERMS_OF_SERVICE_URL: ${{ vars.HOOPS_TERMS_OF_SERVICE_URL }}
+      HOOPS_CLOUD_ANALYSIS_BASE_URL: ${{ vars.HOOPS_CLOUD_ANALYSIS_BASE_URL }}
+      HOOPS_CLOUD_EDIT_BASE_URL: ${{ vars.HOOPS_CLOUD_EDIT_BASE_URL }}
+      HOOPS_SENTRY_DSN: ${{ secrets.HOOPS_SENTRY_DSN }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Print Xcode version
+        run: xcodebuild -version
+
+      - name: Set temporary build paths
+        run: |
+          set -euo pipefail
+          {
+            echo "ARCHIVE_PATH=$RUNNER_TEMP/HoopsClips-Production.xcarchive"
+            echo "EXPORT_PATH=$RUNNER_TEMP/HoopsClips-AppStore-Export"
+            echo "DERIVED_DATA_PATH=$RUNNER_TEMP/hoopclips-production-derived"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify reserved Store build number
+        run: |
+          set -euo pipefail
+          STORE_BUILD_NUMBER="$STORE_BUILD_NUMBER" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata = json.loads(
+              Path("ios/docs/app-store/app-store-metadata-en-US.json").read_text(encoding="utf-8")
+          )
+          requested = os.environ["STORE_BUILD_NUMBER"]
+          release_build = metadata["release"]["build"]
+          internal_build = metadata["appStoreConnectAudit"]["testFlightBuild"]["build"]
+          if not requested.isdigit() or int(requested) <= 0:
+              raise SystemExit("build_number must be a positive integer")
+          if requested != release_build:
+              raise SystemExit("build_number does not match the reserved release package build")
+          if int(requested) <= int(internal_build):
+              raise SystemExit("production Store build must be newer than internal-staging evidence")
+          print("Reserved production Store build number verified")
+          PY
+
+      - name: Assert production inputs are present and non-staging
+        run: |
+          set -euo pipefail
+          required=(
+            HOOPS_DEVELOPMENT_TEAM
+            HOOPS_REVENUECAT_API_KEY
+            HOOPS_GOOGLE_CLIENT_ID
+            HOOPS_GOOGLE_REVERSED_CLIENT_ID
+            HOOPS_FIREBASE_AUTH_API_KEY
+            HOOPS_PRIVACY_POLICY_URL
+            HOOPS_TERMS_OF_SERVICE_URL
+            HOOPS_CLOUD_ANALYSIS_BASE_URL
+            HOOPS_CLOUD_EDIT_BASE_URL
+            HOOPS_SENTRY_DSN
+          )
+          if [[ "$OPERATION" != "config-check" ]]; then
+            required+=(
+              APP_STORE_CONNECT_KEY_ID
+              APP_STORE_CONNECT_ISSUER_ID
+              APP_STORE_CONNECT_API_KEY_BASE64
+            )
+          fi
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            else
+              echo "$key=present"
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production Store inputs: ${missing[*]}"
+            exit 1
+          fi
+
+          if [[ "$HOOPS_REVENUECAT_API_KEY" == test_* ]]; then
+            echo "::error::HOOPS_REVENUECAT_API_KEY must be the Apple production public SDK key"
+            exit 1
+          fi
+
+          for key in HOOPS_CLOUD_ANALYSIS_BASE_URL HOOPS_CLOUD_EDIT_BASE_URL; do
+            value="${!key}"
+            lowercase="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$value" != https://* ]]; then
+              echo "::error::$key must be HTTPS"
+              exit 1
+            fi
+            if [[ "$lowercase" == *staging* || "$lowercase" == *localhost* || "$lowercase" == *127.0.0.1* ]]; then
+              echo "::error::$key still contains a staging or local endpoint marker"
+              exit 1
+            fi
+          done
+          echo "Production inputs are present and contain no staging/local endpoint markers"
+
+      - name: Materialize release secret mirror
+        run: ./ios/scripts/materialize_local_secrets.sh
+
+      - name: Verify production Release build settings
+        env:
+          EXPECTED_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: bash ios/scripts/verify_production_release_config.sh
+
+      - name: Stop after config check
+        if: inputs.operation == 'config-check'
+        run: echo "Production configuration check passed; no archive or upload was attempted."
+
+      - name: Materialize App Store Connect API key
+        if: inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          ASC_KEY_PATH="$key_path" python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          Path(os.environ["ASC_KEY_PATH"]).write_bytes(
+              base64.b64decode(os.environ["APP_STORE_CONNECT_API_KEY_BASE64"])
+          )
+          PY
+          chmod 600 "$key_path"
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          echo "App Store Connect API key materialized"
+
+      - name: Verify automatic signing certificate capacity
+        if: inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          snapshot_path="$RUNNER_TEMP/app-store-connect-certificates-before.json"
+          python3 scripts/app_store_connect_certificates.py snapshot \
+            --key-path "$ASC_KEY_PATH" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output "$snapshot_path"
+          echo "ASC_CERTIFICATE_SNAPSHOT=$snapshot_path" >> "$GITHUB_ENV"
+
+      - name: Build signed production Store archive
+        if: inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          rm -rf "$ARCHIVE_PATH" "$DERIVED_DATA_PATH"
+          xcodebuild archive \
+            -quiet \
+            -project ios/HoopsClips.xcodeproj \
+            -scheme HoopsClips \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$HOOPS_DEVELOPMENT_TEAM" \
+            CURRENT_PROJECT_VERSION="$STORE_BUILD_NUMBER" \
+            -hideShellScriptEnvironment
+          echo "Production Store archive created"
+
+      - name: Verify production archive metadata
+        if: inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          archive_plist="$ARCHIVE_PATH/Info.plist"
+          app_plist="$ARCHIVE_PATH/Products/Applications/HoopsClips.app/Info.plist"
+          privacy_manifest="$ARCHIVE_PATH/Products/Applications/HoopsClips.app/PrivacyInfo.xcprivacy"
+
+          require_archive_value() {
+            local key="$1"
+            local expected="$2"
+            local value
+            value="$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:$key" "$archive_plist")"
+            if [[ "$value" != "$expected" ]]; then
+              echo "::error::Archive $key did not match the expected value"
+              exit 1
+            fi
+            echo "$key=expected"
+          }
+
+          require_app_value() {
+            local key="$1"
+            local expected="$2"
+            local value
+            value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$app_plist")"
+            if [[ "$value" != "$expected" ]]; then
+              echo "::error::App $key did not match the expected value"
+              exit 1
+            fi
+            echo "$key=expected"
+          }
+
+          require_archive_value "CFBundleIdentifier" "atrak.charlie.hoopsclips"
+          require_archive_value "CFBundleShortVersionString" "1.0.0"
+          require_archive_value "CFBundleVersion" "$STORE_BUILD_NUMBER"
+          require_app_value "HOOPSAppEnvironment" "production"
+          require_app_value "HOOPSCloudLaunchMode" "enabled"
+          require_app_value "HOOPSCloudAnalysisBaseURL" "$HOOPS_CLOUD_ANALYSIS_BASE_URL"
+          require_app_value "HOOPSCloudEditBaseURL" "$HOOPS_CLOUD_EDIT_BASE_URL"
+
+          billing_public_value="$(/usr/libexec/PlistBuddy -c 'Print :HOOPSRevenueCatAPIKey' "$app_plist")"
+          if [[ -z "$billing_public_value" || "$billing_public_value" == test_* ]]; then
+            echo "::error::Archive must contain a non-Test-Store RevenueCat Apple public SDK key"
+            exit 1
+          fi
+          if [[ ! -f "$privacy_manifest" ]]; then
+            echo "::error::Archive is missing HoopsClips.app/PrivacyInfo.xcprivacy"
+            exit 1
+          fi
+          plutil -lint "$privacy_manifest"
+          echo "Production archive metadata and privacy manifest verified"
+
+      - name: Capture archive signing certificate serial
+        if: inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          certificate_dir="$RUNNER_TEMP/archive-signing-certificate"
+          app_path="$ARCHIVE_PATH/Products/Applications/HoopsClips.app"
+          rm -rf "$certificate_dir"
+          mkdir -p "$certificate_dir"
+          (
+            cd "$certificate_dir"
+            codesign -d --extract-certificates "$app_path"
+          )
+          certificate_serial="$(openssl x509 -inform DER -in "$certificate_dir/codesign0" -noout -serial | sed -E 's/^serial=//I')"
+          if [[ -z "$certificate_serial" ]]; then
+            echo "::error::Could not read the archive signing certificate serial"
+            exit 1
+          fi
+          echo "ASC_ARCHIVE_CERTIFICATE_SERIAL=$certificate_serial" >> "$GITHUB_ENV"
+          echo "Archive signing certificate serial captured"
+
+      - name: Upload production Store candidate
+        if: inputs.operation == 'upload'
+        run: |
+          set -euo pipefail
+          rm -rf "$EXPORT_PATH"
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist ios/exportOptions.app-store-production.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            -hideShellScriptEnvironment
+          echo "Production Store upload command completed; no Add for Review action was attempted"
+
+      - name: Print next-step summary
+        if: inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          if [[ "$OPERATION" == "upload" ]]; then
+            echo "Verify processing, select the valid production build, and run installed production-cloud smoke before review submission."
+          else
+            echo "Archive completed; no App Store Connect upload was attempted."
+          fi
+
+      - name: Revoke this runner's automatic signing certificate
+        if: always() && inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          if [[ -z "${ASC_KEY_PATH:-}" || ! -f "$ASC_KEY_PATH" ]]; then
+            echo "App Store Connect API key is unavailable; certificate cleanup skipped."
+            exit 0
+          fi
+          if [[ -z "${ASC_CERTIFICATE_SNAPSHOT:-}" || ! -f "$ASC_CERTIFICATE_SNAPSHOT" ]]; then
+            echo "Certificate snapshot is unavailable; certificate cleanup skipped."
+            exit 0
+          fi
+          cleanup_args=(
+            cleanup
+            --key-path "$ASC_KEY_PATH"
+            --key-id "$APP_STORE_CONNECT_KEY_ID"
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID"
+            --snapshot "$ASC_CERTIFICATE_SNAPSHOT"
+          )
+          if [[ -n "${ASC_ARCHIVE_CERTIFICATE_SERIAL:-}" ]]; then
+            cleanup_args+=(--certificate-serial "$ASC_ARCHIVE_CERTIFICATE_SERIAL")
+          fi
+          python3 scripts/app_store_connect_certificates.py "${cleanup_args[@]}"
+
+      - name: Remove App Store Connect API key
+        if: always() && inputs.operation != 'config-check'
+        run: |
+          set -euo pipefail
+          if [[ -n "${ASC_KEY_PATH:-}" ]]; then
+            rm -f "$ASC_KEY_PATH"
+          fi

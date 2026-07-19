@@ -1,4 +1,5 @@
 import json
+import plistlib
 import struct
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from pathlib import Path
 
 from scripts.validate_app_store_submission_package import (
     DEFAULT_METADATA_PATH,
+    REQUIRED_OPERATOR_GATES,
     has_blockers,
     has_errors,
     main,
@@ -28,6 +30,9 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
         self.assertTrue(any(item.check == "urls" and item.status == "pass" for item in findings))
         self.assertTrue(any(item.check == "screenshots" and item.status == "pass" for item in findings))
         self.assertTrue(any(item.check == "screenshotContentReview" and item.status == "pass" for item in findings))
+        self.assertTrue(any(item.check == "privacyDeclaration" and item.status == "pass" for item in findings))
+        self.assertTrue(any(item.check == "submissionDrafts" and item.status == "pass" for item in findings))
+        self.assertTrue(any(item.check == "appStoreConnectAudit" and item.status == "pass" for item in findings))
         self.assertFalse(
             any(
                 item.check in {
@@ -91,6 +96,69 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
         self.assertTrue(has_errors(findings))
         self.assertTrue(any(item.check == "release.build" for item in findings))
 
+    def test_internal_staging_build_cannot_be_store_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["appStoreConnectAudit"]["testFlightBuild"]["storeVersionSelection"] = "pending"
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "appStoreConnectAudit" for item in findings))
+
+    def test_production_workflow_cannot_use_internal_staging_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            workflow_path = repo_root / ".github/workflows/ios-app-store-production-upload.yml"
+            workflow_path.write_text(
+                workflow_path.read_text(encoding="utf-8") + "\nInternalStaging.xcconfig\n",
+                encoding="utf-8",
+            )
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "release.archiveWorkflow" for item in findings))
+
+    def test_missing_privacy_data_type_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["privacyDeclaration"]["dataTypes"] = [
+                entry
+                for entry in payload["privacyDeclaration"]["dataTypes"]
+                if entry["type"] != "Purchase History"
+            ]
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "privacyDeclaration" for item in findings))
+
+    def test_missing_required_operator_gate_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["operatorGates"] = [
+                gate for gate in payload["operatorGates"] if gate["id"] != "app_privacy"
+            ]
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "operatorGates" for item in findings))
+
 
 def create_fixture(
     repo_root: Path,
@@ -102,6 +170,9 @@ def create_fixture(
     iphone_path = repo_root / "screens/iphone.png"
     ipad_path = repo_root / "screens/ipad.png"
     release_config_path = repo_root / "config/Release.xcconfig"
+    archive_workflow_path = repo_root / ".github/workflows/ios-app-store-production-upload.yml"
+    export_options_path = repo_root / "config/exportOptions.plist"
+    privacy_manifest_path = repo_root / "config/PrivacyInfo.xcprivacy"
     project_path = repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj"
     write_png(icon_path, 1024, 1024)
     write_png(mark_path, 512, 512)
@@ -112,6 +183,38 @@ def create_fixture(
         "HOOPS_APP_ENV = production\nHOOPS_CLOUD_LAUNCH_MODE = enabled\n",
         encoding="utf-8",
     )
+    archive_workflow_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_workflow_path.write_text(
+        """name: fixture production archive
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        default: \"55\"
+jobs:
+  archive:
+    environment: production
+    env:
+      HOOPS_CLOUD_ANALYSIS_BASE_URL: ${{ vars.HOOPS_CLOUD_ANALYSIS_BASE_URL }}
+      HOOPS_CLOUD_EDIT_BASE_URL: ${{ vars.HOOPS_CLOUD_EDIT_BASE_URL }}
+    steps:
+      - run: xcodebuild CURRENT_PROJECT_VERSION=\"$STORE_BUILD_NUMBER\"
+      - run: require_app_value \"HOOPSAppEnvironment\" \"production\"
+      - run: require_app_value \"HOOPSCloudLaunchMode\" \"enabled\"
+""",
+        encoding="utf-8",
+    )
+    export_options_path.parent.mkdir(parents=True, exist_ok=True)
+    with export_options_path.open("wb") as export_options_file:
+        plistlib.dump(
+            {
+                "destination": "upload",
+                "method": "app-store-connect",
+                "signingStyle": "automatic",
+            },
+            export_options_file,
+        )
+    privacy_manifest_path.write_text("<plist><dict/></plist>\n", encoding="utf-8")
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(
         "MARKETING_VERSION = 1.0.0;\nCURRENT_PROJECT_VERSION = 54;\n",
@@ -140,6 +243,10 @@ def create_fixture(
                     "brandMarkPath": "assets/mark.png",
                 },
                 "urls": {
+                    "marketingURL": {
+                        "value": "https://atrak.dev/apps/hoopsclips/",
+                        "status": "ready",
+                    },
                     "supportURL": {
                         "value": "https://atrak.dev/apps/hoopsclips/support.html",
                         "status": "ready",
@@ -162,15 +269,97 @@ def create_fixture(
                     "reviewedAt": "2026-07-19",
                     "evidence": "Fixture screenshots reviewed.",
                 },
+                "privacyDeclaration": {
+                    "collectsData": True,
+                    "tracking": False,
+                    "privacyManifestPath": "config/PrivacyInfo.xcprivacy",
+                    "dataTypes": [
+                        {
+                            "type": data_type,
+                            "linkedToUser": linked,
+                            "tracking": False,
+                            "purposes": ["App Functionality"],
+                        }
+                        for data_type, linked in {
+                            "Email Address": True,
+                            "Photos or Videos": True,
+                            "User ID": True,
+                            "Device ID": True,
+                            "Purchase History": False,
+                            "Customer Support": True,
+                            "Product Interaction": False,
+                            "Other Diagnostic Data": False,
+                        }.items()
+                    ],
+                },
+                "pricingAvailabilityDraft": {
+                    "appPrice": "Free",
+                    "availability": "all_countries_or_regions",
+                },
+                "contentRightsDraft": {
+                    "containsOrAccessesThirdPartyContent": True,
+                    "necessaryRightsRequired": True,
+                },
+                "ageRatingDraft": {
+                    "features": {
+                        "parentalControls": False,
+                        "ageAssurance": False,
+                        "unrestrictedWebAccess": False,
+                        "broadUserGeneratedContentDistribution": False,
+                        "socialMedia": False,
+                        "messagingAndChat": False,
+                        "advertising": False,
+                    },
+                    "contentFrequency": "none",
+                },
+                "appStoreConnectAudit": {
+                    "versionState": "prepare_for_submission",
+                    "testFlightBuild": {
+                        "version": "1.0.0",
+                        "build": "54",
+                        "processingState": "valid",
+                        "configuration": "internal_staging",
+                        "backendMode": "staging_cloud_only",
+                        "storeVersionSelection": "not_eligible_internal_staging",
+                    },
+                    "productionStoreBuild": {
+                        "version": "1.0.0",
+                        "build": "55",
+                        "configuration": "production",
+                        "backendMode": "production_cloud_only",
+                        "status": "pending_archive_upload",
+                        "storeVersionSelection": "blocked_until_valid",
+                    },
+                    "productionConfig": {
+                        "status": "blocked",
+                    },
+                    "digitalServicesAct": {
+                        "status": "ready",
+                        "declaration": "non_trader",
+                    },
+                    "subscription": {
+                        "productId": "monthly_premium",
+                        "basePriceUSD": "9.99",
+                        "availability": "all_countries_or_regions",
+                    },
+                },
                 "release": {
                     "version": "1.0.0",
-                    "build": "54",
+                    "build": "55",
                     "configurationPath": "config/Release.xcconfig",
+                    "archiveWorkflowPath": ".github/workflows/ios-app-store-production-upload.yml",
+                    "exportOptionsPath": "config/exportOptions.plist",
+                    "buildNumberSource": "production_archive_workflow_input",
                     "backendMode": "production_cloud_only",
                     "localRenderFallback": False,
                 },
                 "operatorGates": [
-                    {"id": "support_url", "status": "blocked", "detail": "Support URL required."}
+                    {
+                        "id": gate_id,
+                        "status": "operator_review_required" if gate_id == "final_add_for_review" else "ready",
+                        "detail": "Fixture operator gate.",
+                    }
+                    for gate_id in sorted(REQUIRED_OPERATOR_GATES)
                 ],
             }
         ),

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import plistlib
 import re
 import struct
 import sys
@@ -39,6 +40,7 @@ ALLOWED_SCREENSHOT_DIMENSIONS = {
 }
 READY_STATUS = "ready"
 CANONICAL_PUBLIC_URLS = {
+    "marketingURL": "https://atrak.dev/apps/hoopsclips/",
     "supportURL": "https://atrak.dev/apps/hoopsclips/support.html",
     "privacyPolicyURL": "https://atrak.dev/apps/hoopsclips/privacy.html",
     "termsOfServiceURL": "https://atrak.dev/apps/hoopsclips/terms.html",
@@ -46,6 +48,41 @@ CANONICAL_PUBLIC_URLS = {
 EXPECTED_CATEGORIES = {
     "primary": "Photo & Video",
     "secondary": "Sports",
+}
+EXPECTED_PRIVACY_DATA_TYPES = {
+    "Email Address": True,
+    "Photos or Videos": True,
+    "User ID": True,
+    "Device ID": True,
+    "Purchase History": False,
+    "Customer Support": True,
+    "Product Interaction": False,
+    "Other Diagnostic Data": False,
+}
+EXPECTED_AGE_FEATURES = {
+    "parentalControls",
+    "ageAssurance",
+    "unrestrictedWebAccess",
+    "broadUserGeneratedContentDistribution",
+    "socialMedia",
+    "messagingAndChat",
+    "advertising",
+}
+REQUIRED_OPERATOR_GATES = {
+    "app_review_account",
+    "app_store_listing",
+    "app_store_screenshots",
+    "build_selection",
+    "production_backend_cutover",
+    "pricing_availability",
+    "app_privacy",
+    "age_rating",
+    "content_rights",
+    "digital_services_act",
+    "first_subscription_review",
+    "installed_testflight_smoke",
+    "shared_backend_accuracy",
+    "final_add_for_review",
 }
 
 
@@ -218,11 +255,104 @@ def validate_package(
                 Finding(
                     "pass",
                     "urls",
-                    "Canonical HoopClips support, privacy, and terms URLs are ready.",
+                    "Canonical HoopClips product, support, privacy, and terms URLs are ready.",
                 )
             )
     except PackageValidationError as error:
         findings.append(Finding("error", "urls", str(error)))
+
+    try:
+        privacy = _mapping(root.get("privacyDeclaration"), "privacyDeclaration")
+        privacy_manifest_path = resolve_repo_path(
+            repo_root,
+            privacy.get("privacyManifestPath"),
+            "privacyDeclaration.privacyManifestPath",
+        )
+        if not privacy_manifest_path.is_file():
+            findings.append(
+                Finding("error", "privacyDeclaration", "The first-party privacy manifest is missing.")
+            )
+        privacy_errors: list[str] = []
+        if privacy.get("collectsData") is not True:
+            privacy_errors.append("collectsData must be true")
+        if privacy.get("tracking") is not False:
+            privacy_errors.append("tracking must be false")
+        declared_types: dict[str, bool] = {}
+        for index, raw_entry in enumerate(_list(privacy.get("dataTypes"), "privacyDeclaration.dataTypes")):
+            entry = _mapping(raw_entry, f"privacyDeclaration.dataTypes[{index}]")
+            data_type = _text(entry.get("type"), f"privacyDeclaration.dataTypes[{index}].type")
+            if data_type in declared_types:
+                privacy_errors.append(f"duplicate data type {data_type}")
+                continue
+            linked = entry.get("linkedToUser")
+            if not isinstance(linked, bool):
+                privacy_errors.append(f"{data_type} linkedToUser must be boolean")
+                continue
+            declared_types[data_type] = linked
+            if entry.get("tracking") is not False:
+                privacy_errors.append(f"{data_type} must not be marked for tracking")
+            purposes = _list(entry.get("purposes"), f"privacyDeclaration.dataTypes[{index}].purposes")
+            if purposes != ["App Functionality"]:
+                privacy_errors.append(f"{data_type} must use App Functionality only")
+        if declared_types != EXPECTED_PRIVACY_DATA_TYPES:
+            missing = sorted(set(EXPECTED_PRIVACY_DATA_TYPES) - set(declared_types))
+            extra = sorted(set(declared_types) - set(EXPECTED_PRIVACY_DATA_TYPES))
+            mismatched = sorted(
+                data_type
+                for data_type in set(declared_types) & set(EXPECTED_PRIVACY_DATA_TYPES)
+                if declared_types[data_type] != EXPECTED_PRIVACY_DATA_TYPES[data_type]
+            )
+            if missing:
+                privacy_errors.append(f"missing data types: {', '.join(missing)}")
+            if extra:
+                privacy_errors.append(f"unexpected data types: {', '.join(extra)}")
+            if mismatched:
+                privacy_errors.append(f"incorrect linked-to-user values: {', '.join(mismatched)}")
+        if privacy_errors:
+            findings.append(Finding("error", "privacyDeclaration", "; ".join(privacy_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "privacyDeclaration",
+                    "No-tracking App Privacy data map matches the iOS and RevenueCat manifests.",
+                )
+            )
+    except (OSError, PackageValidationError) as error:
+        findings.append(Finding("error", "privacyDeclaration", str(error)))
+
+    try:
+        pricing = _mapping(root.get("pricingAvailabilityDraft"), "pricingAvailabilityDraft")
+        content_rights = _mapping(root.get("contentRightsDraft"), "contentRightsDraft")
+        age_rating = _mapping(root.get("ageRatingDraft"), "ageRatingDraft")
+        age_features = _mapping(age_rating.get("features"), "ageRatingDraft.features")
+        draft_errors: list[str] = []
+        if pricing.get("appPrice") != "Free":
+            draft_errors.append("appPrice must be Free")
+        if pricing.get("availability") != "all_countries_or_regions":
+            draft_errors.append("availability must be all_countries_or_regions")
+        if content_rights.get("containsOrAccessesThirdPartyContent") is not True:
+            draft_errors.append("content-rights draft must acknowledge user-uploaded content")
+        if content_rights.get("necessaryRightsRequired") is not True:
+            draft_errors.append("content-rights draft must require necessary rights")
+        if set(age_features) != EXPECTED_AGE_FEATURES:
+            draft_errors.append("age-rating feature set is incomplete or contains unexpected keys")
+        if any(value is not False for value in age_features.values()):
+            draft_errors.append("all declared age-rating capability flags must be false")
+        if age_rating.get("contentFrequency") != "none":
+            draft_errors.append("age-rating content frequency must be none")
+        if draft_errors:
+            findings.append(Finding("error", "submissionDrafts", "; ".join(draft_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "submissionDrafts",
+                    "Free pricing, content-rights, and age-rating answers are explicitly prepared for operator confirmation.",
+                )
+            )
+    except PackageValidationError as error:
+        findings.append(Finding("error", "submissionDrafts", str(error)))
 
     seen_device_classes: set[str] = set()
     try:
@@ -309,6 +439,19 @@ def validate_package(
             "release.configurationPath",
         )
         release_config = release_config_path.read_text(encoding="utf-8")
+        archive_workflow_path = resolve_repo_path(
+            repo_root,
+            release.get("archiveWorkflowPath"),
+            "release.archiveWorkflowPath",
+        )
+        archive_workflow = archive_workflow_path.read_text(encoding="utf-8")
+        export_options_path = resolve_repo_path(
+            repo_root,
+            release.get("exportOptionsPath"),
+            "release.exportOptionsPath",
+        )
+        with export_options_path.open("rb") as export_options_file:
+            export_options = plistlib.load(export_options_file)
         if release.get("backendMode") != "production_cloud_only":
             findings.append(
                 Finding("error", "release.backendMode", "Release must remain production_cloud_only.")
@@ -325,6 +468,67 @@ def validate_package(
             findings.append(
                 Finding("error", "release.configuration", "Release.xcconfig must require enabled cloud launch mode.")
             )
+        if release.get("buildNumberSource") != "production_archive_workflow_input":
+            findings.append(
+                Finding(
+                    "error",
+                    "release.buildNumberSource",
+                    "The Store build number must come from the production archive workflow input.",
+                )
+            )
+        required_workflow_markers = {
+            "environment: production": "use the production GitHub environment",
+            "HOOPS_CLOUD_ANALYSIS_BASE_URL: ${{ vars.HOOPS_CLOUD_ANALYSIS_BASE_URL }}": "consume the production analysis URL variable",
+            "HOOPS_CLOUD_EDIT_BASE_URL: ${{ vars.HOOPS_CLOUD_EDIT_BASE_URL }}": "consume the production edit URL variable",
+            "CURRENT_PROJECT_VERSION=\"$STORE_BUILD_NUMBER\"": "override the archive with the reserved Store build number",
+            "HOOPSAppEnvironment\" \"production": "verify production environment metadata",
+            "HOOPSCloudLaunchMode\" \"enabled": "verify cloud-only launch mode",
+        }
+        for marker, expectation in required_workflow_markers.items():
+            if marker not in archive_workflow:
+                findings.append(
+                    Finding(
+                        "error",
+                        "release.archiveWorkflow",
+                        f"Production archive workflow must {expectation}.",
+                    )
+                )
+        if "InternalStaging.xcconfig" in archive_workflow:
+            findings.append(
+                Finding(
+                    "error",
+                    "release.archiveWorkflow",
+                    "Production archive workflow must not use InternalStaging.xcconfig.",
+                )
+            )
+        workflow_build_match = re.search(
+            r"(?ms)^\s+build_number:\s*$.*?^\s+default:\s*[\"']?(\d+)[\"']?\s*$",
+            archive_workflow,
+        )
+        if workflow_build_match is None or workflow_build_match.group(1) != release_build:
+            findings.append(
+                Finding(
+                    "error",
+                    "release.build",
+                    "Reserved release build must match the production archive workflow default.",
+                )
+            )
+        if export_options.get("method") != "app-store-connect" or export_options.get("destination") != "upload":
+            findings.append(
+                Finding(
+                    "error",
+                    "release.exportOptions",
+                    "Production export options must upload through App Store Connect.",
+                )
+            )
+        if export_options.get("testFlightInternalTestingOnly") is True:
+            findings.append(
+                Finding(
+                    "error",
+                    "release.exportOptions",
+                    "Production Store export options cannot be internal-testing-only.",
+                )
+            )
         project_text = (repo_root / DEFAULT_PROJECT_FILE).read_text(encoding="utf-8")
         marketing_versions = set(re.findall(r"MARKETING_VERSION\s*=\s*([^;\s]+)\s*;", project_text))
         build_versions = set(re.findall(r"CURRENT_PROJECT_VERSION\s*=\s*([^;\s]+)\s*;", project_text))
@@ -332,7 +536,7 @@ def validate_package(
             findings.append(
                 Finding("error", "release.version", "Metadata version does not match an Xcode target marketing version.")
             )
-        if release_build not in build_versions:
+        if release.get("buildNumberSource") != "production_archive_workflow_input" and release_build not in build_versions:
             findings.append(
                 Finding("error", "release.build", "Metadata build does not match an Xcode target build number.")
             )
@@ -341,23 +545,102 @@ def validate_package(
                 Finding(
                     "pass",
                     "release",
-                    f"Listing matches Xcode version/build {release_version} ({release_build}) and declares cloud-only mode.",
+                    f"Listing matches Xcode version {release_version}, reserves workflow build {release_build}, and declares cloud-only mode.",
                 )
             )
-    except (OSError, PackageValidationError) as error:
+    except (OSError, PackageValidationError, plistlib.InvalidFileException) as error:
         findings.append(Finding("error", "release", str(error)))
+
+    try:
+        audit = _mapping(root.get("appStoreConnectAudit"), "appStoreConnectAudit")
+        audit_build = _mapping(audit.get("testFlightBuild"), "appStoreConnectAudit.testFlightBuild")
+        production_build = _mapping(
+            audit.get("productionStoreBuild"),
+            "appStoreConnectAudit.productionStoreBuild",
+        )
+        production_config = _mapping(
+            audit.get("productionConfig"),
+            "appStoreConnectAudit.productionConfig",
+        )
+        dsa = _mapping(audit.get("digitalServicesAct"), "appStoreConnectAudit.digitalServicesAct")
+        subscription = _mapping(audit.get("subscription"), "appStoreConnectAudit.subscription")
+        release = _mapping(root.get("release"), "release")
+        audit_errors: list[str] = []
+        if audit.get("versionState") != "prepare_for_submission":
+            audit_errors.append("version state must remain prepare_for_submission until review submission")
+        if audit_build.get("version") != release.get("version"):
+            audit_errors.append("internal TestFlight evidence must match the release version")
+        if audit_build.get("build") == release.get("build"):
+            audit_errors.append("internal-staging evidence and the production Store candidate must use different build numbers")
+        if audit_build.get("processingState") != "valid":
+            audit_errors.append("internal TestFlight build evidence must be valid")
+        if audit_build.get("configuration") != "internal_staging":
+            audit_errors.append("build 54 must be recorded as internal_staging")
+        if audit_build.get("backendMode") != "staging_cloud_only":
+            audit_errors.append("build 54 must be recorded as staging_cloud_only")
+        if audit_build.get("storeVersionSelection") != "not_eligible_internal_staging":
+            audit_errors.append("internal-staging build must be explicitly ineligible for public Store selection")
+        if production_build.get("version") != release.get("version") or production_build.get("build") != release.get("build"):
+            audit_errors.append("production Store build evidence must match the declared release candidate")
+        if production_build.get("configuration") != "production":
+            audit_errors.append("production Store build must use the production configuration")
+        if production_build.get("backendMode") != "production_cloud_only":
+            audit_errors.append("production Store build must remain cloud-only")
+        if production_build.get("status") not in {"pending_archive_upload", "valid"}:
+            audit_errors.append("production Store build has an unsupported status")
+        if production_build.get("status") != "valid" and production_build.get("storeVersionSelection") != "blocked_until_valid":
+            audit_errors.append("pending production Store build selection must remain blocked")
+        if production_config.get("status") not in {"blocked", "ready"}:
+            audit_errors.append("production config status must be blocked or ready")
+        if dsa != {"status": "ready", "declaration": "non_trader"}:
+            audit_errors.append("DSA non-trader declaration must be recorded as ready")
+        if subscription.get("productId") != "monthly_premium":
+            audit_errors.append("monthly_premium subscription evidence is missing")
+        if subscription.get("basePriceUSD") != "9.99":
+            audit_errors.append("subscription base price evidence must be USD 9.99")
+        if subscription.get("availability") != "all_countries_or_regions":
+            audit_errors.append("subscription availability evidence must cover all countries or regions")
+        if audit_errors:
+            findings.append(Finding("error", "appStoreConnectAudit", "; ".join(audit_errors) + "."))
+        else:
+            findings.append(
+                Finding(
+                    "pass",
+                    "appStoreConnectAudit",
+                    "Internal build, production-candidate, DSA, and subscription evidence is separated without credentials.",
+                )
+            )
+    except PackageValidationError as error:
+        findings.append(Finding("error", "appStoreConnectAudit", str(error)))
 
     try:
         operator_gates = _list(root.get("operatorGates"), "operatorGates")
         if not operator_gates:
             findings.append(Finding("error", "operatorGates", "At least one explicit operator gate is required."))
+        seen_gate_ids: set[str] = set()
         for index, raw_gate in enumerate(operator_gates):
             gate = _mapping(raw_gate, f"operatorGates[{index}]")
             gate_id = _text(gate.get("id"), f"operatorGates[{index}].id")
             status = _text(gate.get("status"), f"operatorGates[{index}].status")
             detail = _text(gate.get("detail"), f"operatorGates[{index}].detail")
+            if gate_id in seen_gate_ids:
+                findings.append(Finding("error", "operatorGates", f"Duplicate operator gate {gate_id}."))
+            seen_gate_ids.add(gate_id)
+            if status not in {READY_STATUS, "operator_review_required"}:
+                findings.append(
+                    Finding("error", "operatorGates", f"Gate {gate_id} has unsupported status {status}.")
+                )
             if status != READY_STATUS:
                 findings.append(Finding("blocked", gate_id, detail))
+        missing_gate_ids = sorted(REQUIRED_OPERATOR_GATES - seen_gate_ids)
+        if missing_gate_ids:
+            findings.append(
+                Finding(
+                    "error",
+                    "operatorGates",
+                    f"Missing required operator gates: {', '.join(missing_gate_ids)}.",
+                )
+            )
     except PackageValidationError as error:
         findings.append(Finding("error", "operatorGates", str(error)))
 
