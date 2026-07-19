@@ -1293,6 +1293,7 @@ enum CloudEditForegroundRefreshPolicy {
         currentRender: CloudEditRenderStatusResponse?,
         activeEditJobID: String?,
         activeRevisionID: String?,
+        activeRenderJobID: String? = nil,
         history: [CloudEditRenderStatusResponse]
     ) -> CloudEditRenderStatusResponse? {
         if let currentRender {
@@ -1309,6 +1310,11 @@ enum CloudEditForegroundRefreshPolicy {
             }
 
             return history.first(where: { $0.editJobId == currentRender.editJobId })
+        }
+
+        if let activeRenderJobID,
+           let exactRender = history.first(where: { $0.renderJobId == activeRenderJobID }) {
+            return exactRender
         }
 
         guard let activeEditJobID else { return nil }

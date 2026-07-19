@@ -148,9 +148,11 @@ final class HighlightsViewModel {
         didSet {
             if cloudEditSourceObjectKey != oldValue {
                 latestCloudEditRenderStatus = nil
+                cloudEditSession = nil
             }
         }
     }
+    private(set) var cloudEditSession: CloudEditSessionCheckpoint?
     var latestCloudEditRenderStatus: CloudEditRenderStatusResponse?
     var cloudUploadAssetID: String?
     var cloudUploadAssetStorageKey: String?
@@ -2057,6 +2059,33 @@ final class HighlightsViewModel {
         }
     }
 
+    func updateCloudEditSession(
+        editJobID: String,
+        renderJobID: String?,
+        revisionID: String?
+    ) {
+        let trimmedEditJobID = editJobID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedEditJobID.isEmpty else { return }
+        let trimmedRenderJobID = renderJobID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRevisionID = revisionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let checkpoint = CloudEditSessionCheckpoint(
+            editJobID: trimmedEditJobID,
+            renderJobID: trimmedRenderJobID?.isEmpty == false ? trimmedRenderJobID : nil,
+            revisionID: trimmedRevisionID?.isEmpty == false ? trimmedRevisionID : nil
+        )
+        guard cloudEditSession != checkpoint else { return }
+        cloudEditSession = checkpoint
+        persistCurrentProject()
+    }
+
+    func clearCloudEditSession() {
+        guard cloudEditSession != nil || latestCloudEditRenderStatus != nil else { return }
+        cloudEditSession = nil
+        latestCloudEditRenderStatus = nil
+        persistCurrentProject()
+    }
+
     func resetProject() {
         persistCurrentProject()
         currentProjectID = nil
@@ -2216,6 +2245,7 @@ final class HighlightsViewModel {
         project.analysisStatusSummary = lastAnalysisStatusSummary
         project.cloudAnalysisJobID = cloudAnalysisJobID
         project.cloudEditSourceObjectKey = cloudEditSourceObjectKey
+        project.cloudEditSession = cloudEditSession
         project.highlightTeamSelection = settings.highlightTeamSelection
         project.opponentTeamName = settings.opponentTeamName
         project.cloudDetectedTeams = cloudDetectedTeams
@@ -2288,6 +2318,7 @@ final class HighlightsViewModel {
         analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
+        cloudEditSession = project.cloudEditSession
         latestCloudEditRenderStatus = nil
         clearCloudUploadAssetState()
         settings.highlightTeamSelection = project.highlightTeamSelection ?? .allTeams
@@ -2339,6 +2370,7 @@ final class HighlightsViewModel {
         lastAnalysisStatusSummary = nil
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        cloudEditSession = nil
         latestCloudEditRenderStatus = nil
         clearCloudUploadAssetState()
         cloudDetectedTeams = []

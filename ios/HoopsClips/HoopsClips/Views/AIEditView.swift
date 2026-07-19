@@ -82,6 +82,7 @@ struct AIEditView: View {
     @State private var lockerErrorMessage: String?
     @State private var userEditPrompt = ""
     @State private var isWorking = false
+    @State private var isRestoringCloudEditSession = false
     @State private var isPreparingShare = false
     @State private var isLoadingRenderHistory = false
     @State private var lockerBusyRenderJobID: String?
@@ -165,9 +166,19 @@ struct AIEditView: View {
         }
         .onChange(of: renderStatus?.renderJobId) { _, _ in
             viewModel.latestCloudEditRenderStatus = renderStatus
+            checkpointCloudEditSession()
         }
         .onChange(of: renderStatus?.status) { _, _ in
             viewModel.latestCloudEditRenderStatus = renderStatus
+        }
+        .onChange(of: editJob?.editJobId) { _, _ in
+            checkpointCloudEditSession()
+        }
+        .onChange(of: editPlan?.editJobId) { _, _ in
+            checkpointCloudEditSession()
+        }
+        .onChange(of: revisionResponse?.revisionId) { _, _ in
+            checkpointCloudEditSession()
         }
         .onChange(of: isActive) { _, active in
             if active {
@@ -226,7 +237,30 @@ struct AIEditView: View {
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
         selectedQuickPromptID = nil
+        viewModel.clearCloudEditSession()
         viewModel.latestCloudEditRenderStatus = nil
+    }
+
+    private var activeCloudEditJobID: String? {
+        editJob?.editJobId
+            ?? editPlan?.editJobId
+            ?? renderStatus?.editJobId
+            ?? viewModel.cloudEditSession?.editJobID
+    }
+
+    private var activeCloudEditRevisionID: String? {
+        revisionResponse?.revisionId
+            ?? renderStatus?.revisionId
+            ?? viewModel.cloudEditSession?.revisionID
+    }
+
+    private func checkpointCloudEditSession() {
+        guard let editJobID = activeCloudEditJobID else { return }
+        viewModel.updateCloudEditSession(
+            editJobID: editJobID,
+            renderJobID: renderStatus?.renderJobId,
+            revisionID: activeCloudEditRevisionID
+        )
     }
 
     private func refreshCloudEditAfterForegroundIfNeeded() {
@@ -330,7 +364,6 @@ struct AIEditView: View {
                 .stroke(aiEditHeroTint.opacity(0.30), lineWidth: 1)
         }
         .shadow(color: aiEditHeroTint.opacity(0.10), radius: 18, y: 10)
-        .accessibilityIdentifier("export.aiEdit.studioCard")
     }
 
     private var aiEditDetailsToggle: some View {
@@ -435,6 +468,9 @@ struct AIEditView: View {
 
     private var aiEditHeroSubtitle: String {
         if downloadResponse != nil || phase == .rendered {
+            if isRestoringCloudEditSession && previewPlayer == nil {
+                return "Loading your finished reel."
+            }
             return "Preview it, save it, or share it."
         }
         if aiEditHeroShowsProgress {
@@ -2106,7 +2142,7 @@ struct AIEditView: View {
         case .planReady, .renderRequested, .created, .queued, .rendering:
             return true
         case .rendered, .failed, .failedTimeout, .cancelled:
-            return false
+            return phase == .rendered && isRestoringCloudEditSession && previewPlayer == nil
         }
     }
 
@@ -2547,7 +2583,9 @@ struct AIEditView: View {
         case .rendering:
             return "Making reel"
         case .rendered:
-            return "Your reel is ready"
+            return isRestoringCloudEditSession && previewPlayer == nil
+                ? "Loading finished reel"
+                : "Your reel is ready"
         case .failed, .failedTimeout:
             return "Reel failed"
         case .cancelled:
@@ -2557,6 +2595,9 @@ struct AIEditView: View {
 
     private var exportProgressSubtitle: String {
         if phase == .rendered {
+            if isRestoringCloudEditSession && previewPlayer == nil {
+                return "Reconnecting to your saved cloud edit."
+            }
             return "Preview, save, or share below."
         }
         if phase == .failed || phase == .failedTimeout || phase == .cancelled {
@@ -3171,8 +3212,8 @@ struct AIEditView: View {
                 limit: 20
             )
             renderHistory = history.renders
-            syncVisibleRenderFromHistory(history.renders)
             lockerErrorMessage = nil
+            await restoreCloudEditSessionIfNeeded(from: history.renders)
         } catch {
             if showError {
                 lockerErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -3181,19 +3222,142 @@ struct AIEditView: View {
     }
 
     @MainActor
-    private func syncVisibleRenderFromHistory(_ renders: [CloudEditRenderStatusResponse]) {
-        guard let refreshedRender = CloudEditForegroundRefreshPolicy.matchingRenderStatus(
+    private func restoreCloudEditSessionIfNeeded(from renders: [CloudEditRenderStatusResponse]) async {
+        guard !isRestoringCloudEditSession,
+              let editJobID = activeCloudEditJobID else {
+            return
+        }
+
+        let refreshedRender = CloudEditForegroundRefreshPolicy.matchingRenderStatus(
             currentRender: renderStatus,
-            activeEditJobID: editJob?.editJobId ?? editPlan?.editJobId,
-            activeRevisionID: revisionResponse?.revisionId,
+            activeEditJobID: editJobID,
+            activeRevisionID: activeCloudEditRevisionID,
+            activeRenderJobID: viewModel.cloudEditSession?.renderJobID,
             history: renders
+        )
+
+        if let refreshedRender {
+            renderStatus = refreshedRender
+            policySummary = refreshedRender.policy ?? policySummary
+            phase = refreshedRender.status
+            checkpointCloudEditSession()
+        }
+
+        guard editPlan == nil || shouldResumeCloudRender(refreshedRender) else { return }
+        isRestoringCloudEditSession = true
+        let wasAlreadyWorking = isWorking
+        isWorking = true
+        defer {
+            isRestoringCloudEditSession = false
+            isWorking = wasAlreadyWorking
+        }
+
+        await restoreCloudEditPlanIfNeeded(editJobID: editJobID)
+
+        do {
+            let status: CloudEditRenderStatusResponse
+            if let refreshedRender {
+                status = refreshedRender
+            } else {
+                let requested = try await cloudEditService.requestStoredRender(
+                    editJobID: editJobID,
+                    installID: viewModel.installID,
+                    idempotencyKey: "ios-render-\(editJobID)",
+                    forceNew: false
+                )
+                renderStatus = requested
+                policySummary = requested.policy ?? policySummary
+                phase = requested.status
+                checkpointCloudEditSession()
+                status = requested
+            }
+
+            let finalStatus: CloudEditRenderStatusResponse
+            if Self.isActiveRenderState(status.status) {
+                LaunchTelemetry.shared.recordAIEditEvent(
+                    "render.resume.started",
+                    editJobID: editJobID,
+                    renderJobID: status.renderJobId,
+                    revisionID: status.revisionId,
+                    templateID: status.templateId,
+                    planTier: status.planTier?.rawValue
+                )
+                finalStatus = try await cloudEditService.pollRenderStatus(
+                    editJobID: editJobID,
+                    installID: viewModel.installID
+                )
+            } else {
+                finalStatus = status
+            }
+
+            renderStatus = finalStatus
+            policySummary = finalStatus.policy ?? policySummary
+            phase = finalStatus.status
+            checkpointCloudEditSession()
+
+            guard finalStatus.status == .rendered else { return }
+            guard downloadResponse == nil || previewPlayer == nil else { return }
+
+            let download = try await cloudEditService.fetchDownloadURL(
+                renderJobID: finalStatus.renderJobId,
+                installID: viewModel.installID
+            )
+            downloadResponse = download
+            try await attachDownloadedCloudPreview(from: download)
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "render.resume.completed",
+                editJobID: editJobID,
+                renderJobID: finalStatus.renderJobId,
+                revisionID: finalStatus.revisionId,
+                templateID: finalStatus.templateId,
+                planTier: finalStatus.planTier?.rawValue
+            )
+            HoopsAccessibility.announce("Your HoopClips AI edit is ready.")
+        } catch {
+            lockerErrorMessage = "Could not reconnect to this edit yet. Your cloud job is still safe; try again when you are online."
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "render.resume.deferred",
+                editJobID: editJobID,
+                renderJobID: renderStatus?.renderJobId,
+                revisionID: activeCloudEditRevisionID,
+                templateID: renderStatus?.templateId,
+                failureReason: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            )
+        }
+    }
+
+    private func restoreCloudEditPlanIfNeeded(editJobID: String) async {
+        guard editPlan == nil else { return }
+        guard let response = try? await cloudEditService.fetchEditPlan(
+            editJobID: editJobID,
+            installID: viewModel.installID
         ) else {
             return
         }
 
-        renderStatus = refreshedRender
-        policySummary = refreshedRender.policy ?? policySummary
-        phase = refreshedRender.status
+        editPlan = response.plan
+        policySummary = response.policy ?? policySummary
+        selectedPreset = CloudEditPreset(rawValue: response.plan.preset) ?? selectedPreset
+        selectedProTemplate = response.plan.templateId.flatMap(CloudEditProTemplate.init(rawValue:))
+        selectedAspectRatio = response.plan.aspectRatio
+        selectedDuration = response.plan.targetDurationSeconds
+    }
+
+    private func shouldResumeCloudRender(_ render: CloudEditRenderStatusResponse?) -> Bool {
+        guard let render else { return true }
+        if Self.isActiveRenderState(render.status) {
+            return true
+        }
+        return render.status == .rendered && (downloadResponse == nil || previewPlayer == nil)
+    }
+
+    private static func isActiveRenderState(_ status: CloudEditRenderState) -> Bool {
+        switch status {
+        case .renderRequested, .created, .queued, .rendering:
+            return true
+        case .planning, .planReady, .rendered, .failed, .failedTimeout, .cancelled:
+            return false
+        }
     }
 
     @MainActor
@@ -3351,6 +3515,11 @@ struct AIEditView: View {
 
     @MainActor
     private func runEditFlow() async {
+        editJob = nil
+        editPlan = nil
+        policySummary = nil
+        renderStatus = nil
+        viewModel.clearCloudEditSession()
         isWorking = true
         errorMessage = nil
         lockerErrorMessage = nil
@@ -3457,7 +3626,7 @@ struct AIEditView: View {
 
     @MainActor
     private func runRevisionFlow(_ command: CloudEditRevisionCommand) async {
-        guard let editJob else {
+        guard let editJobID = activeCloudEditJobID else {
             errorMessage = "Create an AI edit first, then revise it."
             return
         }
@@ -3470,7 +3639,7 @@ struct AIEditView: View {
 
         do {
             let revision = try await cloudEditService.requestRevision(
-                editJobID: editJob.editJobId,
+                editJobID: editJobID,
                 installID: viewModel.installID,
                 command: command
             )
@@ -3484,7 +3653,7 @@ struct AIEditView: View {
             phase = .planReady
             LaunchTelemetry.shared.recordAIEditEvent(
                 "edit_revision.created",
-                editJobID: editJob.editJobId,
+                editJobID: editJobID,
                 revisionID: revision.revisionId,
                 templateID: revision.revisedPlan.templateId,
                 planTier: policySummary?.planTier.rawValue
@@ -3499,7 +3668,7 @@ struct AIEditView: View {
 
     @MainActor
     private func runRevisionRenderFlow() async {
-        guard let editJob, let revisionResponse else {
+        guard let editJobID = activeCloudEditJobID, let revisionResponse else {
             await runEditFlow()
             return
         }
@@ -3515,7 +3684,7 @@ struct AIEditView: View {
 
         do {
             let requested = try await cloudEditService.requestRevisionRender(
-                editJobID: editJob.editJobId,
+                editJobID: editJobID,
                 revisionID: revisionResponse.revisionId,
                 installID: viewModel.installID,
                 forceNew: false
@@ -3525,7 +3694,7 @@ struct AIEditView: View {
             phase = requested.status
 
             let finalStatus = try await cloudEditService.pollRenderStatus(
-                editJobID: editJob.editJobId,
+                editJobID: editJobID,
                 installID: viewModel.installID
             )
             renderStatus = finalStatus
@@ -3541,14 +3710,14 @@ struct AIEditView: View {
             }
 
             let download = try await cloudEditService.fetchDownloadURL(
-                editJobID: editJob.editJobId,
+                editJobID: editJobID,
                 installID: viewModel.installID
             )
             downloadResponse = download
             try await attachDownloadedCloudPreview(from: download)
             LaunchTelemetry.shared.recordAIEditEvent(
                 "ios.preview.loaded",
-                editJobID: editJob.editJobId,
+                editJobID: editJobID,
                 renderJobID: finalStatus.renderJobId,
                 revisionID: revisionResponse.revisionId,
                 templateID: revisionResponse.revisedPlan.templateId,
