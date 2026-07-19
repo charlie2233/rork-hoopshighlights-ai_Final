@@ -112,6 +112,18 @@
       "status": "prepare_for_submission"
     }
   },
+  "sharedBackendAccuracyEvidence": {
+    "reportPath": "ios/docs/app-store/shared-backend-accuracy-2026-07-19.json",
+    "evaluatedAt": "2026-07-19",
+    "status": "fail",
+    "platformScope": ["ios", "macos"],
+    "duplicateMacLabelsRequired": false,
+    "caseCount": 1,
+    "clipCount": 43,
+    "highlightPrecision": 0.2727,
+    "highlightRecall": 0.6,
+    "shotOutcomeEvidenceQuality": 0.0
+  },
   "pricingAvailabilityDraft": {
     "appPrice": "Free",
     "availability": "all_countries_or_regions",
@@ -273,7 +285,7 @@
     {
       "id": "shared_backend_accuracy",
       "status": "operator_review_required",
-      "detail": "The shared iOS/macOS backend report is complete but fails the 85% launch gate; pass it or record an explicit current-release risk acceptance. Do not create duplicate macOS labels."
+      "detail": "The refreshed shared iOS/macOS report reuses all 43 completed human labels with one-to-one time matching and still fails the launch gate: highlight precision 0.2727, recall 0.6, shot-outcome evidence 0.0, and only one all-teams case. Add the missing selected-team case/coverage or record an explicit current-release risk acceptance. Do not create duplicate macOS labels."
     },
     {
       "id": "final_add_for_review",
