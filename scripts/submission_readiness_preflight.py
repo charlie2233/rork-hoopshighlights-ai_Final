@@ -93,6 +93,19 @@ TESTFLIGHT_UPLOAD_LOG_MARKERS = (
     "Uploaded HoopsClips",
     "Internal TestFlight upload command completed",
 )
+TESTFLIGHT_ARCHIVE_LOG_MARKERS = (
+    "Archive created",
+    "CFBundleIdentifier=expected",
+    "CFBundleShortVersionString=expected",
+    "CFBundleVersion=expected",
+    "HOOPSAppEnvironment=expected",
+    "HOOPSCloudLaunchMode=expected",
+    "HOOPSCloudAnalysisBaseURL=expected",
+    "HOOPSCloudEditBaseURL=expected",
+    "PrivacyInfo.xcprivacy=present-and-valid",
+    "Archive signing certificate serial captured",
+    "Archive/preflight operation completed; no App Store Connect upload was attempted.",
+)
 TESTFLIGHT_STATUS_LOG_MARKER = "App Store Connect confirms this build is ready for internal TestFlight."
 TESTFLIGHT_DUPLICATE_UPLOAD_LOG_MARKERS = (
     "bundle version must be higher than the previously uploaded version",
@@ -908,6 +921,13 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         if archive_path is None and current_testflight_upload_proof(repo_root):
             collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
             return
+        if archive_path is None and current_testflight_archive_proof(repo_root):
+            collector.pass_(
+                "upload artifact",
+                "GitHub Actions",
+                "Successful signed internal staging archive log proof exists, and no iOS upload-relevant files changed afterward. No App Store Connect upload is claimed.",
+            )
+            return
         if archive_path is None and (workflow_missing_upload_detail := current_testflight_workflow_missing_upload_detail(repo_root)):
             collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_missing_upload_detail)
             return
@@ -920,6 +940,12 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
     elif current_testflight_upload_proof(repo_root):
         collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
+    elif current_testflight_archive_proof(repo_root):
+        collector.pass_(
+            "upload artifact",
+            "GitHub Actions",
+            "Successful signed internal staging archive log proof exists, and no iOS upload-relevant files changed afterward. No App Store Connect upload is claimed.",
+        )
     elif current_testflight_duplicate_upload_status_proof(repo_root):
         collector.pass_(
             "upload artifact",
@@ -954,6 +980,30 @@ def current_testflight_upload_proof(repo_root: Path) -> bool:
     ]
     for run in matching_runs:
         if testflight_upload_log_has_markers(run.get("databaseId")):
+            return True
+    return False
+
+
+def current_testflight_archive_proof(repo_root: Path) -> bool:
+    runs = current_testflight_workflow_dispatch_runs(repo_root)
+    current_sha = current_git_sha(repo_root)
+    if not current_sha:
+        return False
+    matching_runs = [
+        run
+        for run in runs
+        if isinstance(run, dict)
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and commit_is_current_or_unchanged_for_paths(
+            repo_root,
+            str(run.get("headSha") or ""),
+            current_sha,
+            IOS_UPLOAD_ARTIFACT_RELEVANT_PREFIXES,
+        )
+    ]
+    for run in matching_runs:
+        if testflight_archive_log_has_markers(run.get("databaseId")):
             return True
     return False
 
@@ -1124,6 +1174,11 @@ def testflight_run_log(run_id: object) -> str:
 def testflight_upload_log_has_markers(run_id: object) -> bool:
     run_log = testflight_run_log(run_id)
     return all(marker in run_log for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
+
+
+def testflight_archive_log_has_markers(run_id: object) -> bool:
+    run_log = testflight_run_log(run_id)
+    return all(marker in run_log for marker in TESTFLIGHT_ARCHIVE_LOG_MARKERS)
 
 
 def testflight_status_log_has_marker(run_id: object) -> bool:
