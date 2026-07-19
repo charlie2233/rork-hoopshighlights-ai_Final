@@ -234,7 +234,7 @@ jobs:
 
           require_archive_value "CFBundleIdentifier" "atrak.charlie.hoopsclips"
           require_archive_value "CFBundleShortVersionString" "1.0.0"
-          require_archive_value "CFBundleVersion" "53"
+          require_archive_value "CFBundleVersion" "54"
           require_app_value "HOOPSAppEnvironment" "internal_staging"
           require_app_value "HOOPSCloudLaunchMode" "internal_only"
           require_app_value "HOOPSCloudAnalysisBaseURL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
@@ -331,7 +331,7 @@ jobs:
           fi
 
   app-store-connect-status:
-    name: Verify build 53 internal TestFlight status
+    name: Verify build 54 internal TestFlight status
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'status'
     runs-on: ubuntu-latest
     environment: staging
@@ -380,17 +380,17 @@ jobs:
           echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
           echo "App Store Connect API key materialized"
 
-      - name: Wait for build 53 internal TestFlight availability
+      - name: Wait for build 54 internal TestFlight availability
         run: |
           set -euo pipefail
-          status_path="$RUNNER_TEMP/app-store-connect-build-53-status.json"
+          status_path="$RUNNER_TEMP/app-store-connect-build-54-status.json"
           python3 scripts/app_store_connect_build_status.py \
             --key-path "$ASC_KEY_PATH" \
             --key-id "$APP_STORE_CONNECT_KEY_ID" \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
             --bundle-id atrak.charlie.hoopsclips \
             --marketing-version 1.0.0 \
-            --build-version 53 \
+            --build-version 54 \
             --wait-seconds 900 \
             --poll-seconds 30 \
             --output "$status_path"
@@ -400,7 +400,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "### App Store Connect build 53"
+            echo "### App Store Connect build 54"
             echo
             echo '```json'
             jq . "$ASC_BUILD_STATUS_PATH"
@@ -410,7 +410,7 @@ jobs:
       - name: Upload non-secret build status proof
         uses: actions/upload-artifact@v4
         with:
-          name: app-store-connect-build-53-status
+          name: app-store-connect-build-54-status
           path: ${{ env.ASC_BUILD_STATUS_PATH }}
           retention-days: 14
 
