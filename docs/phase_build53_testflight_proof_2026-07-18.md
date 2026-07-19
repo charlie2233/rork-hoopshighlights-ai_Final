@@ -4,10 +4,11 @@ Date: 2026-07-18
 
 ## Result
 
-Current main SHA `55a402b4b6cc48038306af5eed72367adab15bbf` is uploaded and processed as HoopClips internal TestFlight build `1.0.0 (53)` for bundle ID `atrak.charlie.hoopsclips`.
+Build `53` release SHA `55a402b4b6cc48038306af5eed72367adab15bbf` is uploaded and processed as HoopClips internal TestFlight build `1.0.0 (53)` for bundle ID `atrak.charlie.hoopsclips`.
 
 - PR #92 merged at `f52f443198638d79dce81e5a2d7e4aba117a68fa` with the streamlined AI Edit studio/progress UI and focused policy tests.
 - PR #93 merged at `55a402b4b6cc48038306af5eed72367adab15bbf` with build `53` archive/status guard updates.
+- PR #94 merged at `920ca9ce69d6144f370f7299457c2fd31681d402` as a documentation-only descendant; it did not change the archived app source.
 - Main codecheck run `29667213808`: passed.
 - Signed archive/upload run `29667373531`: passed archive, provisioning, metadata/privacy checks, App Store Connect upload, and runner certificate cleanup.
 - Read-only status run `29667648668`: `buildFound=true`, `processingState=VALID`, `internalBuildState=IN_BETA_TESTING`, `buildAudienceType=INTERNAL_ONLY`, `readyForInternalTesting=true`, and `expired=false`.
