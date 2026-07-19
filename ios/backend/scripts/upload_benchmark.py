@@ -11,9 +11,17 @@ from urllib import request as urlrequest
 from urllib.error import HTTPError
 
 
+USER_AGENT = "HoopClipsUploadBenchmark/1.0"
+
+
 def _json_request(method: str, url: str, payload: Optional[dict] = None) -> dict:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {"content-type": "application/json"} if payload is not None else {}
+    headers = {
+        "accept": "application/json",
+        "user-agent": USER_AGENT,
+    }
+    if payload is not None:
+        headers["content-type"] = "application/json"
     req = urlrequest.Request(url, data=body, method=method, headers=headers)
     try:
         with urlrequest.urlopen(req, timeout=120) as response:
@@ -26,7 +34,9 @@ def _json_request(method: str, url: str, payload: Optional[dict] = None) -> dict
 
 
 def _put_bytes(url: str, payload: bytes, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    req = urlrequest.Request(url, data=payload, method="PUT", headers=headers or {})
+    request_headers = {"user-agent": USER_AGENT}
+    request_headers.update(headers or {})
+    req = urlrequest.Request(url, data=payload, method="PUT", headers=request_headers)
     try:
         with urlrequest.urlopen(req, timeout=180) as response:
             return dict(response.headers.items())
