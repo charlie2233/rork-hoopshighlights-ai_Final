@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "hoopclips-app-store-metadata-v1",
+  "locale": "en-US",
+  "listing": {
+    "name": "HoopClips",
+    "subtitle": "AI Basketball Highlight Reels",
+    "promotionalText": "Turn basketball footage into cloud-rendered highlight reels. Review detected clips, choose a style, revise the edit, then preview and share the final MP4.",
+    "description": "HoopClips helps players, parents, coaches, and teams turn basketball footage into shareable highlight reels.\n\nHOW IT WORKS\n- Import a basketball video from Photos or Files.\n- HoopClips uploads the selected video for cloud AI analysis.\n- Review detected clips and keep the moments you want.\n- Choose Personal Highlight, Full Game Highlight, or Coach Review.\n- Create and revise a cloud-rendered edit.\n- Preview, save, and share the finished MP4.\n\nAI EDIT, WITHOUT A TIMELINE\nChoose a style, video shape, and target length. HoopClips builds a structured edit plan in the cloud, renders it, and lets you request changes such as More Hype or NBA Style.\n\nBUILT FOR BASKETBALL\nUse fast vertical reels for social highlights, clean game recaps for sharing, or chronological Coach Review edits for film study.\n\nCLOUD PROCESSING\nAI analysis and final video rendering require network access. Selected source videos and rendered outputs are processed and stored temporarily in HoopClips cloud services so you can review, preview, and share them. Availability and retention may vary by account policy.",
+    "keywords": "basketball,highlights,reels,video editor,game film,coach,player,recruiting,sports clips"
+  },
+  "categories": {
+    "primary": "Photo & Video",
+    "secondary": "Sports",
+    "status": "ready",
+    "note": "Photo & Video matches the core video-editing workflow; Sports matches the basketball subject matter."
+  },
+  "brand": {
+    "appIconPath": "ios/HoopsClips/HoopsClips/Assets.xcassets/AppIcon.appiconset/icon.png",
+    "brandMarkPath": "ios/HoopsClips/HoopsClips/Assets.xcassets/BrandMark.imageset/brand_mark.png"
+  },
+  "urls": {
+    "supportURL": {
+      "value": "https://atrak.dev/apps/hoopsclips/support.html",
+      "status": "ready",
+      "note": "Public HoopClips support page verified live with current contact and troubleshooting information."
+    },
+    "privacyPolicyURL": {
+      "value": "https://atrak.dev/apps/hoopsclips/privacy.html",
+      "status": "ready",
+      "note": "Product-specific HoopClips policy covers native apps, cloud processing, AI editing, retention, providers, and deletion requests."
+    },
+    "termsOfServiceURL": {
+      "value": "https://atrak.dev/apps/hoopsclips/terms.html",
+      "status": "ready",
+      "note": "Product-specific HoopClips terms cover user-upload rights, cloud and AI results, acceptable use, storage, and availability."
+    }
+  },
+  "screenshots": [
+    {
+      "deviceClass": "iphone_6_9",
+      "paths": [
+        "ios/docs/app-store/screenshots/en-US/iphone-6.9/01-ai-edit-setup.png",
+        "ios/docs/app-store/screenshots/en-US/iphone-6.9/02-ai-edit-templates.png"
+      ]
+    },
+    {
+      "deviceClass": "ipad_13",
+      "paths": [
+        "ios/docs/app-store/screenshots/en-US/ipad-13/01-ai-edit-setup.png",
+        "ios/docs/app-store/screenshots/en-US/ipad-13/02-ai-edit-templates.png"
+      ]
+    }
+  ],
+  "screenshotContentReview": {
+    "status": "ready",
+    "reviewedAt": "2026-07-19",
+    "evidence": "All four simulator-captured frames were visually reviewed. They show the submitted AI Edit setup and template picker, contain no user footage or synthetic black preview, and remain legible on iPhone 6.9-inch and iPad 13-inch layouts."
+  },
+  "review": {
+    "signInNotesPath": "ios/docs/app-store/app-review-sign-in.md",
+    "reviewAccountEmail": "appreview@hoopsclips.app",
+    "passwordStorage": "App Store Connect only",
+    "contactName": null,
+    "contactEmail": null,
+    "contactPhone": null,
+    "status": "operator_review_required"
+  },
+  "privacyCopy": {
+    "cloudProcessing": "Your selected video is uploaded to HoopClips cloud services for AI analysis, edit planning, and rendering.",
+    "temporaryStorage": "Source videos and rendered MP4s are stored temporarily so you can review, preview, save, and share them.",
+    "freeBranding": "Free outputs may include the HoopClips watermark and outro.",
+    "deletionPromise": "Do not promise immediate deletion while cleanup execution remains operator controlled."
+  },
+  "release": {
+    "version": "1.0.0",
+    "build": "54",
+    "releaseMode": "manual",
+    "configurationPath": "ios/HoopsClips/HoopsClips/Config/Release.xcconfig",
+    "backendMode": "production_cloud_only",
+    "localRenderFallback": false
+  },
+  "operatorGates": [
+    {
+      "id": "app_review_contact",
+      "status": "operator_review_required",
+      "detail": "Enter App Review contact name, email, phone, and the review-only password directly in App Store Connect."
+    },
+    {
+      "id": "age_rating",
+      "status": "operator_review_required",
+      "detail": "Complete the App Store Connect age-rating questionnaire from the final product behavior."
+    },
+    {
+      "id": "content_rights",
+      "status": "operator_review_required",
+      "detail": "Confirm content-rights declarations for user-uploaded basketball footage and any included audio."
+    },
+    {
+      "id": "digital_services_act",
+      "status": "operator_review_required",
+      "detail": "Complete the applicable Digital Services Act trader status in App Store Connect."
+    }
+  ]
+}
