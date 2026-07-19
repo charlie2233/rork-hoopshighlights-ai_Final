@@ -31,6 +31,20 @@ struct AppLanguageStoreTests {
         #expect(AppLanguage.french.text(.selectVideo) == "Choisir une vidéo")
     }
 
+    @Test func exposesMacBetaRecommendationForSupportedLanguages() {
+        for language in AppLanguage.allCases {
+            #expect(!language.text(.settingsMacAppTitle).isEmpty)
+            #expect(!language.text(.settingsMacAppSubtitle).isEmpty)
+            #expect(!language.text(.settingsMacAppBadge).isEmpty)
+            #expect(!language.text(.settingsMacAppBetaNote).isEmpty)
+            #expect(!language.text(.settingsMacAppRequestAccess).isEmpty)
+            #expect(!language.text(.settingsMacAppRequestPrefill).isEmpty)
+        }
+
+        #expect(AppLanguage.english.text(.settingsMacAppBadge) == "Private beta")
+        #expect(AppLanguage.chinese.text(.settingsMacAppRequestAccess) == "申请 Mac 内测")
+    }
+
     private func isolatedDefaults() -> UserDefaults {
         let suiteName = "HoopsClipsTests.AppLanguageStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

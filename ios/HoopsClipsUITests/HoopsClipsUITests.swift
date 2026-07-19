@@ -60,6 +60,49 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
+    func testMacBetaRecommendationPrefillsSupportRequest() throws {
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = [
+            "-hoopsclips.rookieGuide.completed.v1",
+            "YES",
+        ]
+        app.launch()
+
+        let guestButton = app.buttons["Continue as Guest"]
+        if guestButton.waitForExistence(timeout: 5) {
+            while !guestButton.isHittable && app.scrollViews.firstMatch.exists {
+                app.scrollViews.firstMatch.swipeUp()
+            }
+            guestButton.tap()
+        }
+
+        let settingsButton = app.buttons["uploads.settingsButton"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+        settingsButton.tap()
+
+        let macAppCard = app.descendants(matching: .any)["settings.macApp.card"]
+        tapWhenReady(macAppCard, in: app)
+        XCTAssertTrue(app.staticTexts["Try HoopClips on Mac"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Private beta"].exists)
+        attachScreenshot(named: "Mac Private Beta Recommendation", app: app)
+
+        let requestAccess = app.descendants(matching: .any)["settings.macApp.requestAccess"]
+        tapWhenReady(requestAccess, in: app)
+
+        let message = app.textViews["settings.feedback.message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            message.value as? String,
+            "I'd like to try HoopClips for Mac. Please let me know when private beta access is available."
+        )
+        XCTAssertFalse(app.staticTexts["Sending..."].exists)
+        attachScreenshot(named: "Mac Beta Support Request", app: app)
+    }
+
+    @MainActor
     func testVideoImportProgressHidesLandingClutter() throws {
         XCUIDevice.shared.orientation = .portrait
 
