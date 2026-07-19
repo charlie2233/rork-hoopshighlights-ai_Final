@@ -285,6 +285,24 @@ test("canonical multipart init returns every signed part target in one response"
     assert.equal(initJson.multipart.parts.every((part) => part.uploadMethod === "PUT"), true);
     assert.equal(initJson.multipart.parts.every((part) => part.uploadUrl.includes("uploadId=upload-canonical-123")), true);
 
+    const renewedPartResponse = await invokePublicRoute(controlPlane, "POST", "/uploads/multipart/part", {
+      jobId: initJson.assetId,
+      installId: "install-asset-multipart",
+      uploadId: initJson.multipart.uploadId,
+      partNumber: 8,
+    });
+    assert.equal(renewedPartResponse.status, 201);
+    const renewedPartJson = await parseJsonResponse<{
+      jobId: string;
+      partNumber: number;
+      uploadMethod: string;
+      uploadUrl: string;
+    }>(renewedPartResponse);
+    assert.equal(renewedPartJson.jobId, initJson.assetId);
+    assert.equal(renewedPartJson.partNumber, 8);
+    assert.equal(renewedPartJson.uploadMethod, "PUT");
+    assert.equal(renewedPartJson.uploadUrl.includes("uploadId=upload-canonical-123"), true);
+
     multipartStorageKey = initJson.storageKey;
     multipartUploads = controlPlane.state.uploads;
     const completeResponse = await invokePublicRoute(

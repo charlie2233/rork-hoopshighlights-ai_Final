@@ -245,13 +245,22 @@ struct CloudAnalysisService {
         uploadID: String,
         partCount: Int,
         completedPartCount: Int,
-        isAssetUpload: Bool
+        isAssetUpload _: Bool
     ) -> Bool {
         guard partCount > 0, completedPartCount < partCount else { return false }
-        if isAssetUpload || uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
+        if uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
             return true
         }
         return partCount <= 1
+    }
+
+    nonisolated static func multipartPartTargetsRequireRenewal(
+        expiresAt: Date?,
+        now: Date = Date(),
+        safetyWindowSeconds: TimeInterval = 60
+    ) -> Bool {
+        guard let expiresAt else { return false }
+        return expiresAt <= now.addingTimeInterval(max(safetyWindowSeconds, 0))
     }
 
     nonisolated static func resumeManifestDisplayState(
@@ -440,6 +449,7 @@ struct CloudAnalysisService {
             "chunkRetryBackoffSeconds=\(cloudUploadChunkRetryBackoffSeconds.map { String($0) }.joined(separator: ","))",
             "partSizePolicy=adaptive_8_to_32_mib",
             "preferredMultipartPartCount=\(cloudUploadPreferredMultipartPartCount)",
+            "assetPartLeaseRenewal=missing_parts_before_expiry",
             "lanePolicyRefresh=between_completed_parts",
             "progressAggregation=total_bytes_across_active_chunks",
             "memoryPolicy=bounded_chunk_data_per_lane",
@@ -1498,6 +1508,7 @@ struct CloudAnalysisService {
                 assetCompletedParts = try await resumeAssetUploadManifest(
                     manifest,
                     sourceURL: sourceURL,
+                    baseURL: baseURL,
                     tracker: tracker,
                     reportUploadProgress: reportUploadProgress
                 )
@@ -2115,6 +2126,7 @@ struct CloudAnalysisService {
                 asset: asset,
                 multipart: multipart,
                 from: url,
+                baseURL: baseURL,
                 installID: installID,
                 purpose: purpose,
                 totalFileSizeBytes: FileManager.default.fileExists(atPath: url.path) ? (try fileInfo(for: url).fileSizeBytes) : 0,
@@ -2273,6 +2285,7 @@ struct CloudAnalysisService {
         asset: CloudAssetUploadInitResponse,
         multipart: CloudAssetMultipartUpload,
         from url: URL,
+        baseURL: URL,
         installID: String,
         purpose: CloudUploadResumePurpose,
         totalFileSizeBytes: Int64,
@@ -2357,11 +2370,15 @@ struct CloudAnalysisService {
                         nextPartNumber = multipart.partCount + 1
                         break
                     }
-                    guard let uploadTarget = targetsByPart[partNumber] else {
-                        throw CloudAnalysisError.invalidResponse
-                    }
-
-                    let partTarget = try CloudUploadPartTarget(assetID: asset.assetId, target: uploadTarget)
+                    let partTarget = try await resolveAssetMultipartPartTarget(
+                        baseURL: baseURL,
+                        assetID: asset.assetId,
+                        installID: installID,
+                        uploadID: multipart.uploadId,
+                        partNumber: partNumber,
+                        cachedTarget: targetsByPart[partNumber],
+                        expiresAt: asset.expiresAt
+                    )
                     group.addTask {
                         let etag = try await Self.uploadMultipartChunk(
                             partTarget,
@@ -3119,6 +3136,7 @@ struct CloudAnalysisService {
     private func resumeAssetUploadManifest(
         _ manifest: CloudUploadResumeManifest,
         sourceURL: URL,
+        baseURL: URL,
         tracker: CloudUploadProgressTracker,
         reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool, _ transferContext: String?) -> Void
     ) async throws -> [CloudMultipartCompletedPart] {
@@ -3201,11 +3219,15 @@ struct CloudAnalysisService {
                         nextPartNumber = partCount + 1
                         break
                     }
-                    guard let uploadTarget = targetsByPart[partNumber] else {
-                        throw CloudAnalysisError.invalidResponse
-                    }
-
-                    let partTarget = try CloudUploadPartTarget(assetID: assetID, target: uploadTarget)
+                    let partTarget = try await resolveAssetMultipartPartTarget(
+                        baseURL: baseURL,
+                        assetID: assetID,
+                        installID: manifest.installID,
+                        uploadID: uploadID,
+                        partNumber: partNumber,
+                        cachedTarget: targetsByPart[partNumber],
+                        expiresAt: manifest.uploadExpiresAt
+                    )
                     group.addTask {
                         let etag = try await Self.uploadMultipartChunk(
                             partTarget,
@@ -3259,6 +3281,36 @@ struct CloudAnalysisService {
             stalled: false
         )
         return uploadedParts
+    }
+
+    private func resolveAssetMultipartPartTarget(
+        baseURL: URL,
+        assetID: String,
+        installID: String,
+        uploadID: String,
+        partNumber: Int,
+        cachedTarget: CloudAssetUploadTarget?,
+        expiresAt: Date?
+    ) async throws -> CloudUploadPartTarget {
+        if Self.multipartPartTargetsRequireRenewal(expiresAt: expiresAt) {
+            let renewedTarget = try await createMultipartPart(
+                baseURL: baseURL,
+                jobID: assetID,
+                installID: installID,
+                uploadID: uploadID,
+                partNumber: partNumber
+            )
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "asset_multipart_part_target_renewed",
+                metadata: "partNumber=\(partNumber) reason=lease_near_expiry"
+            )
+            return CloudUploadPartTarget(renewedTarget)
+        }
+
+        guard let cachedTarget else {
+            throw CloudAnalysisError.invalidResponse
+        }
+        return try CloudUploadPartTarget(assetID: assetID, target: cachedTarget)
     }
 
     private static func uploadMultipartChunk(
