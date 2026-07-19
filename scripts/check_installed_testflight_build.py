@@ -22,7 +22,7 @@ from typing import Any
 
 EXPECTED_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_MARKETING_VERSION = "1.0.0"
-EXPECTED_BUILD_NUMBER = "52"
+EXPECTED_BUILD_NUMBER = "53"
 
 
 def parse_args() -> argparse.Namespace:
