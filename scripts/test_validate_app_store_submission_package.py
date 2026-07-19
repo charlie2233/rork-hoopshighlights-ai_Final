@@ -1,4 +1,5 @@
 import json
+import plistlib
 import struct
 import tempfile
 import unittest
@@ -95,6 +96,35 @@ class AppStoreSubmissionPackageTests(unittest.TestCase):
         self.assertTrue(has_errors(findings))
         self.assertTrue(any(item.check == "release.build" for item in findings))
 
+    def test_internal_staging_build_cannot_be_store_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            metadata_path = repo_root / metadata
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload["appStoreConnectAudit"]["testFlightBuild"]["storeVersionSelection"] = "pending"
+            metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "appStoreConnectAudit" for item in findings))
+
+    def test_production_workflow_cannot_use_internal_staging_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            metadata = create_fixture(repo_root)
+            workflow_path = repo_root / ".github/workflows/ios-app-store-production-upload.yml"
+            workflow_path.write_text(
+                workflow_path.read_text(encoding="utf-8") + "\nInternalStaging.xcconfig\n",
+                encoding="utf-8",
+            )
+
+            findings = validate_package(repo_root, metadata)
+
+        self.assertTrue(has_errors(findings))
+        self.assertTrue(any(item.check == "release.archiveWorkflow" for item in findings))
+
     def test_missing_privacy_data_type_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
@@ -140,6 +170,8 @@ def create_fixture(
     iphone_path = repo_root / "screens/iphone.png"
     ipad_path = repo_root / "screens/ipad.png"
     release_config_path = repo_root / "config/Release.xcconfig"
+    archive_workflow_path = repo_root / ".github/workflows/ios-app-store-production-upload.yml"
+    export_options_path = repo_root / "config/exportOptions.plist"
     privacy_manifest_path = repo_root / "config/PrivacyInfo.xcprivacy"
     project_path = repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj"
     write_png(icon_path, 1024, 1024)
@@ -151,6 +183,37 @@ def create_fixture(
         "HOOPS_APP_ENV = production\nHOOPS_CLOUD_LAUNCH_MODE = enabled\n",
         encoding="utf-8",
     )
+    archive_workflow_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_workflow_path.write_text(
+        """name: fixture production archive
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        default: \"55\"
+jobs:
+  archive:
+    environment: production
+    env:
+      HOOPS_CLOUD_ANALYSIS_BASE_URL: ${{ vars.HOOPS_CLOUD_ANALYSIS_BASE_URL }}
+      HOOPS_CLOUD_EDIT_BASE_URL: ${{ vars.HOOPS_CLOUD_EDIT_BASE_URL }}
+    steps:
+      - run: xcodebuild CURRENT_PROJECT_VERSION=\"$STORE_BUILD_NUMBER\"
+      - run: require_app_value \"HOOPSAppEnvironment\" \"production\"
+      - run: require_app_value \"HOOPSCloudLaunchMode\" \"enabled\"
+""",
+        encoding="utf-8",
+    )
+    export_options_path.parent.mkdir(parents=True, exist_ok=True)
+    with export_options_path.open("wb") as export_options_file:
+        plistlib.dump(
+            {
+                "destination": "upload",
+                "method": "app-store-connect",
+                "signingStyle": "automatic",
+            },
+            export_options_file,
+        )
     privacy_manifest_path.write_text("<plist><dict/></plist>\n", encoding="utf-8")
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(
@@ -255,6 +318,20 @@ def create_fixture(
                         "version": "1.0.0",
                         "build": "54",
                         "processingState": "valid",
+                        "configuration": "internal_staging",
+                        "backendMode": "staging_cloud_only",
+                        "storeVersionSelection": "not_eligible_internal_staging",
+                    },
+                    "productionStoreBuild": {
+                        "version": "1.0.0",
+                        "build": "55",
+                        "configuration": "production",
+                        "backendMode": "production_cloud_only",
+                        "status": "pending_archive_upload",
+                        "storeVersionSelection": "blocked_until_valid",
+                    },
+                    "productionConfig": {
+                        "status": "blocked",
                     },
                     "digitalServicesAct": {
                         "status": "ready",
@@ -268,8 +345,11 @@ def create_fixture(
                 },
                 "release": {
                     "version": "1.0.0",
-                    "build": "54",
+                    "build": "55",
                     "configurationPath": "config/Release.xcconfig",
+                    "archiveWorkflowPath": ".github/workflows/ios-app-store-production-upload.yml",
+                    "exportOptionsPath": "config/exportOptions.plist",
+                    "buildNumberSource": "production_archive_workflow_input",
                     "backendMode": "production_cloud_only",
                     "localRenderFallback": False,
                 },

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import plistlib
 import re
 import struct
 import sys
@@ -72,6 +73,7 @@ REQUIRED_OPERATOR_GATES = {
     "app_store_listing",
     "app_store_screenshots",
     "build_selection",
+    "production_backend_cutover",
     "pricing_availability",
     "app_privacy",
     "age_rating",
@@ -437,6 +439,19 @@ def validate_package(
             "release.configurationPath",
         )
         release_config = release_config_path.read_text(encoding="utf-8")
+        archive_workflow_path = resolve_repo_path(
+            repo_root,
+            release.get("archiveWorkflowPath"),
+            "release.archiveWorkflowPath",
+        )
+        archive_workflow = archive_workflow_path.read_text(encoding="utf-8")
+        export_options_path = resolve_repo_path(
+            repo_root,
+            release.get("exportOptionsPath"),
+            "release.exportOptionsPath",
+        )
+        with export_options_path.open("rb") as export_options_file:
+            export_options = plistlib.load(export_options_file)
         if release.get("backendMode") != "production_cloud_only":
             findings.append(
                 Finding("error", "release.backendMode", "Release must remain production_cloud_only.")
@@ -453,6 +468,67 @@ def validate_package(
             findings.append(
                 Finding("error", "release.configuration", "Release.xcconfig must require enabled cloud launch mode.")
             )
+        if release.get("buildNumberSource") != "production_archive_workflow_input":
+            findings.append(
+                Finding(
+                    "error",
+                    "release.buildNumberSource",
+                    "The Store build number must come from the production archive workflow input.",
+                )
+            )
+        required_workflow_markers = {
+            "environment: production": "use the production GitHub environment",
+            "HOOPS_CLOUD_ANALYSIS_BASE_URL: ${{ vars.HOOPS_CLOUD_ANALYSIS_BASE_URL }}": "consume the production analysis URL variable",
+            "HOOPS_CLOUD_EDIT_BASE_URL: ${{ vars.HOOPS_CLOUD_EDIT_BASE_URL }}": "consume the production edit URL variable",
+            "CURRENT_PROJECT_VERSION=\"$STORE_BUILD_NUMBER\"": "override the archive with the reserved Store build number",
+            "HOOPSAppEnvironment\" \"production": "verify production environment metadata",
+            "HOOPSCloudLaunchMode\" \"enabled": "verify cloud-only launch mode",
+        }
+        for marker, expectation in required_workflow_markers.items():
+            if marker not in archive_workflow:
+                findings.append(
+                    Finding(
+                        "error",
+                        "release.archiveWorkflow",
+                        f"Production archive workflow must {expectation}.",
+                    )
+                )
+        if "InternalStaging.xcconfig" in archive_workflow:
+            findings.append(
+                Finding(
+                    "error",
+                    "release.archiveWorkflow",
+                    "Production archive workflow must not use InternalStaging.xcconfig.",
+                )
+            )
+        workflow_build_match = re.search(
+            r"(?ms)^\s+build_number:\s*$.*?^\s+default:\s*[\"']?(\d+)[\"']?\s*$",
+            archive_workflow,
+        )
+        if workflow_build_match is None or workflow_build_match.group(1) != release_build:
+            findings.append(
+                Finding(
+                    "error",
+                    "release.build",
+                    "Reserved release build must match the production archive workflow default.",
+                )
+            )
+        if export_options.get("method") != "app-store-connect" or export_options.get("destination") != "upload":
+            findings.append(
+                Finding(
+                    "error",
+                    "release.exportOptions",
+                    "Production export options must upload through App Store Connect.",
+                )
+            )
+        if export_options.get("testFlightInternalTestingOnly") is True:
+            findings.append(
+                Finding(
+                    "error",
+                    "release.exportOptions",
+                    "Production Store export options cannot be internal-testing-only.",
+                )
+            )
         project_text = (repo_root / DEFAULT_PROJECT_FILE).read_text(encoding="utf-8")
         marketing_versions = set(re.findall(r"MARKETING_VERSION\s*=\s*([^;\s]+)\s*;", project_text))
         build_versions = set(re.findall(r"CURRENT_PROJECT_VERSION\s*=\s*([^;\s]+)\s*;", project_text))
@@ -460,7 +536,7 @@ def validate_package(
             findings.append(
                 Finding("error", "release.version", "Metadata version does not match an Xcode target marketing version.")
             )
-        if release_build not in build_versions:
+        if release.get("buildNumberSource") != "production_archive_workflow_input" and release_build not in build_versions:
             findings.append(
                 Finding("error", "release.build", "Metadata build does not match an Xcode target build number.")
             )
@@ -469,25 +545,53 @@ def validate_package(
                 Finding(
                     "pass",
                     "release",
-                    f"Listing matches Xcode version/build {release_version} ({release_build}) and declares cloud-only mode.",
+                    f"Listing matches Xcode version {release_version}, reserves workflow build {release_build}, and declares cloud-only mode.",
                 )
             )
-    except (OSError, PackageValidationError) as error:
+    except (OSError, PackageValidationError, plistlib.InvalidFileException) as error:
         findings.append(Finding("error", "release", str(error)))
 
     try:
         audit = _mapping(root.get("appStoreConnectAudit"), "appStoreConnectAudit")
         audit_build = _mapping(audit.get("testFlightBuild"), "appStoreConnectAudit.testFlightBuild")
+        production_build = _mapping(
+            audit.get("productionStoreBuild"),
+            "appStoreConnectAudit.productionStoreBuild",
+        )
+        production_config = _mapping(
+            audit.get("productionConfig"),
+            "appStoreConnectAudit.productionConfig",
+        )
         dsa = _mapping(audit.get("digitalServicesAct"), "appStoreConnectAudit.digitalServicesAct")
         subscription = _mapping(audit.get("subscription"), "appStoreConnectAudit.subscription")
         release = _mapping(root.get("release"), "release")
         audit_errors: list[str] = []
         if audit.get("versionState") != "prepare_for_submission":
             audit_errors.append("version state must remain prepare_for_submission until review submission")
-        if audit_build.get("version") != release.get("version") or audit_build.get("build") != release.get("build"):
-            audit_errors.append("TestFlight build evidence must match the release version and build")
+        if audit_build.get("version") != release.get("version"):
+            audit_errors.append("internal TestFlight evidence must match the release version")
+        if audit_build.get("build") == release.get("build"):
+            audit_errors.append("internal-staging evidence and the production Store candidate must use different build numbers")
         if audit_build.get("processingState") != "valid":
-            audit_errors.append("TestFlight build must be valid")
+            audit_errors.append("internal TestFlight build evidence must be valid")
+        if audit_build.get("configuration") != "internal_staging":
+            audit_errors.append("build 54 must be recorded as internal_staging")
+        if audit_build.get("backendMode") != "staging_cloud_only":
+            audit_errors.append("build 54 must be recorded as staging_cloud_only")
+        if audit_build.get("storeVersionSelection") != "not_eligible_internal_staging":
+            audit_errors.append("internal-staging build must be explicitly ineligible for public Store selection")
+        if production_build.get("version") != release.get("version") or production_build.get("build") != release.get("build"):
+            audit_errors.append("production Store build evidence must match the declared release candidate")
+        if production_build.get("configuration") != "production":
+            audit_errors.append("production Store build must use the production configuration")
+        if production_build.get("backendMode") != "production_cloud_only":
+            audit_errors.append("production Store build must remain cloud-only")
+        if production_build.get("status") not in {"pending_archive_upload", "valid"}:
+            audit_errors.append("production Store build has an unsupported status")
+        if production_build.get("status") != "valid" and production_build.get("storeVersionSelection") != "blocked_until_valid":
+            audit_errors.append("pending production Store build selection must remain blocked")
+        if production_config.get("status") not in {"blocked", "ready"}:
+            audit_errors.append("production config status must be blocked or ready")
         if dsa != {"status": "ready", "declaration": "non_trader"}:
             audit_errors.append("DSA non-trader declaration must be recorded as ready")
         if subscription.get("productId") != "monthly_premium":
@@ -503,7 +607,7 @@ def validate_package(
                 Finding(
                     "pass",
                     "appStoreConnectAudit",
-                    "Live build, DSA, and subscription evidence is recorded without credentials.",
+                    "Internal build, production-candidate, DSA, and subscription evidence is separated without credentials.",
                 )
             )
     except PackageValidationError as error:

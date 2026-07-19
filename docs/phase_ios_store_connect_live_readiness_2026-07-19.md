@@ -6,10 +6,10 @@ Branch: `codex/ios-store-connect-live-readiness-20260719`
 
 ## Scope
 
-This audit reconciles the current iOS source, build 54 TestFlight evidence, the
-public HoopClips legal pages, and the live App Store Connect record. It does not
-submit the app, expose review credentials, or claim that source/build proof is
-an installed-device or App Review result.
+This audit reconciles the current iOS source, internal-staging build 54
+TestFlight evidence, the public HoopClips legal pages, and the live App Store
+Connect record. It does not submit the app, expose review credentials, or claim
+that internal-staging/source proof is an installed-device or App Review result.
 
 ## Architecture And Brand
 
@@ -36,7 +36,8 @@ The authenticated in-app side browser showed:
 - Support and marketing URLs are stale and must be replaced with the public
   Atrak HoopClips pages.
 - App Review credential/contact fields are populated. Their values were not
-  copied into git. The credential pair remains unverified against build 54.
+  copied into git. The credential pair remains unverified against the future
+  valid production-cloud Store candidate.
 - App Review notes are stale and incorrectly claim local analysis/export. The
   replacement notes accurately describe cloud upload, analysis, edit planning,
   rendering, preview, save, and share.
@@ -50,6 +51,22 @@ The authenticated in-app side browser showed:
   It remains `Prepare for Submission` and must accompany the first app version.
 
 No `Add for Review` action was taken.
+
+## Store Binary Distinction
+
+Build 54 is not the production App Store binary. The signed workflow archived
+it with `InternalStaging.xcconfig`, `HOOPS_APP_ENV=internal_staging`,
+`HOOPS_CLOUD_LAUNCH_MODE=internal_only`, and the staging Worker for both cloud
+URLs. It remains useful internal TestFlight evidence, but selecting it for
+public review would contradict the production-cloud release contract.
+
+Build 55 is reserved for the production Store candidate. The production GitHub
+environment has both cloud URL variable names, but a secret-safe shape check on
+July 19 found staging markers in both values. It also lacks the three App Store
+Connect API credential secret names used by the staging signing lane. The new
+production archive workflow therefore fails closed until approved production
+endpoints and upload secrets are configured. No production archive or upload
+was attempted during this audit.
 
 ## Public URLs
 
@@ -110,21 +127,29 @@ case and is launch-evidence eligible, but its current report fails:
 
 This must not be described as an 85% pass. Before submission, either produce a
 current passing shared backend report or record an explicit release-owner risk
-acceptance for build 54. Do not repeat the labeling work for macOS.
+acceptance for the production candidate. Do not repeat the labeling work for
+macOS.
 
 ## Remaining Submission Gates
 
-1. Save the prepared listing, categories, URLs, cloud-only review notes, manual
-   release mode, screenshots, build 54 selection, Free price, and availability.
-2. Save and publish App Privacy after confirming the prepared declaration.
-3. Save Content Rights and Age Ratings after release-owner confirmation.
-4. Verify the exact App Store Connect review account in build 54 without copying
-   credentials into the repository.
-5. Run build 54 from TestFlight through real cloud upload, analysis, Review, AI
-   Edit, render, preview, save, and share, or record an explicit waiver.
-6. Resolve or explicitly accept the current shared backend accuracy failure.
-7. Include `monthly_premium` with the first version submission.
-8. Obtain explicit confirmation immediately before `Add for Review`.
+1. Approve production endpoint cutover. Replace the staging-marked production
+   cloud URL variables and add App Store Connect upload secrets to the
+   production GitHub environment.
+2. Run the fail-closed production archive workflow for reserved build 55,
+   upload it, wait for Valid processing, and select that build. Never select
+   internal-staging build 54 for public review.
+3. Save the prepared listing, categories, URLs, cloud-only review notes, manual
+   release mode, screenshots, Free price, and availability.
+4. Save and publish App Privacy after confirming the prepared declaration.
+5. Save Content Rights and Age Ratings after release-owner confirmation.
+6. Verify the exact App Store Connect review account in the production Store
+   candidate without copying credentials into the repository.
+7. Run that exact production candidate from TestFlight through real cloud
+   upload, analysis, Review, AI Edit, render, preview, save, and share, or record
+   an explicit waiver.
+8. Resolve or explicitly accept the current shared backend accuracy failure.
+9. Include `monthly_premium` with the first version submission.
+10. Obtain explicit confirmation immediately before `Add for Review`.
 
 Until these gates close, the package is prepared but the app is not ready to be
 submitted for review.
