@@ -523,7 +523,7 @@ Current device information:
         self.assertIn("Recovery: unlock the iPhone", collector.findings[0].detail)
         self.assertIn("connect it by USB", collector.findings[0].detail)
 
-    def test_installed_testflight_build_passes_for_build_53(self) -> None:
+    def test_installed_testflight_build_passes_for_build_54(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             helper = repo_root / "scripts/check_installed_testflight_build.py"
@@ -535,7 +535,7 @@ Current device information:
                 "installedApp": {
                     "bundleId": "atrak.charlie.hoopsclips",
                     "marketingVersion": "1.0.0",
-                    "buildNumber": "53",
+                    "buildNumber": "54",
                 },
                 "blockers": [],
             }
@@ -547,7 +547,7 @@ Current device information:
                 check_installed_testflight_build(repo_root, collector)
 
         self.assertFalse(has_failures(collector.findings))
-        self.assertIn("1.0.0 (53)", collector.findings[0].detail)
+        self.assertIn("1.0.0 (54)", collector.findings[0].detail)
 
     def test_installed_testflight_build_fails_for_old_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -563,7 +563,7 @@ Current device information:
                     "marketingVersion": "1.0.0",
                     "buildNumber": "49",
                 },
-                "blockers": ["Build number mismatch: expected 53, got 49."],
+                "blockers": ["Build number mismatch: expected 54, got 49."],
             }
 
             with patch(
@@ -576,7 +576,7 @@ Current device information:
         detail = collector.findings[0].detail
         self.assertIn("Build number mismatch", detail)
         self.assertIn("buildNumber=49", detail)
-        self.assertIn("Install/update build 53", detail)
+        self.assertIn("Install/update build 54", detail)
 
     def test_github_workflow_runs_fail_when_latest_required_runs_failed(self) -> None:
         payload = [
@@ -1587,7 +1587,7 @@ Current device information:
             },
         ]
         status_log = "App Store Connect confirms this build is ready for internal TestFlight."
-        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘53’."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘54’."
 
         def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
             if command[:3] == ["gh", "run", "list"]:
@@ -1619,7 +1619,7 @@ Current device information:
                 "createdAt": "2026-07-18T10:33:27Z",
             },
         ]
-        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘53’."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘54’."
 
         def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
             if command[:3] == ["gh", "run", "list"]:

@@ -5,7 +5,7 @@ This helper is read-only unless --launch is passed. It never installs,
 uploads, archives, submits, or prints secrets. The goal is to turn the first
 step of the real-device smoke into a repeatable check:
 
-    installed app == atrak.charlie.hoopsclips 1.0.0 (52)
+    installed app == atrak.charlie.hoopsclips 1.0.0 (54)
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import Any
 
 EXPECTED_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_MARKETING_VERSION = "1.0.0"
-EXPECTED_BUILD_NUMBER = "53"
+EXPECTED_BUILD_NUMBER = "54"
 
 
 def parse_args() -> argparse.Namespace:
