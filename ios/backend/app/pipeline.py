@@ -26,7 +26,7 @@ from .detection_pipeline import (
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
 from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, DetectionPipelineSummary, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
 from .team_identity import team_identity_matches, team_key
-from .team_quick_scan import apply_team_quick_scan
+from .team_quick_scan import TeamQuickScanReport, apply_team_quick_scan_with_report
 
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
@@ -195,7 +195,13 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         provider_tags.append(ranking_provider)
 
     clips, used_gemini = maybe_relabel_with_gemini(clips, settings.use_gemini_relabeling)
-    clips, detected_teams, used_team_quick_scan = apply_team_quick_scan(source_path, duration_seconds, clips, settings)
+    clips, detected_teams, team_quick_scan_report = apply_team_quick_scan_with_report(
+        source_path,
+        duration_seconds,
+        clips,
+        settings,
+    )
+    used_team_quick_scan = team_quick_scan_report.used
     if used_team_quick_scan:
         provider_tags.append("team-scan")
     if not detected_teams:
@@ -210,6 +216,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         review_clips=clips,
         team_selection=job.team_selection,
         used_team_quick_scan=used_team_quick_scan,
+        team_quick_scan_report=team_quick_scan_report,
     )
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -261,9 +268,11 @@ def _analysis_team_diagnostic_counts(
     review_clips: Sequence[CloudClip],
     team_selection: Optional[TeamSelection],
     used_team_quick_scan: bool,
+    team_quick_scan_report: Optional[TeamQuickScanReport] = None,
 ) -> dict[str, int | bool]:
     candidate_statuses = [_analysis_team_status(clip, team_selection) for clip in candidate_clips]
     review_statuses = [_analysis_team_status(clip, team_selection) for clip in review_clips]
+    scan_report = team_quick_scan_report or TeamQuickScanReport(used=used_team_quick_scan)
     return {
         "usedTeamQuickScan": bool(used_team_quick_scan),
         "preTeamFilterSegments": len(candidate_clips),
@@ -272,6 +281,13 @@ def _analysis_team_diagnostic_counts(
         "teamOpponentFilteredSegments": sum(1 for status in candidate_statuses if status == "opponent"),
         "teamMatchedReviewSegments": sum(1 for status in review_statuses if status == "matched"),
         "teamUncertainReviewSegments": sum(1 for status in review_statuses if status == "uncertain"),
+        "teamScanRequestedCandidates": scan_report.requested_candidates,
+        "teamScanReturnedAttributions": scan_report.returned_attributions,
+        "teamScanExplicitUnknownAttributions": scan_report.explicit_unknown_attributions,
+        "teamScanMissingAttributions": scan_report.missing_attributions,
+        "teamScanCompletedBatches": scan_report.completed_batches,
+        "teamScanFailedBatches": scan_report.failed_batches,
+        "teamScanBudgetExhausted": scan_report.budget_exhausted,
         "defensiveReviewSegments": sum(1 for clip in review_clips if _is_defensive_label(clip.label)),
         "blockReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "block"),
         "stealReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "steal"),

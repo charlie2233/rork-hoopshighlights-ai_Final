@@ -349,6 +349,13 @@ class CloudDiagnostics(APIModel):
     teamOpponentFilteredSegments: int = 0
     teamMatchedReviewSegments: int = 0
     teamUncertainReviewSegments: int = 0
+    teamScanRequestedCandidates: int = 0
+    teamScanReturnedAttributions: int = 0
+    teamScanExplicitUnknownAttributions: int = 0
+    teamScanMissingAttributions: int = 0
+    teamScanCompletedBatches: int = 0
+    teamScanFailedBatches: int = 0
+    teamScanBudgetExhausted: bool = False
     defensiveReviewSegments: int = 0
     blockReviewSegments: int = 0
     stealReviewSegments: int = 0

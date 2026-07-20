@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from time import monotonic
 from typing import Any, Callable, Dict, Optional, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -27,6 +28,14 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 320
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 2560
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 3200
+TEAM_QUICK_SCAN_CANDIDATE_BATCH_SIZE = 12
+TEAM_QUICK_SCAN_RETRY_BATCH_SIZE = 4
+TEAM_QUICK_SCAN_MAX_BATCH_CANDIDATE_FRAMES = 96
+TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES = 24 * 1024 * 1024
+TEAM_QUICK_SCAN_MAX_REQUESTS = 36
+TEAM_QUICK_SCAN_MAX_TOTAL_OUTPUT_TOKENS = 96_000
+TEAM_QUICK_SCAN_MAX_REQUEST_TIMEOUT_SECONDS = 45.0
+TEAM_QUICK_SCAN_MISSING_ATTRIBUTION_RETRY_PASSES = 1
 TEAM_QUICK_SCAN_PRESCAN_VIDEO_FRAME_COUNT = 5
 TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 1
 TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 0
@@ -57,6 +66,70 @@ class QuickScanFrame:
     clip_ref: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class TeamQuickScanReport:
+    used: bool = False
+    requested_candidates: int = 0
+    returned_attributions: int = 0
+    explicit_unknown_attributions: int = 0
+    missing_attributions: int = 0
+    completed_batches: int = 0
+    failed_batches: int = 0
+    budget_exhausted: bool = False
+
+
+@dataclass
+class _QuickScanBudget:
+    deadline: float
+    configured_timeout_seconds: float
+    request_count: int = 0
+    reserved_output_tokens: int = 0
+    exhausted: bool = False
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "_QuickScanBudget":
+        configured_timeout = max(0.25, float(getattr(settings, "team_quick_scan_timeout_seconds", 180.0)))
+        return cls(
+            deadline=monotonic() + configured_timeout,
+            configured_timeout_seconds=configured_timeout,
+        )
+
+    def reserve_request(self, settings: Settings, candidate_count: int) -> Optional[tuple[int, float]]:
+        remaining_seconds = self.deadline - monotonic()
+        output_tokens = _quick_scan_batch_output_tokens(settings, candidate_count)
+        if (
+            remaining_seconds <= 0.25
+            or self.request_count >= TEAM_QUICK_SCAN_MAX_REQUESTS
+            or self.reserved_output_tokens + output_tokens > TEAM_QUICK_SCAN_MAX_TOTAL_OUTPUT_TOKENS
+        ):
+            self.exhausted = True
+            return None
+
+        timeout_seconds = min(
+            self.configured_timeout_seconds,
+            TEAM_QUICK_SCAN_MAX_REQUEST_TIMEOUT_SECONDS,
+            remaining_seconds,
+        )
+        if (
+            self.configured_timeout_seconds <= TEAM_QUICK_SCAN_MAX_REQUEST_TIMEOUT_SECONDS
+            and remaining_seconds >= self.configured_timeout_seconds - 0.1
+        ):
+            timeout_seconds = self.configured_timeout_seconds
+        self.request_count += 1
+        self.reserved_output_tokens += output_tokens
+        return output_tokens, max(timeout_seconds, 0.25)
+
+
+@dataclass(frozen=True)
+class _QuickScanBatchResult:
+    requested_refs: tuple[str, ...]
+    output: Optional[dict[str, Any]] = None
+    teams: tuple[TeamOption, ...] = ()
+    attribution_items: tuple[dict[str, Any], ...] = ()
+    attempted: bool = False
+    failed: bool = False
+
+
 def apply_team_quick_scan(
     source_path: Path,
     duration_seconds: float,
@@ -64,43 +137,352 @@ def apply_team_quick_scan(
     settings: Settings,
     response_client: Optional[ResponseClient] = None,
 ) -> tuple[list[CloudClip], list[TeamOption], bool]:
+    scanned, teams, report = apply_team_quick_scan_with_report(
+        source_path,
+        duration_seconds,
+        clips,
+        settings,
+        response_client=response_client,
+    )
+    return scanned, teams, report.used
+
+
+def apply_team_quick_scan_with_report(
+    source_path: Path,
+    duration_seconds: float,
+    clips: Sequence[CloudClip],
+    settings: Settings,
+    response_client: Optional[ResponseClient] = None,
+) -> tuple[list[CloudClip], list[TeamOption], TeamQuickScanReport]:
     if not getattr(settings, "team_quick_scan_enabled", False):
-        return list(clips), [], False
+        return list(clips), [], TeamQuickScanReport()
     api_key = getattr(settings, "team_quick_scan_api_key", None)
     if not api_key:
-        return list(clips), [], False
+        return list(clips), [], TeamQuickScanReport()
     if not source_path.is_file():
-        return list(clips), [], False
+        return list(clips), [], TeamQuickScanReport()
 
-    frames = _extract_quick_scan_frames(source_path, duration_seconds, clips, settings)
-    if not frames:
-        return list(clips), [], False
-
-    payload = _build_openai_payload(duration_seconds, clips, frames, settings)
-    try:
-        client = response_client or _default_responses_client
-        response_payload = client(
-            payload,
-            api_key,
-            getattr(settings, "team_quick_scan_endpoint", "https://api.openai.com/v1/responses"),
-            float(getattr(settings, "team_quick_scan_timeout_seconds", 24.0)),
-        )
-        output = json.loads(_extract_output_text(response_payload))
-    except (HTTPError, URLError, OSError, TimeoutError, ValueError, json.JSONDecodeError):
-        return list(clips), [], False
-
-    teams, attributions = _parse_quick_scan_output(
-        output,
+    candidate_limit = _max_quick_scan_candidate_clips(settings, len(clips))
+    candidate_items = [(f"clip_{index}", clip) for index, clip in enumerate(clips[:candidate_limit])]
+    candidate_by_ref = dict(candidate_items)
+    candidate_refs = [clip_ref for clip_ref, _clip in candidate_items]
+    labels_by_clip_ref = {clip_ref: clip.label for clip_ref, clip in candidate_items}
+    client = response_client or _default_responses_client
+    budget = _QuickScanBudget.from_settings(settings)
+    context_frames = _extract_quick_scan_context_frames(
+        source_path,
+        duration_seconds,
         settings,
-        _evidence_frame_refs_by_clip(frames),
-        _evidence_frame_roles_by_clip(frames),
-        {f"clip_{index}": clip.label for index, clip in enumerate(clips)},
+        deadline=budget.deadline,
     )
+
+    if not candidate_items:
+        if not context_frames:
+            return list(clips), [], TeamQuickScanReport()
+        prescan_result = _request_quick_scan_batch(
+            duration_seconds=duration_seconds,
+            candidate_items=[],
+            frames=context_frames,
+            settings=settings,
+            api_key=api_key,
+            response_client=client,
+            budget=budget,
+        )
+        teams = list(prescan_result.teams)
+        report = TeamQuickScanReport(
+            used=bool(teams),
+            completed_batches=int(prescan_result.attempted and not prescan_result.failed),
+            failed_batches=int(prescan_result.failed),
+            budget_exhausted=budget.exhausted,
+        )
+        return list(clips), teams, report
+
+    batch_results: list[_QuickScanBatchResult] = []
+    all_frames_by_ref: dict[str, list[QuickScanFrame]] = {}
+
+    def scan_refs(clip_refs: Sequence[str]) -> None:
+        if not clip_refs or budget.exhausted:
+            return
+        items = [(clip_ref, candidate_by_ref[clip_ref]) for clip_ref in clip_refs]
+        candidate_frames = _extract_quick_scan_candidate_frames(
+            source_path,
+            duration_seconds,
+            items,
+            len(candidate_items),
+            settings,
+            deadline=budget.deadline,
+        )
+        for bounded_refs in _payload_bounded_candidate_ref_batches(clip_refs, context_frames, candidate_frames):
+            frames = _payload_bounded_frames_for_candidate_refs(
+                bounded_refs,
+                context_frames,
+                candidate_frames,
+            )
+            if not frames:
+                continue
+            for frame in frames:
+                if frame.clip_ref is not None:
+                    all_frames_by_ref.setdefault(frame.clip_ref, []).append(frame)
+            batch_results.append(
+                _request_quick_scan_batch(
+                    duration_seconds=duration_seconds,
+                    candidate_items=[(clip_ref, candidate_by_ref[clip_ref]) for clip_ref in bounded_refs],
+                    frames=frames,
+                    settings=settings,
+                    api_key=api_key,
+                    response_client=client,
+                    budget=budget,
+                )
+            )
+
+    for batch_refs in _candidate_ref_batches(candidate_refs):
+        scan_refs(batch_refs)
+
+    for _ in range(TEAM_QUICK_SCAN_MISSING_ATTRIBUTION_RETRY_PASSES):
+        returned_refs = {
+            item["clipRef"]
+            for result in batch_results
+            for item in result.attribution_items
+        }
+        missing_refs = [clip_ref for clip_ref in candidate_refs if clip_ref not in returned_refs]
+        if not missing_refs or budget.exhausted:
+            break
+        for batch_refs in _candidate_ref_batches(missing_refs, batch_size=TEAM_QUICK_SCAN_RETRY_BATCH_SIZE):
+            scan_refs(batch_refs)
+
+    teams: list[TeamOption] = []
+    for result in batch_results:
+        teams = _merge_team_options(teams, result.teams)
+
+    evidence_frames = [frame for frames in all_frames_by_ref.values() for frame in frames]
+    evidence_frame_refs = _evidence_frame_refs_by_clip(evidence_frames)
+    evidence_frame_roles = _evidence_frame_roles_by_clip(evidence_frames)
+    attributions: dict[str, ClipTeamAttribution] = {}
+    for result in batch_results:
+        if result.output is None or not result.attribution_items:
+            continue
+        sanitized_output = dict(result.output)
+        sanitized_output["clipAttributions"] = list(result.attribution_items)
+        _, batch_attributions = _parse_quick_scan_output(
+            sanitized_output,
+            settings,
+            evidence_frame_refs,
+            evidence_frame_roles,
+            labels_by_clip_ref,
+            detected_teams=teams,
+        )
+        for clip_ref, attribution in batch_attributions.items():
+            attributions.setdefault(clip_ref, attribution)
+
     scanned: list[CloudClip] = []
     for index, clip in enumerate(clips):
         attribution = attributions.get(f"clip_{index}")
         scanned.append(clip.model_copy(update={"teamAttribution": attribution}) if attribution is not None else clip)
-    return scanned, teams, bool(teams or attributions)
+    explicit_unknown_attributions = sum(
+        1
+        for attribution in attributions.values()
+        if attribution.teamId is None and attribution.label is None and attribution.colorLabel is None
+    )
+    report = TeamQuickScanReport(
+        used=bool(teams or attributions),
+        requested_candidates=len(candidate_refs),
+        returned_attributions=len(attributions),
+        explicit_unknown_attributions=explicit_unknown_attributions,
+        missing_attributions=max(0, len(candidate_refs) - len(attributions)),
+        completed_batches=sum(1 for result in batch_results if result.attempted and not result.failed),
+        failed_batches=sum(1 for result in batch_results if result.failed),
+        budget_exhausted=budget.exhausted,
+    )
+    return scanned, teams, report
+
+
+def _request_quick_scan_batch(
+    *,
+    duration_seconds: float,
+    candidate_items: Sequence[tuple[str, CloudClip]],
+    frames: Sequence[QuickScanFrame],
+    settings: Settings,
+    api_key: str,
+    response_client: ResponseClient,
+    budget: _QuickScanBudget,
+) -> _QuickScanBatchResult:
+    clip_refs = [clip_ref for clip_ref, _clip in candidate_items]
+    allowed_refs = set(clip_refs)
+    reservation = budget.reserve_request(settings, len(clip_refs))
+    if reservation is None:
+        return _QuickScanBatchResult(requested_refs=tuple(clip_refs))
+    output_tokens, timeout_seconds = reservation
+    try:
+        payload = _build_openai_payload(
+            duration_seconds,
+            [clip for _clip_ref, clip in candidate_items],
+            frames,
+            settings,
+            clip_refs=clip_refs,
+            max_output_tokens=output_tokens,
+        )
+        response_payload = response_client(
+            payload,
+            api_key,
+            getattr(settings, "team_quick_scan_endpoint", "https://api.openai.com/v1/responses"),
+            timeout_seconds,
+        )
+        output = json.loads(_extract_output_text(response_payload))
+        if not isinstance(output, dict):
+            raise ValueError("Team quick scan output must be an object")
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError, json.JSONDecodeError):
+        return _QuickScanBatchResult(
+            requested_refs=tuple(clip_refs),
+            attempted=True,
+            failed=True,
+        )
+
+    teams = _parse_team_options(output, settings)
+    attribution_items = _valid_batch_attribution_items(output, allowed_refs)
+    return _QuickScanBatchResult(
+        requested_refs=tuple(clip_refs),
+        output=output,
+        teams=tuple(teams),
+        attribution_items=tuple(attribution_items),
+        attempted=True,
+    )
+
+
+def _candidate_ref_batches(
+    clip_refs: Sequence[str],
+    *,
+    batch_size: int = TEAM_QUICK_SCAN_CANDIDATE_BATCH_SIZE,
+) -> list[list[str]]:
+    batch_size = max(1, min(int(batch_size), TEAM_QUICK_SCAN_CANDIDATE_BATCH_SIZE))
+    return [
+        list(clip_refs[index:index + batch_size])
+        for index in range(0, len(clip_refs), batch_size)
+    ]
+
+
+def _payload_bounded_candidate_ref_batches(
+    clip_refs: Sequence[str],
+    context_frames: Sequence[QuickScanFrame],
+    candidate_frames: Sequence[QuickScanFrame],
+) -> list[list[str]]:
+    frames_by_ref: dict[str, list[QuickScanFrame]] = {}
+    for frame in candidate_frames:
+        if frame.clip_ref is not None:
+            frames_by_ref.setdefault(frame.clip_ref, []).append(frame)
+    context_bytes = sum(_frame_payload_bytes(frame) for frame in context_frames)
+    batches: list[list[str]] = []
+    current_refs: list[str] = []
+    current_frame_count = 0
+    current_bytes = context_bytes
+    for clip_ref in clip_refs:
+        ref_frames = frames_by_ref.get(clip_ref, [])
+        ref_frame_count = len(ref_frames)
+        ref_bytes = sum(_frame_payload_bytes(frame) for frame in ref_frames)
+        exceeds_limit = bool(current_refs) and (
+            len(current_refs) >= TEAM_QUICK_SCAN_CANDIDATE_BATCH_SIZE
+            or current_frame_count + ref_frame_count > TEAM_QUICK_SCAN_MAX_BATCH_CANDIDATE_FRAMES
+            or current_bytes + ref_bytes > TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES
+        )
+        if exceeds_limit:
+            batches.append(current_refs)
+            current_refs = []
+            current_frame_count = 0
+            current_bytes = context_bytes
+        current_refs.append(clip_ref)
+        current_frame_count += ref_frame_count
+        current_bytes += ref_bytes
+    if current_refs:
+        batches.append(current_refs)
+    return batches
+
+
+def _frame_payload_bytes(frame: QuickScanFrame) -> int:
+    return len(frame.data_url.encode("utf-8"))
+
+
+def _payload_bounded_frames_for_candidate_refs(
+    clip_refs: Sequence[str],
+    context_frames: Sequence[QuickScanFrame],
+    candidate_frames: Sequence[QuickScanFrame],
+) -> list[QuickScanFrame]:
+    selected_context = list(context_frames)
+    selected_candidates = _frames_for_candidate_refs(candidate_frames, clip_refs)[
+        :TEAM_QUICK_SCAN_MAX_BATCH_CANDIDATE_FRAMES
+    ]
+    payload_bytes = sum(
+        _frame_payload_bytes(frame)
+        for frame in [*selected_context, *selected_candidates]
+    )
+
+    while payload_bytes > TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES and selected_context:
+        largest_index = max(
+            range(len(selected_context)),
+            key=lambda index: _frame_payload_bytes(selected_context[index]),
+        )
+        payload_bytes -= _frame_payload_bytes(selected_context[largest_index])
+        selected_context.pop(largest_index)
+
+    while payload_bytes > TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES and selected_candidates:
+        removed = selected_candidates.pop()
+        payload_bytes -= _frame_payload_bytes(removed)
+
+    return [*selected_context, *selected_candidates]
+
+
+def _valid_batch_attribution_items(
+    output: dict[str, Any],
+    allowed_refs: set[str],
+) -> list[dict[str, Any]]:
+    raw_items = output.get("clipAttributions")
+    if not isinstance(raw_items, list):
+        return []
+    by_ref: dict[str, dict[str, Any]] = {}
+    duplicate_refs: set[str] = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        clip_ref = clean_text(item.get("clipRef"))
+        if clip_ref is None or clip_ref not in allowed_refs or not re.fullmatch(r"clip_[0-9]+", clip_ref):
+            continue
+        if clip_ref in by_ref:
+            duplicate_refs.add(clip_ref)
+            continue
+        by_ref[clip_ref] = item
+    for clip_ref in duplicate_refs:
+        by_ref.pop(clip_ref, None)
+    return list(by_ref.values())
+
+
+def _quick_scan_batch_output_tokens(settings: Settings, candidate_count: int) -> int:
+    configured = max(512, int(getattr(settings, "team_quick_scan_max_output_tokens", 24000)))
+    scaled = 768 + (max(0, int(candidate_count)) * 192)
+    return min(configured, max(512, scaled))
+
+
+def _frames_for_candidate_refs(
+    frames: Sequence[QuickScanFrame],
+    clip_refs: Sequence[str],
+) -> list[QuickScanFrame]:
+    allowed_refs = set(clip_refs)
+    return [frame for frame in frames if frame.clip_ref is None or frame.clip_ref in allowed_refs]
+
+
+def _merge_team_options(
+    existing: Sequence[TeamOption],
+    incoming: Sequence[TeamOption],
+) -> list[TeamOption]:
+    ordered_keys: list[str] = []
+    best_by_key: dict[str, TeamOption] = {}
+    for team in [*existing, *incoming]:
+        color = resolve_jersey_color(team.colorLabel, team.label, team.teamId)
+        identity_key = f"color:{color}" if color else f"team:{team_key(team.teamId) or team.teamId}"
+        current = best_by_key.get(identity_key)
+        if current is None:
+            ordered_keys.append(identity_key)
+            best_by_key[identity_key] = team
+        elif team.confidence > current.confidence:
+            best_by_key[identity_key] = team
+    return [best_by_key[key] for key in ordered_keys]
 
 
 def team_quick_prescan_settings(settings: Settings) -> Settings:
@@ -144,11 +526,26 @@ def _build_openai_payload(
     clips: Sequence[CloudClip],
     frames: Sequence[QuickScanFrame],
     settings: Settings,
+    *,
+    clip_refs: Optional[Sequence[str]] = None,
+    max_output_tokens: Optional[int] = None,
 ) -> Dict[str, Any]:
     candidate_clip_limit = _max_quick_scan_candidate_clips(settings, len(clips))
     candidate_clips = list(clips[:candidate_clip_limit])
+    has_candidate_clips = bool(candidate_clips)
+    resolved_clip_refs = (
+        [f"clip_{index}" for index in range(len(candidate_clips))]
+        if clip_refs is None
+        else list(clip_refs[:candidate_clip_limit])
+    )
+    if len(resolved_clip_refs) != len(candidate_clips):
+        raise ValueError("clip_refs must identify every quick-scan candidate")
     context = {
-        "task": "Detect basketball teams by jersey color and attribute each candidate clip to the team controlling the highlight moment.",
+        "task": (
+            "Detect basketball teams by jersey color and attribute each candidate clip to the team controlling the highlight moment."
+            if has_candidate_clips
+            else "Detect the basketball teams in the sampled video context by visible jersey color."
+        ),
         "rules": {
             "noFullVideo": True,
             "useOnlySampledFrames": True,
@@ -160,11 +557,16 @@ def _build_openai_payload(
             "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge/ballDeflection or possessionChange/ballControlChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
             "frameBudgetPolicy": "Higher-ranked candidates may include up to eight role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
             "evidencePolicy": "Every clip attribution must cite evidenceFrameRefs from that clip. Use confidence >=0.85 only when at least two cited frames from different play phases clearly show jersey color and ownership.",
+            "coveragePolicy": (
+                "Return exactly one clipAttribution for every supplied candidate clipRef. Use null team fields and low confidence when ownership is unclear; never omit a candidate."
+                if has_candidate_clips
+                else "No candidate clips were supplied. Return detected teams and an empty clipAttributions array."
+            ),
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
             {
-                "clipRef": f"clip_{index}",
+                "clipRef": clip_ref,
                 "start": round(clip.startTime, 3),
                 "end": round(clip.endTime, 3),
                 "eventCenter": round(clip.eventCenter, 3) if clip.eventCenter is not None else None,
@@ -177,7 +579,7 @@ def _build_openai_payload(
                 "audioScore": clip.audioScore,
                 "combinedScore": clip.combinedScore,
             }
-            for index, clip in enumerate(candidate_clips)
+            for clip_ref, clip in zip(resolved_clip_refs, candidate_clips)
         ],
     }
     content: list[dict[str, Any]] = [{"type": "input_text", "text": json.dumps(context, separators=(",", ":"))}]
@@ -196,12 +598,18 @@ def _build_openai_payload(
         "store": False,
         "instructions": (
             "You are HoopClips Team Quick Scan. Identify the teams in sampled basketball frames by visible jersey color, "
-            "then assign each candidate clip to the team responsible for the highlight moment. Use confidence >=0.85 only "
+            + (
+                "then assign each candidate clip to the team responsible for the highlight moment. "
+                if has_candidate_clips
+                else "and return an empty clipAttributions array because this is a context-only team prescan. "
+            )
+            + "Use confidence >=0.85 only "
             "when team ownership is visually clear. Use lower confidence for occlusion, camera blur, mixed jerseys, or ambiguous possession. "
             "For scoring frame roles, use ballHandlerSetup, preRelease, release, and shotArc to judge the shooter/finisher team, then rimApproach/rimResult/followThrough/finishContext to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
             "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/ballDeflection or possessionChange/ballControlChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
             "For each clip attribution, include evidenceFrameRefs that exactly match supplied frameRef values for that clip; high-confidence ownership requires at least two cited frames from different phases such as setup/action/outcome. "
+            "Return exactly one clipAttribution for every supplied candidate clipRef. If team ownership is unclear, return that clipRef with null team fields, low confidence, and an empty or evidence-backed frame list instead of omitting it. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -214,12 +622,16 @@ def _build_openai_payload(
                 "schema": _response_schema(candidate_clip_limit),
             }
         },
-        "max_output_tokens": int(getattr(settings, "team_quick_scan_max_output_tokens", 24000)),
+        "max_output_tokens": (
+            int(max_output_tokens)
+            if max_output_tokens is not None
+            else int(getattr(settings, "team_quick_scan_max_output_tokens", 24000))
+        ),
     }
 
 
 def _response_schema(max_clip_attributions: int = 40) -> Dict[str, Any]:
-    max_clip_attributions = max(1, min(int(max_clip_attributions), TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS))
+    max_clip_attributions = max(0, min(int(max_clip_attributions), TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS))
     nullable_string = {"anyOf": [{"type": "string", "maxLength": 80}, {"type": "null"}]}
     return {
         "type": "object",
@@ -244,6 +656,7 @@ def _response_schema(max_clip_attributions: int = 40) -> Dict[str, Any]:
             },
             "clipAttributions": {
                 "type": "array",
+                "minItems": max_clip_attributions,
                 "maxItems": max_clip_attributions,
                 "items": {
                     "type": "object",
@@ -275,39 +688,17 @@ def _parse_quick_scan_output(
     evidence_frame_refs_by_clip: Optional[dict[str, set[str]]] = None,
     evidence_frame_roles_by_clip: Optional[dict[str, dict[str, str]]] = None,
     labels_by_clip_ref: Optional[dict[str, str]] = None,
+    *,
+    detected_teams: Optional[Sequence[TeamOption]] = None,
 ) -> tuple[list[TeamOption], dict[str, ClipTeamAttribution]]:
     if not isinstance(output, dict):
         return [], {}
-    min_team_confidence = float(getattr(settings, "team_quick_scan_min_team_confidence", 0.55))
-
-    teams: list[TeamOption] = []
-    seen_team_ids: set[str] = set()
-    for item in output.get("teams", []):
-        if not isinstance(item, dict):
-            continue
-        confidence = clamp(_coerce_float(item.get("confidence"), 0.0), 0.0, 1.0)
-        if confidence < min_team_confidence:
-            continue
-        raw_label = clean_text(item.get("label"))
-        color_label = resolve_jersey_color(item.get("colorLabel"), raw_label, item.get("teamId"))
-        if color_label is None:
-            continue
-        label = color_labeled_team_name(color_label, raw_label)
-        raw_team_id = _clean_team_id(item.get("teamId"))
-        raw_team_id_color = resolve_jersey_color(raw_team_id)
-        team_id = raw_team_id if raw_team_id_color == color_label else _team_id_from_label(color_label)
-        if not team_id or team_id in seen_team_ids:
-            continue
-        seen_team_ids.add(team_id)
-        team = TeamOption(
-            teamId=team_id,
-            label=label,
-            colorLabel=color_label,
-            primaryColorHex=_clean_hex_color(item.get("primaryColorHex")),
-            confidence=round(confidence, 4),
-            source="quick_scan",
-        )
-        teams.append(team)
+    local_teams = _parse_team_options(output, settings)
+    teams = (
+        _merge_team_options(detected_teams, local_teams)
+        if detected_teams is not None
+        else local_teams
+    )
 
     team_confidence_by_key = _team_confidence_by_key(teams)
     team_aliases_by_key = _team_aliases_by_key(output.get("teams", []), teams)
@@ -335,8 +726,6 @@ def _parse_quick_scan_output(
                 if raw_team_id and (color_label is None or raw_team_id_color == color_label)
                 else (_team_id_from_label(color_label) if color_label else raw_team_id)
             )
-        if team_id is None and label is None and color_label is None:
-            continue
         evidence_frame_refs = _valid_evidence_frame_refs(item.get("evidenceFrameRefs"), evidence_frame_refs_by_clip, clip_ref)
         evidence_role_groups = _evidence_role_groups_for_refs(evidence_frame_refs, evidence_frame_roles_by_clip, clip_ref)
         if (
@@ -367,6 +756,42 @@ def _parse_quick_scan_output(
             evidenceRoleGroups=evidence_role_groups,
         )
     return teams, attributions
+
+
+def _parse_team_options(output: object, settings: Settings) -> list[TeamOption]:
+    if not isinstance(output, dict):
+        return []
+    min_team_confidence = float(getattr(settings, "team_quick_scan_min_team_confidence", 0.55))
+
+    teams: list[TeamOption] = []
+    seen_team_ids: set[str] = set()
+    for item in output.get("teams", []):
+        if not isinstance(item, dict):
+            continue
+        confidence = clamp(_coerce_float(item.get("confidence"), 0.0), 0.0, 1.0)
+        if confidence < min_team_confidence:
+            continue
+        raw_label = clean_text(item.get("label"))
+        color_label = resolve_jersey_color(item.get("colorLabel"), raw_label, item.get("teamId"))
+        if color_label is None:
+            continue
+        label = color_labeled_team_name(color_label, raw_label)
+        raw_team_id = _clean_team_id(item.get("teamId"))
+        raw_team_id_color = resolve_jersey_color(raw_team_id)
+        team_id = raw_team_id if raw_team_id_color == color_label else _team_id_from_label(color_label)
+        if not team_id or team_id in seen_team_ids:
+            continue
+        seen_team_ids.add(team_id)
+        team = TeamOption(
+            teamId=team_id,
+            label=label,
+            colorLabel=color_label,
+            primaryColorHex=_clean_hex_color(item.get("primaryColorHex")),
+            confidence=round(confidence, 4),
+            source="quick_scan",
+        )
+        teams.append(team)
+    return teams
 
 
 def _evidence_frame_refs_by_clip(frames: Sequence[QuickScanFrame]) -> dict[str, set[str]]:
@@ -504,6 +929,10 @@ def _team_evidence_role_group(role: object) -> Optional[str]:
 
 def _team_aliases_by_key(raw_teams: object, teams: Sequence[TeamOption]) -> dict[str, TeamOption]:
     aliases: dict[str, TeamOption] = {}
+    for team in teams:
+        for key in (team_key(team.teamId), team_key(team.label), team_key(team.colorLabel)):
+            if key is not None:
+                aliases[key] = team
     if not isinstance(raw_teams, list):
         return aliases
     team_by_id = {team.teamId: team for team in teams}
@@ -580,37 +1009,87 @@ def _extract_quick_scan_frames(
     clips: Sequence[CloudClip],
     settings: Settings,
 ) -> list[QuickScanFrame]:
+    candidate_limit = _max_quick_scan_candidate_clips(settings, len(clips))
+    candidate_items = [(f"clip_{index}", clip) for index, clip in enumerate(clips[:candidate_limit])]
+    return [
+        *_extract_quick_scan_context_frames(source_path, duration_seconds, settings),
+        *_extract_quick_scan_candidate_frames(
+            source_path,
+            duration_seconds,
+            candidate_items,
+            len(candidate_items),
+            settings,
+        ),
+    ]
+
+
+def _extract_quick_scan_context_frames(
+    source_path: Path,
+    duration_seconds: float,
+    settings: Settings,
+    *,
+    deadline: Optional[float] = None,
+) -> list[QuickScanFrame]:
     frames: list[QuickScanFrame] = []
     for index, time_seconds in enumerate(_video_sample_times(duration_seconds, int(getattr(settings, "team_quick_scan_video_frame_count", 8)))):
+        if deadline is not None and monotonic() >= deadline:
+            break
         data_url = _extract_frame_data_url(source_path, time_seconds, settings)
         if data_url:
             frames.append(QuickScanFrame(frame_ref=f"video_{index}", role="videoContext", time_seconds=time_seconds, data_url=data_url))
+    return frames
 
+
+def _extract_quick_scan_candidate_frames(
+    source_path: Path,
+    duration_seconds: float,
+    candidate_items: Sequence[tuple[str, CloudClip]],
+    total_candidate_count: int,
+    settings: Settings,
+    *,
+    deadline: Optional[float] = None,
+) -> list[QuickScanFrame]:
+    del duration_seconds
+    frames: list[QuickScanFrame] = []
     frames_per_clip = _quick_scan_frames_per_clip(settings)
-    candidate_clip_limit = _max_quick_scan_candidate_clips(settings, len(clips))
+    candidate_clip_limit = _max_quick_scan_candidate_clips(settings, total_candidate_count)
     rich_candidate_limit = _rich_quick_scan_candidate_clip_limit(settings, candidate_clip_limit, frames_per_clip)
     max_total_clip_frames = _max_quick_scan_total_clip_frames(settings)
-    clip_frame_count = 0
-    for index, clip in enumerate(clips[:candidate_clip_limit]):
-        per_clip_frame_count = _quick_scan_frames_for_candidate_index(index, frames_per_clip, rich_candidate_limit)
-        remaining_clip_frames = max_total_clip_frames - clip_frame_count
-        if remaining_clip_frames <= 0:
+    for clip_ref, clip in candidate_items:
+        index = _clip_index_from_ref(clip_ref)
+        if index is None or index >= candidate_clip_limit:
+            continue
+        if deadline is not None and monotonic() >= deadline:
             break
+        planned_before = sum(
+            _quick_scan_frames_for_candidate_index(previous_index, frames_per_clip, rich_candidate_limit)
+            for previous_index in range(index)
+        )
+        per_clip_frame_count = _quick_scan_frames_for_candidate_index(index, frames_per_clip, rich_candidate_limit)
+        remaining_clip_frames = max_total_clip_frames - planned_before
+        if remaining_clip_frames <= 0:
+            continue
         for role, time_seconds in _clip_sample_times(clip, min(per_clip_frame_count, remaining_clip_frames)):
+            if deadline is not None and monotonic() >= deadline:
+                return frames
             data_url = _extract_frame_data_url(source_path, time_seconds, settings)
             if data_url:
-                frame_ref = f"clip_{index}_{role}"
+                frame_ref = f"{clip_ref}_{role}"
                 frames.append(
                     QuickScanFrame(
                         frame_ref=frame_ref,
                         role=role,
                         time_seconds=time_seconds,
                         data_url=data_url,
-                        clip_ref=f"clip_{index}",
+                        clip_ref=clip_ref,
                     )
                 )
-                clip_frame_count += 1
     return frames
+
+
+def _clip_index_from_ref(clip_ref: str) -> Optional[int]:
+    match = re.fullmatch(r"clip_([0-9]+)", clip_ref)
+    return int(match.group(1)) if match is not None else None
 
 
 def _max_quick_scan_candidate_clips(settings: Settings, clip_count: int | None = None) -> int:
@@ -618,6 +1097,8 @@ def _max_quick_scan_candidate_clips(settings: Settings, clip_count: int | None =
     bounded = max(1, min(configured, TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS))
     if clip_count is None:
         return bounded
+    if int(clip_count) <= 0:
+        return 0
     return max(1, min(bounded, max(1, int(clip_count))))
 
 
