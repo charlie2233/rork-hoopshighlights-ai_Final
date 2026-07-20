@@ -23,6 +23,9 @@ nonisolated private let cloudUploadResumableThresholdBytes: Int64 = 64 * 1024 * 
 nonisolated private let cloudUploadPartSizeQuantumBytes: Int64 = 8 * 1024 * 1024
 nonisolated private let cloudUploadPreferredMultipartPartCount: Int64 = 24
 nonisolated private let cloudUploadMaximumPartSizeBytes: Int64 = 32 * 1024 * 1024
+nonisolated private let cloudUploadMaximumParallelConnections = 6
+nonisolated private let cloudUploadNetworkWarmupPollNanoseconds: UInt64 = 25 * 1_000_000
+nonisolated private let cloudUploadNetworkWarmupMaximumPolls = 12
 private let cloudUploadFileProtectionName = "completeUntilFirstUserAuthentication"
 private let cloudUploadChunkRetryBackoffSeconds: [UInt64] = [2, 5, 12, 30]
 
@@ -95,7 +98,7 @@ struct CloudAnalysisService {
     private static let maxVisibleProgressStageCharacters = 72
     private static let maxVisibleBackendMessageCharacters = 96
     nonisolated private static let fallbackBackgroundSessionPrefix = "atrak.charlie.hoopsclips.cloud-upload"
-    private static let maxConcurrentMultipartUploads = 6
+    private static let maxConcurrentMultipartUploads = cloudUploadMaximumParallelConnections
     private let session: URLSession
     private let uploadSessionFactory: @Sendable (_ backgroundIdentifier: String?, _ delegate: URLSessionDelegate?) -> URLSession
     private let decoder: JSONDecoder
@@ -148,8 +151,32 @@ struct CloudAnalysisService {
         return safeMaximum
     }
 
+    nonisolated static func waitForMultipartNetworkPath(
+        maximumPolls: Int = cloudUploadNetworkWarmupMaximumPolls,
+        pollNanoseconds: UInt64 = cloudUploadNetworkWarmupPollNanoseconds,
+        isPathAvailable: @escaping @Sendable () -> Bool
+    ) async throws -> Bool {
+        if isPathAvailable() {
+            return true
+        }
+
+        for _ in 0..<max(maximumPolls, 0) {
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: pollNanoseconds)
+            if isPathAvailable() {
+                return true
+            }
+        }
+
+        return false
+    }
+
     nonisolated static func multipartUploadTaskDescription(partNumber: Int, attempt: Int) -> String {
         "part-\(max(partNumber, 1)).try-\(max(attempt, 1))"
+    }
+
+    nonisolated static func prioritizeUploadTask(_ task: URLSessionTask) {
+        task.priority = URLSessionTask.highPriority
     }
 
     nonisolated static func multipartUploadPartNumber(taskDescription: String?) -> Int? {
@@ -450,7 +477,10 @@ struct CloudAnalysisService {
             "partSizePolicy=adaptive_8_to_32_mib",
             "preferredMultipartPartCount=\(cloudUploadPreferredMultipartPartCount)",
             "assetPartLeaseRenewal=missing_parts_before_expiry",
+            "initialLanePolicy=wait_up_to_300ms_for_network_classification",
             "lanePolicyRefresh=between_completed_parts",
+            "httpMaximumConnectionsPerHost=\(cloudUploadMaximumParallelConnections)",
+            "uploadTaskPriority=high",
             "progressAggregation=total_bytes_across_active_chunks",
             "memoryPolicy=bounded_chunk_data_per_lane",
             "resumePolicy=persist_completed_parts",
@@ -2323,7 +2353,7 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+        let networkUploadPolicy = try await CloudUploadNetworkPolicy.shared.warmedPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
         let initialMaxConcurrentUploads = min(max(multipart.partCount, 1), networkUploadPolicy.laneLimit)
@@ -2841,7 +2871,7 @@ struct CloudAnalysisService {
             totalFileSizeBytes: totalBytes
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+        let networkUploadPolicy = try await CloudUploadNetworkPolicy.shared.warmedPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
         let initialMaxConcurrentUploads = min(max(resumableUpload.partCount, 1), networkUploadPolicy.laneLimit)
@@ -3013,7 +3043,7 @@ struct CloudAnalysisService {
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
 
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+        let networkUploadPolicy = try await CloudUploadNetworkPolicy.shared.warmedPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
         let initialMaxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
@@ -3164,7 +3194,7 @@ struct CloudAnalysisService {
         )
         await tracker.update(uploadedBytes: initialCompletedBytes, totalBytes: totalBytes)
 
-        let networkUploadPolicy = CloudUploadNetworkPolicy.shared.currentPolicy(
+        let networkUploadPolicy = try await CloudUploadNetworkPolicy.shared.warmedPolicy(
             defaultMaximum: Self.maxConcurrentMultipartUploads
         )
         let initialMaxConcurrentUploads = min(max(partCount, 1), networkUploadPolicy.laneLimit)
@@ -3847,7 +3877,7 @@ private struct CloudUploadNetworkLanePolicy {
     let isConstrained: Bool
 }
 
-private final class CloudUploadNetworkPolicy: @unchecked Sendable {
+nonisolated private final class CloudUploadNetworkPolicy: @unchecked Sendable {
     static let shared = CloudUploadNetworkPolicy()
 
     private let monitor = NWPathMonitor()
@@ -3921,6 +3951,23 @@ private final class CloudUploadNetworkPolicy: @unchecked Sendable {
             isExpensive: false,
             isConstrained: false
         )
+    }
+
+    func warmedPolicy(defaultMaximum: Int) async throws -> CloudUploadNetworkLanePolicy {
+        var policy = currentPolicy(defaultMaximum: defaultMaximum)
+        guard policy.reason == "network_pending" else { return policy }
+
+        _ = try await CloudAnalysisService.waitForMultipartNetworkPath {
+            self.hasObservedPath()
+        }
+        policy = currentPolicy(defaultMaximum: defaultMaximum)
+        return policy
+    }
+
+    private func hasObservedPath() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return latestPath != nil
     }
 }
 
@@ -4139,6 +4186,7 @@ private extension URLSessionConfiguration {
         allowsCellularAccess = true
         allowsExpensiveNetworkAccess = true
         allowsConstrainedNetworkAccess = true
+        httpMaximumConnectionsPerHost = cloudUploadMaximumParallelConnections
 
         if isBackgroundTransfer {
             sessionSendsLaunchEvents = true
@@ -4865,6 +4913,7 @@ nonisolated final class CloudMultipartUploadProgressDelegate: NSObject, URLSessi
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 let task = session.uploadTask(with: request, fromFile: fileURL)
+                CloudAnalysisService.prioritizeUploadTask(task)
                 task.taskDescription = taskDescription
                 lock.lock()
                 pendingTasks[task.taskIdentifier] = PendingTask(
@@ -5044,6 +5093,7 @@ private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegat
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 let task = session.uploadTask(with: request, fromFile: fileURL)
+                CloudAnalysisService.prioritizeUploadTask(task)
                 lock.lock()
                 self.continuation = continuation
                 lock.unlock()
