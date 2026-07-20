@@ -31,7 +31,7 @@ charlie iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C
                     {
                         "bundleIdentifier": EXPECTED_BUNDLE_ID,
                         "shortVersionString": "1.0.0",
-                        "bundleVersion": "55",
+                        "bundleVersion": "56",
                         "name": "HoopClips",
                     }
                 ]
@@ -46,7 +46,7 @@ charlie iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C
             {
                 "bundleId": EXPECTED_BUNDLE_ID,
                 "marketingVersion": "1.0.0",
-                "buildNumber": "55",
+                "buildNumber": "56",
                 "name": "HoopClips",
             },
         )
