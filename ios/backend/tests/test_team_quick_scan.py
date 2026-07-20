@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -21,10 +22,13 @@ from app.pipeline import (
 )
 from app.team_quick_scan import (
     QuickScanFrame,
+    TeamQuickScanReport,
     _clip_sample_times,
     _extract_quick_scan_frames,
     _max_quick_scan_total_clip_frames,
+    _payload_bounded_candidate_ref_batches,
     apply_team_quick_scan,
+    apply_team_quick_scan_with_report,
     team_quick_prescan_settings,
 )
 
@@ -96,6 +100,22 @@ def _team_clip(
 
 def _response(payload: dict) -> dict:
     return {"output": [{"content": [{"type": "output_text", "text": json.dumps(payload)}]}]}
+
+
+@contextmanager
+def _mock_quick_scan_frames(frames: list[QuickScanFrame]):
+    context_frames = [frame for frame in frames if frame.clip_ref is None]
+    candidate_frames = [frame for frame in frames if frame.clip_ref is not None]
+
+    def extract_candidate_frames(_source_path, _duration_seconds, candidate_items, _total_count, _settings, **_kwargs):
+        allowed_refs = {clip_ref for clip_ref, _clip in candidate_items}
+        return [frame for frame in candidate_frames if frame.clip_ref in allowed_refs]
+
+    with (
+        patch("app.team_quick_scan._extract_quick_scan_context_frames", return_value=context_frames),
+        patch("app.team_quick_scan._extract_quick_scan_candidate_frames", side_effect=extract_candidate_frames),
+    ):
+        yield
 
 
 def _local_settings(upload_root: Path) -> Settings:
@@ -236,6 +256,62 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(roles_by_clip["clip_0"], ["ballHandlerSetup"])
         self.assertNotIn("clip_1", roles_by_clip)
 
+    def test_context_only_prescan_calls_gpt_with_zero_attribution_schema(self) -> None:
+        frames = [
+            QuickScanFrame(
+                frame_ref="video_0",
+                role="videoContext",
+                time_seconds=10.0,
+                data_url="data:image/jpeg;base64,context",
+            )
+        ]
+        captured_payload = {}
+
+        def fake_client(payload, _api_key, _endpoint, timeout):
+            captured_payload.update(payload)
+            context = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertEqual(context["candidateClips"], [])
+            attribution_schema = payload["text"]["format"]["schema"]["properties"]["clipAttributions"]
+            self.assertEqual(attribution_schema["minItems"], 0)
+            self.assertEqual(attribution_schema["maxItems"], 0)
+            self.assertEqual(payload["max_output_tokens"], 768)
+            self.assertEqual(timeout, 10.0)
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "primaryColorHex": "#f2f2f2",
+                            "confidence": 0.92,
+                            "reason": "White jerseys are visible in the sampled context.",
+                        }
+                    ],
+                    "clipAttributions": [],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-context-prescan-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with _mock_quick_scan_frames(frames):
+                scanned, teams, report = apply_team_quick_scan_with_report(
+                    source_path,
+                    30.0,
+                    [],
+                    _settings(team_quick_scan_timeout_seconds=10.0),
+                    response_client=fake_client,
+                )
+
+        self.assertEqual(scanned, [])
+        self.assertEqual([team.colorLabel for team in teams], ["white"])
+        self.assertIsInstance(report, TeamQuickScanReport)
+        self.assertTrue(report.used)
+        self.assertEqual(report.completed_batches, 1)
+        self.assertEqual(report.requested_candidates, 0)
+        self.assertNotIn("videoUrl", json.dumps(captured_payload))
+
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
 
@@ -315,7 +391,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-test-") as temp_dir:
             source_path = Path(temp_dir) / "full-game.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     30.0,
@@ -352,21 +428,24 @@ class TeamQuickScanTests(unittest.TestCase):
             )
             for index, clip in enumerate(clips)
         ]
-        captured_payload = {}
+        captured_payloads = []
 
         def fake_client(payload, *_args):
-            captured_payload.update(payload)
+            captured_payloads.append(payload)
             context = json.loads(payload["input"][0]["content"][0]["text"])
-            self.assertEqual(len(context["candidateClips"]), 75)
-            self.assertEqual(context["candidateClips"][-1]["clipRef"], "clip_74")
+            clip_refs = [candidate["clipRef"] for candidate in context["candidateClips"]]
+            self.assertLessEqual(len(clip_refs), 12)
             self.assertIn("scoringFrameRoles", context["rules"])
             self.assertIn("defensiveFrameRoles", context["rules"])
             self.assertIn("evidencePolicy", context["rules"])
-            self.assertEqual(payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["maxItems"], 75)
+            self.assertIn("coveragePolicy", context["rules"])
+            clip_attribution_schema = payload["text"]["format"]["schema"]["properties"]["clipAttributions"]
+            self.assertEqual(clip_attribution_schema["minItems"], len(clip_refs))
+            self.assertEqual(clip_attribution_schema["maxItems"], len(clip_refs))
             attribution_schema = payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["items"]
             self.assertIn("evidenceFrameRefs", attribution_schema["properties"])
             self.assertIn("evidenceFrameRefs", attribution_schema["required"])
-            self.assertEqual(payload["max_output_tokens"], 24000)
+            self.assertEqual(payload["max_output_tokens"], 768 + (len(clip_refs) * 192))
             return _response(
                 {
                     "teams": [
@@ -381,13 +460,15 @@ class TeamQuickScanTests(unittest.TestCase):
                     ],
                     "clipAttributions": [
                         {
-                            "clipRef": "clip_74",
+                            "clipRef": clip_ref,
                             "teamId": "team_dark",
                             "label": "Dark jerseys",
                             "colorLabel": "black",
                             "confidence": 0.88,
-                            "reason": "Defender in black creates the steal.",
+                            "reason": "The responsible player wears black.",
+                            "evidenceFrameRefs": [f"{clip_ref}_event"],
                         }
+                        for clip_ref in clip_refs
                     ],
                 }
             )
@@ -395,7 +476,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-expanded-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     360.0,
@@ -405,10 +486,381 @@ class TeamQuickScanTests(unittest.TestCase):
                 )
 
         self.assertTrue(applied)
+        self.assertEqual(
+            [len(json.loads(payload["input"][0]["content"][0]["text"])["candidateClips"]) for payload in captured_payloads],
+            [12, 12, 12, 12, 12, 12, 3],
+        )
+        batched_refs = [
+            candidate["clipRef"]
+            for payload in captured_payloads
+            for candidate in json.loads(payload["input"][0]["content"][0]["text"])["candidateClips"]
+        ]
+        self.assertEqual(batched_refs, [f"clip_{index}" for index in range(75)])
         self.assertEqual(teams[0].teamId, "team_dark")
+        self.assertTrue(all(clip.teamAttribution is not None for clip in scanned))
         self.assertIsNotNone(scanned[74].teamAttribution)
         self.assertEqual(scanned[74].teamAttribution.teamId, "team_dark")
-        self.assertNotIn("videoUrl", json.dumps(captured_payload))
+        self.assertNotIn("videoUrl", json.dumps(captured_payloads))
+
+    def test_missing_candidate_attributions_retry_once_and_preserve_explicit_unknowns(self) -> None:
+        clips = [
+            _clip("Made Shot", index * 5.0, (index * 5.0) + 4.0, (index * 5.0) + 2.0)
+            for index in range(3)
+        ]
+        frames = [
+            QuickScanFrame(
+                frame_ref=f"clip_{index}_release",
+                role="release",
+                time_seconds=clip.eventCenter or clip.startTime,
+                data_url=f"data:image/jpeg;base64,{index}",
+                clip_ref=f"clip_{index}",
+            )
+            for index, clip in enumerate(clips)
+        ]
+        requested_ref_batches = []
+
+        def fake_client(payload, *_args):
+            context = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_refs = [candidate["clipRef"] for candidate in context["candidateClips"]]
+            requested_ref_batches.append(clip_refs)
+            if len(requested_ref_batches) == 1:
+                clip_attributions = [
+                    {
+                        "clipRef": "clip_0",
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.9,
+                        "reason": "The shooter wears black.",
+                        "evidenceFrameRefs": ["clip_0_release"],
+                    }
+                ]
+            else:
+                clip_attributions = [
+                    {
+                        "clipRef": "clip_1",
+                        "teamId": None,
+                        "label": None,
+                        "colorLabel": None,
+                        "confidence": 0.2,
+                        "reason": "Ownership remains unclear.",
+                        "evidenceFrameRefs": [],
+                    },
+                    {
+                        "clipRef": "clip_2",
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.87,
+                        "reason": "The shooter wears black.",
+                        "evidenceFrameRefs": ["clip_2_release"],
+                    },
+                ]
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": "#111111",
+                            "confidence": 0.92,
+                            "reason": "Dark jerseys are visible.",
+                        }
+                    ],
+                    "clipAttributions": clip_attributions,
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-retry-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with _mock_quick_scan_frames(frames):
+                scanned, teams, applied = apply_team_quick_scan(
+                    source_path,
+                    18.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(requested_ref_batches, [["clip_0", "clip_1", "clip_2"], ["clip_1", "clip_2"]])
+        self.assertEqual(len(teams), 1)
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
+        self.assertIsNone(scanned[1].teamAttribution.teamId)
+        self.assertEqual(scanned[1].teamAttribution.confidence, 0.2)
+        self.assertEqual(scanned[2].teamAttribution.teamId, "team_dark")
+
+    def test_global_team_options_normalize_later_batch_attributions(self) -> None:
+        clips = [
+            _clip("Made Shot", index * 5.0, (index * 5.0) + 4.0, (index * 5.0) + 2.0)
+            for index in range(82)
+        ]
+        frames = [
+            frame
+            for index in range(82)
+            for frame in (
+                QuickScanFrame(
+                    frame_ref=f"clip_{index}_setup",
+                    role="ballHandlerSetup",
+                    time_seconds=(index * 5.0) + 1.0,
+                    data_url=f"data:image/jpeg;base64,{index}a",
+                    clip_ref=f"clip_{index}",
+                ),
+                QuickScanFrame(
+                    frame_ref=f"clip_{index}_release",
+                    role="release",
+                    time_seconds=(index * 5.0) + 2.0,
+                    data_url=f"data:image/jpeg;base64,{index}b",
+                    clip_ref=f"clip_{index}",
+                ),
+            )
+        ]
+        requested_batches = []
+
+        def fake_client(payload, *_args):
+            context = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_refs = [candidate["clipRef"] for candidate in context["candidateClips"]]
+            requested_batches.append(clip_refs)
+            teams = []
+            if len(requested_batches) == 1:
+                teams = [
+                    {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "primaryColorHex": "#111111",
+                        "confidence": 0.95,
+                        "reason": "Black jerseys are visible.",
+                    },
+                    {
+                        "teamId": "team_light",
+                        "label": "Light jerseys",
+                        "colorLabel": "white",
+                        "primaryColorHex": "#f2f2f2",
+                        "confidence": 0.95,
+                        "reason": "White jerseys are visible.",
+                    },
+                ]
+            attributions = []
+            for clip_ref in clip_refs:
+                clip_index = int(clip_ref.removeprefix("clip_"))
+                is_later_white_clip = clip_index >= 72
+                attributions.append(
+                    {
+                        "clipRef": clip_ref,
+                        "teamId": "team_light" if is_later_white_clip else "team_dark",
+                        "label": "Light jerseys" if is_later_white_clip else "Dark jerseys",
+                        "colorLabel": "white" if is_later_white_clip else "black",
+                        "confidence": 0.93,
+                        "reason": "The responsible player's jersey color is visible.",
+                        "evidenceFrameRefs": [f"{clip_ref}_setup", f"{clip_ref}_release"],
+                    }
+                )
+            return _response({"teams": teams, "clipAttributions": attributions})
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-global-team-batches-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with _mock_quick_scan_frames(frames):
+                scanned, teams, report = apply_team_quick_scan_with_report(
+                    source_path,
+                    420.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertEqual([len(batch) for batch in requested_batches], [12, 12, 12, 12, 12, 12, 10])
+        self.assertEqual({team.colorLabel for team in teams}, {"black", "white"})
+        self.assertEqual(scanned[81].teamAttribution.teamId, "team_light")
+        self.assertEqual(scanned[81].teamAttribution.confidence, 0.93)
+        self.assertEqual(report.requested_candidates, 82)
+        self.assertEqual(report.returned_attributions, 82)
+        self.assertEqual(report.completed_batches, 7)
+        self.assertEqual(report.missing_attributions, 0)
+
+    def test_duplicate_unknown_and_failed_retry_are_reported_without_false_coverage(self) -> None:
+        clips = [
+            _clip("Made Shot", index * 5.0, (index * 5.0) + 4.0, (index * 5.0) + 2.0)
+            for index in range(6)
+        ]
+        frames = [
+            QuickScanFrame(
+                frame_ref=f"clip_{index}_release",
+                role="release",
+                time_seconds=(index * 5.0) + 2.0,
+                data_url=f"data:image/jpeg;base64,{index}",
+                clip_ref=f"clip_{index}",
+            )
+            for index in range(6)
+        ]
+        requested_batches = []
+
+        def fake_client(payload, *_args):
+            context = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_refs = [candidate["clipRef"] for candidate in context["candidateClips"]]
+            requested_batches.append(clip_refs)
+            if len(requested_batches) > 1:
+                raise TimeoutError("retry timed out")
+            duplicate = {
+                "clipRef": "clip_0",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidence": 0.9,
+                "reason": "Duplicate output must not count as coverage.",
+                "evidenceFrameRefs": ["clip_0_release"],
+            }
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": "#111111",
+                            "confidence": 0.92,
+                            "reason": "Black jerseys are visible.",
+                        }
+                    ],
+                    "clipAttributions": [
+                        duplicate,
+                        dict(duplicate),
+                        {
+                            "clipRef": "clip_1",
+                            "teamId": None,
+                            "label": None,
+                            "colorLabel": None,
+                            "confidence": 0.15,
+                            "reason": "Ownership is unclear.",
+                            "evidenceFrameRefs": [],
+                        },
+                        {
+                            "clipRef": "clip_2",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.8,
+                            "reason": "Black jersey controls the play.",
+                            "evidenceFrameRefs": ["clip_2_release"],
+                        },
+                        {
+                            "clipRef": "clip_999",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.9,
+                            "reason": "Out-of-range ref.",
+                            "evidenceFrameRefs": [],
+                        },
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-scan-coverage-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with _mock_quick_scan_frames(frames):
+                scanned, _teams, report = apply_team_quick_scan_with_report(
+                    source_path,
+                    40.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertEqual(requested_batches, [["clip_0", "clip_1", "clip_2", "clip_3", "clip_4", "clip_5"], ["clip_0", "clip_3", "clip_4", "clip_5"]])
+        self.assertIsNone(scanned[0].teamAttribution)
+        self.assertIsNone(scanned[1].teamAttribution.teamId)
+        self.assertEqual(scanned[2].teamAttribution.teamId, "team_dark")
+        self.assertEqual(report.returned_attributions, 2)
+        self.assertEqual(report.explicit_unknown_attributions, 1)
+        self.assertEqual(report.missing_attributions, 4)
+        self.assertEqual(report.completed_batches, 1)
+        self.assertEqual(report.failed_batches, 1)
+
+    def test_payload_batching_respects_frame_and_encoded_byte_limits(self) -> None:
+        refs = ["clip_0", "clip_1", "clip_2"]
+        context_frames = [
+            QuickScanFrame("video_0", "videoContext", 1.0, "c" * 10)
+        ]
+        candidate_frames = [
+            QuickScanFrame(f"{clip_ref}_release", "release", 2.0, "x" * 60, clip_ref)
+            for clip_ref in refs
+        ]
+
+        with (
+            patch("app.team_quick_scan.TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES", 100),
+            patch("app.team_quick_scan.TEAM_QUICK_SCAN_MAX_BATCH_CANDIDATE_FRAMES", 2),
+        ):
+            batches = _payload_bounded_candidate_ref_batches(refs, context_frames, candidate_frames)
+
+        self.assertEqual(batches, [["clip_0"], ["clip_1"], ["clip_2"]])
+
+    def test_request_ceiling_reports_unscanned_candidates_as_missing(self) -> None:
+        clips = [
+            _clip("Made Shot", index * 5.0, (index * 5.0) + 4.0, (index * 5.0) + 2.0)
+            for index in range(13)
+        ]
+        frames = [
+            QuickScanFrame(
+                frame_ref=f"clip_{index}_release",
+                role="release",
+                time_seconds=(index * 5.0) + 2.0,
+                data_url=f"data:image/jpeg;base64,{index}",
+                clip_ref=f"clip_{index}",
+            )
+            for index in range(13)
+        ]
+        request_count = 0
+
+        def fake_client(payload, *_args):
+            nonlocal request_count
+            request_count += 1
+            context = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_refs = [candidate["clipRef"] for candidate in context["candidateClips"]]
+            return _response(
+                {
+                    "teams": [],
+                    "clipAttributions": [
+                        {
+                            "clipRef": clip_ref,
+                            "teamId": None,
+                            "label": None,
+                            "colorLabel": None,
+                            "confidence": 0.1,
+                            "reason": "Ownership is unclear.",
+                            "evidenceFrameRefs": [],
+                        }
+                        for clip_ref in clip_refs
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-scan-request-cap-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with (
+                _mock_quick_scan_frames(frames),
+                patch("app.team_quick_scan.TEAM_QUICK_SCAN_MAX_REQUESTS", 1),
+            ):
+                _scanned, _teams, report = apply_team_quick_scan_with_report(
+                    source_path,
+                    70.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertEqual(request_count, 1)
+        self.assertTrue(report.budget_exhausted)
+        self.assertEqual(report.requested_candidates, 13)
+        self.assertEqual(report.returned_attributions, 12)
+        self.assertEqual(report.explicit_unknown_attributions, 12)
+        self.assertEqual(report.missing_attributions, 1)
+        self.assertEqual(report.completed_batches, 1)
 
     def test_detected_team_options_are_normalized_to_jersey_colors(self) -> None:
         clips = [
@@ -473,7 +925,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-colors-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     30.0,
@@ -788,7 +1240,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-test-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -838,7 +1290,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-teamcap-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -889,7 +1341,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-evidencecap-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -942,7 +1394,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-evidencepass-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, _teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -994,7 +1446,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-steal-missingaction-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, _teams, applied = apply_team_quick_scan(
                     source_path,
                     24.0,
@@ -1046,7 +1498,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-steal-action-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, _teams, applied = apply_team_quick_scan(
                     source_path,
                     24.0,
@@ -1098,7 +1550,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-shotownership-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, _teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -1150,7 +1602,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-oneevidence-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, _teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -1203,7 +1655,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-samephase-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, _teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,
@@ -1245,7 +1697,7 @@ class TeamQuickScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-missingteam-") as temp_dir:
             source_path = Path(temp_dir) / "source.mp4"
             source_path.write_bytes(b"video")
-            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+            with _mock_quick_scan_frames(frames):
                 scanned, teams, applied = apply_team_quick_scan(
                     source_path,
                     18.0,

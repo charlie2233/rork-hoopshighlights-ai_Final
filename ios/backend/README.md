@@ -102,17 +102,19 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_TEAM_QUICK_SCAN_ENABLED`: enables the cloud GPT frame quick scan for jersey-color team detection and per-clip team attribution. If unset, it follows `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED` / `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`.
 - `HOOPS_OPENAI_API_KEY`: required only when GPT team quick scan is enabled. Do not print or log this value.
 - `HOOPS_TEAM_QUICK_SCAN_MODEL`: vision-capable model for team quick scan (default follows `HOOPS_AI_CLIP_GPT_MODEL`, then `gpt-4.1`)
-- `HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS`: timeout for the GPT team quick scan call, clamped to `2...180` seconds (default `180`)
+- `HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS`: overall deadline for one GPT team quick scan, clamped to `2...180` seconds (default `180`). Individual requests are capped at 45 seconds.
 - `HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT`: whole-video frame samples for team color detection, clamped to `2...16` (default `8`)
 - `HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP`: rich per-candidate clip frames for team ownership, clamped to `1...8` (default `8`)
 - `HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS`: number of top candidate clips that receive the rich frame budget before the compact tail budget is used (default `320`)
 - `HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES`: total per-clip frame budget for team quick scan, excluding whole-video context frames (default `2560`, max `3200`)
 - `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`: maximum analysis candidates included in team quick scan attribution, clamped to `1...320` (default `320`)
 - `HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE`: minimum confidence to expose a detected team option (default `0.55`). Clip filtering still treats attribution below `0.85` as uncertain.
-- `HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS`: structured-output budget for team options and clip attributions, clamped to `512...24000` (default `24000`)
+- `HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS`: per-request structured-output ceiling, clamped to `512...24000` (default `24000`). The scanner scales this down to the batch size and caps total reserved output at 96,000 tokens per scan.
 
-Interactive pre-analysis team scan intentionally uses a much smaller derived budget than full analysis: up to 5 source-video context frames, no candidate-clip generation, and a 3 second GPT request cap. If no obvious jersey-color teams are found quickly, iOS continues with `All teams`, which is also the personal/single-player highlight path. Full per-clip team attribution still happens during the normal cloud analysis path when enabled.
-- Interactive team prescan uses the quality-beta accuracy preset derived from these settings: up to 320 candidate clips, 320 rich candidates, 8 role frames per rich candidate, and 2,560 total clip frames.
+Full analysis sends at most 12 candidate clips, 96 candidate frames, and 24 MiB of encoded images per request. It retries missing or malformed attribution rows once in groups of 4, while preserving the same `0.85` confident-attribution threshold. Analysis diagnostics expose requested, returned, explicit-unknown, and missing attribution counts; completed and failed batch counts; and whether a scan budget was exhausted.
+
+Interactive pre-analysis team scan intentionally uses a much smaller derived budget than full analysis: up to 5 source-video context frames, no candidate-clip generation, and a 10 second overall deadline. If no obvious jersey-color teams are found quickly, iOS continues with `All teams`, which is also the personal/single-player highlight path. Full per-clip team attribution still happens during the normal cloud analysis path when enabled.
+- Full analysis team attribution uses the quality-beta accuracy preset derived from these settings: up to 320 candidate clips, 320 rich candidates, 8 role frames per rich candidate, and 2,560 total clip frames.
 - `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2` (default `local`)
 - `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: signed/local render download URL TTL (default `900`)
 - `HOOPS_MAX_RENDER_COMPLEXITY_UNITS`: max estimated render complexity before rejecting render (default `600`)
