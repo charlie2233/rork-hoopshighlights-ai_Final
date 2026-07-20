@@ -936,36 +936,6 @@ struct HoopsClipsTests {
         #expect(retrying?.message.contains("No need to restart yet") == true)
     }
 
-    @Test func testCloudAnalysisUploadSourceOptimizationPolicyIsHonest() {
-        let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
-            durationSeconds: 8 * 60,
-            fileSizeBytes: 320 * 1_024 * 1_024,
-            statusMessage: "Uploading source video",
-            latestUploadProgress: "bytes=120/320_MB speed=8.0_MB/s"
-        )
-        #expect(normal.shouldPreferOptimizedSource == false)
-        #expect(normal.quickFact == nil)
-        #expect(normal.proof.contains("recommended=false"))
-        #expect(normal.proof.contains("optimizedSourceStatus=available"))
-
-        let longSource = CloudAnalysisProgressCopy.uploadSourceOptimization(
-            durationSeconds: 57 * 60,
-            fileSizeBytes: 1_400 * 1_024 * 1_024,
-            statusMessage: "Uploading source video · waiting for connectivity",
-            latestUploadProgress: "stalled=true retrying"
-        )
-        #expect(longSource.shouldPreferOptimizedSource)
-        #expect(longSource.quickFact == "Smaller source suggested")
-        #expect(longSource.proof.contains("recommended=true"))
-        #expect(longSource.proof.contains("long_source"))
-        #expect(longSource.proof.contains("huge_source"))
-        #expect(longSource.proof.contains("slow_upload"))
-        #expect(longSource.proof.contains("currentPath=optimized_when_recommended_else_original_background_chunked_upload"))
-        #expect(longSource.proof.contains("optimizedSourceStatus=available"))
-        #expect(!longSource.proof.localizedCaseInsensitiveContains("https://"))
-        #expect(!longSource.proof.localizedCaseInsensitiveContains("uploads/"))
-    }
-
     @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {
         let fallback = "Cloud analysis failed. Try again."
 
@@ -5742,6 +5712,59 @@ struct HoopsClipsTests {
 
 @Suite(.serialized)
 struct UploadThroughputPolicyTests {
+    @Test func automaticUploadSourceOptimizationCoversBasketballSizedFiles() {
+        let normal = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: 8 * 60,
+            fileSizeBytes: 120 * 1_024 * 1_024,
+            statusMessage: "Uploading source video",
+            latestUploadProgress: "bytes=60/120_MB speed=8.0_MB/s"
+        )
+        #expect(normal.shouldPreferOptimizedSource == false)
+        #expect(normal.quickFact == nil)
+        #expect(normal.proof.contains("recommended=false"))
+        #expect(normal.proof.contains("optimizedSourceStatus=available"))
+
+        let basketballSizeSource = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: 8 * 60,
+            fileSizeBytes: 380 * 1_024 * 1_024,
+            statusMessage: "Preparing upload",
+            latestUploadProgress: "none"
+        )
+        #expect(basketballSizeSource.shouldPreferOptimizedSource)
+        #expect(basketballSizeSource.quickFact == "Smaller source suggested")
+        #expect(!basketballSizeSource.proof.contains("long_source"))
+        #expect(basketballSizeSource.proof.contains("large_source"))
+        #expect(basketballSizeSource.proof.contains("automaticDurationThresholdMinutes=12"))
+        #expect(basketballSizeSource.proof.contains("automaticSizeThresholdMB=256"))
+
+        let basketballDurationSource = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: 18 * 60,
+            fileSizeBytes: 120 * 1_024 * 1_024,
+            statusMessage: "Preparing upload",
+            latestUploadProgress: "none"
+        )
+        #expect(basketballDurationSource.shouldPreferOptimizedSource)
+        #expect(basketballDurationSource.proof.contains("long_source"))
+        #expect(!basketballDurationSource.proof.contains("large_source"))
+
+        let longSource = CloudAnalysisProgressCopy.uploadSourceOptimization(
+            durationSeconds: 57 * 60,
+            fileSizeBytes: 1_400 * 1_024 * 1_024,
+            statusMessage: "Uploading source video · waiting for connectivity",
+            latestUploadProgress: "stalled=true retrying"
+        )
+        #expect(longSource.shouldPreferOptimizedSource)
+        #expect(longSource.quickFact == "Smaller source suggested")
+        #expect(longSource.proof.contains("recommended=true"))
+        #expect(longSource.proof.contains("long_source"))
+        #expect(longSource.proof.contains("large_source"))
+        #expect(longSource.proof.contains("slow_upload"))
+        #expect(longSource.proof.contains("currentPath=optimized_when_recommended_else_original_background_chunked_upload"))
+        #expect(longSource.proof.contains("optimizedSourceStatus=available"))
+        #expect(!longSource.proof.localizedCaseInsensitiveContains("https://"))
+        #expect(!longSource.proof.localizedCaseInsensitiveContains("uploads/"))
+    }
+
     @Test func cancelledMultipartCoordinatorDetachesWithoutDeletingActiveUploadFile() async throws {
         let stagedURL = FileManager.default.temporaryDirectory
             .appending(path: "cancelled-shared-upload-\(UUID().uuidString).tmp")
