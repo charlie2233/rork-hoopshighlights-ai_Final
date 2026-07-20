@@ -16,6 +16,8 @@ nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
     private static let fastUploadModeDefaultsKey = "hoopsclips.cloudUpload.fastUploadMode.v1"
     private static let compactUploadFallbackWindow = "fallback to original in about 4 min"
+    private static let automaticUploadOptimizationDurationSeconds: Double = 12 * 60
+    private static let automaticUploadOptimizationFileSizeBytes: Int64 = 256 * 1_024 * 1_024
 
     static func isFastUploadModeEnabled() -> Bool {
         UserDefaults.standard.bool(forKey: fastUploadModeDefaultsKey)
@@ -411,18 +413,19 @@ nonisolated enum CloudAnalysisProgressCopy {
     ) -> CloudAnalysisUploadSourceOptimization {
         let status = "\(statusMessage) \(latestUploadProgress)".lowercased()
         let fastUploadModeEnabled = isFastUploadModeEnabled()
-        let isLongSource = durationSeconds.isFinite && durationSeconds >= 30 * 60
-        let isHugeSource = (fileSizeBytes ?? 0) >= 900 * 1_024 * 1_024
+        let isLongSource = durationSeconds.isFinite
+            && durationSeconds >= automaticUploadOptimizationDurationSeconds
+        let isLargeSource = (fileSizeBytes ?? 0) >= automaticUploadOptimizationFileSizeBytes
         let prefersCompactSource = fastUploadModeEnabled
             || durationSeconds.isFinite && durationSeconds >= 45 * 60
             || (fileSizeBytes ?? 0) >= 1_400 * 1_024 * 1_024
         let isUploadStruggling = status.contains("upload") && isSlowUploadStatus(status)
-        let shouldOptimize = fastUploadModeEnabled || isLongSource || isHugeSource || isUploadStruggling
+        let shouldOptimize = fastUploadModeEnabled || isLongSource || isLargeSource || isUploadStruggling
 
         let reasons = [
             fastUploadModeEnabled ? "fast_upload_mode" : nil,
             isLongSource ? "long_source" : nil,
-            isHugeSource ? "huge_source" : nil,
+            isLargeSource ? "large_source" : nil,
             isUploadStruggling ? "slow_upload" : nil
         ]
             .compactMap { $0 }
@@ -434,7 +437,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             shouldOptimize: shouldOptimize,
             status: status,
             isLongSource: isLongSource,
-            isHugeSource: isHugeSource,
+            isLargeSource: isLargeSource,
             isUploadStruggling: isUploadStruggling,
             fastUploadModeEnabled: fastUploadModeEnabled,
             prefersCompactSource: prefersCompactSource,
@@ -447,6 +450,8 @@ nonisolated enum CloudAnalysisProgressCopy {
             "fastUploadMode=\(fastUploadModeEnabled)",
             "durationMinutes=\(durationMinutes)",
             "sourceSizeMB=\(sourceSizeMB.map(String.init) ?? "unknown")",
+            "automaticDurationThresholdMinutes=\(Int(automaticUploadOptimizationDurationSeconds / 60))",
+            "automaticSizeThresholdMB=\(automaticUploadOptimizationFileSizeBytes / 1_048_576)",
             "optimizedSourceStatus=available",
             "preferredOptimizationProfile=\(prefersCompactSource ? "compact_540p" : "balanced_720p")",
             "currentPath=optimized_when_recommended_else_original_background_chunked_upload_with_fast_resume"
@@ -463,7 +468,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         shouldOptimize: Bool,
         status: String,
         isLongSource: Bool,
-        isHugeSource: Bool,
+        isLargeSource: Bool,
         isUploadStruggling: Bool,
         fastUploadModeEnabled: Bool,
         prefersCompactSource: Bool,
