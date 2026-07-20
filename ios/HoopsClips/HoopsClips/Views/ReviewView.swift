@@ -290,7 +290,7 @@ struct ReviewView: View {
     }
 
     private var reviewWaitingTitle: String {
-        if viewModel.isVideoImportInProgress {
+        if isReviewUploadStage {
             return "Uploading, please wait"
         }
         if reviewWaitingProgressValue >= 0.92 {
@@ -300,14 +300,14 @@ struct ReviewView: View {
     }
 
     private var reviewWaitingMessage: String {
-        if viewModel.isVideoImportInProgress {
+        if isReviewUploadStage {
             return "HoopClips is sending the video to the cloud. Review will open when clips are ready."
         }
         return "HoopClips is finding the best moments. You do not need to rerun anything."
     }
 
     private var reviewWaitingHint: String? {
-        if viewModel.isVideoImportInProgress {
+        if isReviewUploadStage {
             return "Big videos can take a while. Keep Wi-Fi on; background upload can continue."
         }
         if reviewWaitingProgressValue >= 0.92 {
@@ -317,7 +317,10 @@ struct ReviewView: View {
     }
 
     private var reviewWaitingProgressValue: Double {
-        min(max(viewModel.analysisService.progress, 0), 1)
+        CloudAnalysisProgressCopy.displayProgress(
+            overallProgress: viewModel.analysisService.progress,
+            statusMessage: reviewEmptyStateRawStatus
+        )
     }
 
     private var reviewWaitingProgressLabel: String {
@@ -406,6 +409,11 @@ struct ReviewView: View {
         return viewModel.analysisService.statusMessage
     }
 
+    private var isReviewUploadStage: Bool {
+        viewModel.isVideoImportInProgress
+            || reviewEmptyStateRawStatus.localizedCaseInsensitiveContains("upload")
+    }
+
     @ViewBuilder
     private var reviewWaitingFactsView: some View {
         let facts = reviewWaitingFacts
@@ -448,6 +456,10 @@ struct ReviewView: View {
                     tint: .cyan
                 )
             )
+        }
+
+        if isReviewUploadStage {
+            return Array(facts.prefix(1))
         }
 
         if let savingsFact = CloudAnalysisProgressCopy.uploadSourceSavingsFact(

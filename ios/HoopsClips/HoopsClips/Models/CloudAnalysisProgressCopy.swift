@@ -272,6 +272,16 @@ nonisolated enum CloudAnalysisProgressCopy {
         return percent
     }
 
+    static func displayProgress(overallProgress: Double, statusMessage: String) -> Double {
+        let safeOverallProgress = overallProgress.isFinite
+            ? min(max(overallProgress, 0), 1)
+            : 0
+        guard let uploadPercent = uploadTransferPercent(statusMessage: statusMessage) else {
+            return safeOverallProgress
+        }
+        return Double(uploadPercent) / 100
+    }
+
     static func compactUploadTransferMetrics(statusMessage: String) -> String? {
         guard statusMessage.lowercased().contains("upload") else { return nil }
 
