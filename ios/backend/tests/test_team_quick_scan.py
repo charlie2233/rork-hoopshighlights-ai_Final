@@ -27,6 +27,7 @@ from app.team_quick_scan import (
     _extract_quick_scan_frames,
     _max_quick_scan_total_clip_frames,
     _payload_bounded_candidate_ref_batches,
+    _payload_bounded_frames_for_candidate_refs,
     apply_team_quick_scan,
     apply_team_quick_scan_with_report,
     team_quick_prescan_settings,
@@ -798,6 +799,25 @@ class TeamQuickScanTests(unittest.TestCase):
             batches = _payload_bounded_candidate_ref_batches(refs, context_frames, candidate_frames)
 
         self.assertEqual(batches, [["clip_0"], ["clip_1"], ["clip_2"]])
+
+    def test_single_candidate_payload_trims_context_before_candidate_evidence(self) -> None:
+        context_frames = [
+            QuickScanFrame("video_0", "videoContext", 1.0, "c" * 70),
+            QuickScanFrame("video_1", "videoContext", 2.0, "d" * 70),
+        ]
+        candidate_frames = [
+            QuickScanFrame("clip_0_release", "release", 3.0, "x" * 60, "clip_0"),
+        ]
+
+        with patch("app.team_quick_scan.TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES", 100):
+            frames = _payload_bounded_frames_for_candidate_refs(
+                ["clip_0"],
+                context_frames,
+                candidate_frames,
+            )
+
+        self.assertEqual([frame.frame_ref for frame in frames], ["clip_0_release"])
+        self.assertLessEqual(sum(len(frame.data_url.encode("utf-8")) for frame in frames), 100)
 
     def test_request_ceiling_reports_unscanned_candidates_as_missing(self) -> None:
         clips = [

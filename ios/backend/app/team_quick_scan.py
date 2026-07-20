@@ -212,13 +212,17 @@ def apply_team_quick_scan_with_report(
             settings,
             deadline=budget.deadline,
         )
-        for frame in candidate_frames:
-            if frame.clip_ref is not None:
-                all_frames_by_ref.setdefault(frame.clip_ref, []).append(frame)
         for bounded_refs in _payload_bounded_candidate_ref_batches(clip_refs, context_frames, candidate_frames):
-            frames = [*context_frames, *_frames_for_candidate_refs(candidate_frames, bounded_refs)]
+            frames = _payload_bounded_frames_for_candidate_refs(
+                bounded_refs,
+                context_frames,
+                candidate_frames,
+            )
             if not frames:
                 continue
+            for frame in frames:
+                if frame.clip_ref is not None:
+                    all_frames_by_ref.setdefault(frame.clip_ref, []).append(frame)
             batch_results.append(
                 _request_quick_scan_batch(
                     duration_seconds=duration_seconds,
@@ -394,6 +398,35 @@ def _payload_bounded_candidate_ref_batches(
 
 def _frame_payload_bytes(frame: QuickScanFrame) -> int:
     return len(frame.data_url.encode("utf-8"))
+
+
+def _payload_bounded_frames_for_candidate_refs(
+    clip_refs: Sequence[str],
+    context_frames: Sequence[QuickScanFrame],
+    candidate_frames: Sequence[QuickScanFrame],
+) -> list[QuickScanFrame]:
+    selected_context = list(context_frames)
+    selected_candidates = _frames_for_candidate_refs(candidate_frames, clip_refs)[
+        :TEAM_QUICK_SCAN_MAX_BATCH_CANDIDATE_FRAMES
+    ]
+    payload_bytes = sum(
+        _frame_payload_bytes(frame)
+        for frame in [*selected_context, *selected_candidates]
+    )
+
+    while payload_bytes > TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES and selected_context:
+        largest_index = max(
+            range(len(selected_context)),
+            key=lambda index: _frame_payload_bytes(selected_context[index]),
+        )
+        payload_bytes -= _frame_payload_bytes(selected_context[largest_index])
+        selected_context.pop(largest_index)
+
+    while payload_bytes > TEAM_QUICK_SCAN_MAX_BATCH_IMAGE_BYTES and selected_candidates:
+        removed = selected_candidates.pop()
+        payload_bytes -= _frame_payload_bytes(removed)
+
+    return [*selected_context, *selected_candidates]
 
 
 def _valid_batch_attribution_items(
