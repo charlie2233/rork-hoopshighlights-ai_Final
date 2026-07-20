@@ -753,6 +753,13 @@ struct HoopsClipsTests {
         #expect(configuration.timeoutIntervalForResource == 24 * 60 * 60)
         #expect(configuration.waitsForConnectivity)
         #expect(configuration.isDiscretionary == false)
+        #expect(configuration.httpMaximumConnectionsPerHost == 6)
+
+        let request = URLRequest(url: URL(string: "https://upload.example.test/video")!)
+        let task = URLSession.shared.uploadTask(with: request, from: Data())
+        CloudAnalysisService.prioritizeUploadTask(task)
+        #expect(task.priority == URLSessionTask.highPriority)
+        task.cancel()
     }
 
     @Test func testExpiredUploadMessageKeepsSelectedVideoActionable() {
@@ -5891,6 +5898,40 @@ struct UploadThroughputPolicyTests {
         #expect(CloudAnalysisService.multipartUploadLaneLimit(defaultMaximum: 6, isExpensive: false, isConstrained: false, pathAvailable: false) == 1)
     }
 
+    @Test func multipartNetworkWarmupUsesClassificationBeforeTheFirstWave() async throws {
+        let delayedPath = CloudAnalysisNetworkPathProbe([false, false, true])
+        let becameAvailable = try await CloudAnalysisService.waitForMultipartNetworkPath(
+            maximumPolls: 3,
+            pollNanoseconds: 0,
+            isPathAvailable: delayedPath.next
+        )
+
+        #expect(becameAvailable)
+        #expect(delayedPath.checkCount == 3)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(
+            defaultMaximum: 6,
+            isExpensive: false,
+            isConstrained: false,
+            pathAvailable: becameAvailable
+        ) == 6)
+
+        let missingPath = CloudAnalysisNetworkPathProbe([false])
+        let timedOut = try await CloudAnalysisService.waitForMultipartNetworkPath(
+            maximumPolls: 2,
+            pollNanoseconds: 0,
+            isPathAvailable: missingPath.next
+        )
+
+        #expect(!timedOut)
+        #expect(missingPath.checkCount == 3)
+        #expect(CloudAnalysisService.multipartUploadLaneLimit(
+            defaultMaximum: 6,
+            isExpensive: false,
+            isConstrained: false,
+            pathAvailable: timedOut
+        ) == 1)
+    }
+
     @Test func renewedUploadExpirationNeverMovesBackward() {
         let original = Date(timeIntervalSince1970: 1_000)
         let olderCandidate = Date(timeIntervalSince1970: 900)
@@ -6138,6 +6179,28 @@ private final class CloudAnalysisUploadSessionFactoryProbe: @unchecked Sendable 
             backgroundIdentifier: backgroundIdentifier,
             delegate: delegate
         )
+    }
+}
+
+private final class CloudAnalysisNetworkPathProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let values: [Bool]
+    private var index = 0
+
+    init(_ values: [Bool]) {
+        self.values = values
+    }
+
+    var checkCount: Int {
+        lock.withLock { index }
+    }
+
+    func next() -> Bool {
+        lock.withLock {
+            defer { index += 1 }
+            guard !values.isEmpty else { return false }
+            return values[min(index, values.count - 1)]
+        }
     }
 }
 
