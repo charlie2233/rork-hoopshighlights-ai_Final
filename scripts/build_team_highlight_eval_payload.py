@@ -42,7 +42,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--labels", required=True, help="Manual labels JSON with expected team/highlight/event rows.")
     parser.add_argument("--output", help="Write evaluator-ready JSON here. Defaults to stdout.")
     parser.add_argument("--case-id", help="Override caseId for single-case label files.")
-    parser.add_argument("--selected-team-id", help="Override selectedTeamId for single-case label files.")
+    parser.add_argument(
+        "--selected-team-id",
+        help="Override selectedTeamId and force team mode for single-case label files.",
+    )
     parser.add_argument("--confidence-threshold", type=float, help="Override selected-team confidence threshold.")
     parser.add_argument("--min-overlap-ratio", type=float, default=DEFAULT_MIN_OVERLAP_RATIO)
     parser.add_argument(
@@ -107,16 +110,20 @@ def build_eval_payload(
         label_selected_team_id = string_or_none(label_case.get("selectedTeamId"))
         analysis_selected_team_id = selected_team_from_analysis(result)
         case_team_mode = (
-            normalize_team_mode(label_case.get("teamMode"))
-            or team_mode_from_analysis(result)
-            or ("team" if selected_team_id or label_selected_team_id or analysis_selected_team_id else "all")
+            "team"
+            if selected_team_id
+            else (
+                normalize_team_mode(label_case.get("teamMode"))
+                or team_mode_from_analysis(result)
+                or ("team" if label_selected_team_id or analysis_selected_team_id else "all")
+            )
         )
         selected = (
             selected_team_id or label_selected_team_id or analysis_selected_team_id
             if case_team_mode == "team"
             else None
         )
-        case_detected_teams = normalize_detected_teams(label_case.get("detectedTeams")) or detected_teams
+        case_detected_teams = detected_teams or normalize_detected_teams(label_case.get("detectedTeams"))
         selected_color_label = None
         if case_team_mode == "team":
             selected_color_label = (

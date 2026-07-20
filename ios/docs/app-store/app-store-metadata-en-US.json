@@ -285,7 +285,7 @@
     {
       "id": "shared_backend_accuracy",
       "status": "operator_review_required",
-      "detail": "The refreshed shared iOS/macOS report reuses all 43 completed human labels with one-to-one time matching and still fails the launch gate: highlight precision 0.2727, recall 0.6, shot-outcome evidence 0.0, and only one all-teams case. Add the missing selected-team case/coverage or record an explicit current-release risk acceptance. Do not create duplicate macOS labels."
+      "detail": "The shared iOS/macOS report still fails: the primary all-teams case has 0.2727 precision, 0.6 recall, and 0.0 shot-outcome evidence. A current selected-white staging probe using the same 43 reviewed labels has 0.0909 precision, 0.5 recall, 0.5 selected-team recall, two selected-team highlights, and no defensive-event coverage. Because it reuses the same game, it is supplemental rather than a second independent case. Add another human-reviewed game with the missing selected-team, made/missed, and defensive coverage, or record an explicit current-release risk acceptance. Do not create duplicate macOS labels."
     },
     {
       "id": "final_add_for_review",

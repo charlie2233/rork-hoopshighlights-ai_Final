@@ -90,6 +90,56 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing labels"):
             build_launch_eval_payload(manifest={"cases": [{"analysisResult": "analysis.json"}]}, manifest_dir=Path.cwd())
 
+    def test_manifest_can_remap_reviewed_labels_after_prediction_ids_change(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-launch-remap-") as temp_dir:
+            temp_path = Path(temp_dir)
+            analysis_path = temp_path / "analysis.json"
+            labels_path = temp_path / "labels.json"
+            current_clip = {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_current"}
+            write_json(analysis_path, {"jobId": "job_current", "results": {"clips": [current_clip]}})
+            write_json(
+                labels_path,
+                {
+                    "caseId": "reviewed_case",
+                    "videoId": "video_real_001",
+                    "selectedTeamId": "team_dark",
+                    "clips": [
+                        {
+                            "labelId": "made_001",
+                            "predictionIndex": 12,
+                            "predictionClipId": "clip_stale",
+                            "start": 10.0,
+                            "end": 14.0,
+                            "needsLabel": False,
+                            "reviewedByHuman": True,
+                            "expected": {
+                                "teamId": "team_dark",
+                                "isHighlight": True,
+                                "eventType": "made_shot",
+                                "outcome": "made",
+                            },
+                        }
+                    ],
+                },
+            )
+
+            payload = build_launch_eval_payload(
+                manifest={
+                    "cases": [
+                        {
+                            "analysisResult": "analysis.json",
+                            "labels": "labels.json",
+                            "remapStalePredictionsByTime": True,
+                        }
+                    ]
+                },
+                manifest_dir=temp_path,
+            )
+
+        prediction = payload["cases"][0]["clips"][0]["prediction"]
+        self.assertEqual(prediction["start"], 10.0)
+        self.assertEqual(prediction["end"], 14.0)
+
     def test_cli_writes_eval_and_report_outputs_even_when_thresholds_fail(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-launch-accuracy-cli-") as temp_dir:
             temp_path = Path(temp_dir)

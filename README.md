@@ -127,6 +127,7 @@ Last launch-gate verification: July 19, 2026.
 - Real-device build `49` upload smoke: installed and launched successfully, then failed near 15% on a 380 MB source. The app created 24 16 MiB parts and four background sessions, but the 15-minute saved plan expired with `0/24` completed parts. This is classified as an upload lease/background reconciliation bug, not a detection-threshold problem.
 - Real-video quality diagnostic: one completed staging run returned 11 clips; conservative matching against prior reviewed moments found two known highlights and nine known negatives. Auto-keep selected one known highlight and eight negatives while missing the other known highlight. This does not satisfy the 85% gate and thresholds were not weakened.
 - Build `55` proof: carries build `54` throughput/routing work and renews expired canonical-asset multipart targets while preserving saved completed chunks. Signed upload/status proof passed; installed phone proof remains required for current main.
+- Current selected-white staging probe: team scan found black/yellow and white/red teams and selected-team analysis returned 11 clips. Reusing the same 43 human-reviewed timestamps produced `0.0909` highlight precision, `0.5` highlight recall, `0.5` selected-team recall with uncertain clips, two selected-team highlights, three opponent highlights, and no defensive-event coverage. This is supplemental same-video evidence, not a second independent launch case; the shared accuracy gate remains failed.
 
 Known beta launch gate: install the latest available internal TestFlight build, then exercise it with real basketball footage using the checklist below and cross the old 15-minute failure point. Public launch remains separately gated by production identity and quota enforcement, observability/reliability, and Phase 4h confirmed-label evidence.
 
@@ -139,6 +140,7 @@ Known beta launch gate: install the latest available internal TestFlight build, 
 - `docs/phase_beta_launch_gates_after_pr43.md` - post-merge beta launch gate report and real-basketball TestFlight smoke checklist.
 - `docs/phase_build54_testflight_proof_2026-07-19.md` - build `54` upload method, signed upload/status proof, and remaining device gates.
 - `docs/phase_build55_testflight_proof_2026-07-19.md` - build `55` saved-upload renewal fix, signed upload/status proof, and remaining device gates.
+- `docs/phase_build55_selected_team_accuracy_refresh_2026-07-19.md` - current real-staging selected-team probe, accuracy-proof tooling fixes, and unchanged launch blocker.
 - `skills/hoopclips-ai-edit-agent/SKILL.md` - repo-local Codex skill for cloud-backend edit-agent work.
 - `TESTFLIGHT_BLOCKER.md` - resolved Apple certificate-capacity incident and signing rerun guide.
 - `ios/docs/checklists/public-launch-cloud-gated.md` - public launch checklist.

@@ -45,6 +45,7 @@ def main() -> int:
         manifest_dir=manifest_path.parent,
         min_overlap_ratio=args.min_overlap_ratio,
         allow_unlabeled_predictions=args.allow_unlabeled_predictions,
+        remap_stale_predictions_by_time=args.remap_stale_predictions_by_time,
     )
     report = evaluate_accuracy(eval_payload)
 
@@ -84,6 +85,14 @@ def parse_args() -> argparse.Namespace:
         help="Allow prediction clips that were returned by analysis but not covered by manual labels.",
     )
     parser.add_argument(
+        "--remap-stale-predictions-by-time",
+        action="store_true",
+        help=(
+            "Ignore stale prediction indexes/IDs and map reviewed labels one-to-one to current "
+            "predictions by highest time-window overlap."
+        ),
+    )
+    parser.add_argument(
         "--label-status",
         action="store_true",
         help="Print completion status for every manual label file in the manifest and exit before building a report.",
@@ -98,6 +107,7 @@ def build_launch_eval_payload(
     manifest_dir: Path,
     min_overlap_ratio: float = DEFAULT_MIN_OVERLAP_RATIO,
     allow_unlabeled_predictions: bool = False,
+    remap_stale_predictions_by_time: bool = False,
 ) -> dict[str, Any]:
     entries = manifest.get("cases")
     if not isinstance(entries, list) or not entries:
@@ -116,6 +126,9 @@ def build_launch_eval_payload(
             confidence_threshold=entry.confidence_threshold,
             min_overlap_ratio=min_overlap_ratio,
             allow_unlabeled_predictions=allow_unlabeled_predictions or entry.allow_unlabeled_predictions,
+            remap_stale_predictions_by_time=(
+                remap_stale_predictions_by_time or entry.remap_stale_predictions_by_time
+            ),
         )
         cases.extend(payload.get("cases", []))
 
@@ -254,6 +267,7 @@ class ManifestCaseEntry:
         selected_team_id: str | None,
         confidence_threshold: float | None,
         allow_unlabeled_predictions: bool,
+        remap_stale_predictions_by_time: bool,
     ) -> None:
         self.analysis_path = analysis_path
         self.labels_path = labels_path
@@ -261,6 +275,7 @@ class ManifestCaseEntry:
         self.selected_team_id = selected_team_id
         self.confidence_threshold = confidence_threshold
         self.allow_unlabeled_predictions = allow_unlabeled_predictions
+        self.remap_stale_predictions_by_time = remap_stale_predictions_by_time
 
 
 def manifest_case_entry(raw_entry: dict[str, Any], index: int, manifest_dir: Path) -> ManifestCaseEntry:
@@ -277,6 +292,7 @@ def manifest_case_entry(raw_entry: dict[str, Any], index: int, manifest_dir: Pat
         selected_team_id=string_or_none(raw_entry.get("selectedTeamId")),
         confidence_threshold=number_or_none(raw_entry.get("confidenceThreshold")),
         allow_unlabeled_predictions=bool(raw_entry.get("allowUnlabeledPredictions", False)),
+        remap_stale_predictions_by_time=bool(raw_entry.get("remapStalePredictionsByTime", False)),
     )
 
 

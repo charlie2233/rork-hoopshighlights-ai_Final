@@ -18,6 +18,36 @@
     "returnedClipCount": 11,
     "teamMode": "all"
   },
+  "supplementalSelectedTeamProbe": {
+    "status": "fail",
+    "countedAsIndependentLaunchCase": false,
+    "reason": "This current selected-team analysis reuses the same source video and the same 43 human-reviewed labels as the primary all-teams case.",
+    "analysisSource": "artifacts/team_highlight_accuracy_troy_selected_current/launch_label_troy_white_slice_10m_15m_team_white_current_001/analysis_result.json",
+    "evalSource": "artifacts/team_highlight_accuracy_troy_selected_current/launch_label_troy_white_slice_10m_15m_team_white_current_001/team_highlight_eval.json",
+    "teamMode": "team",
+    "selectedTeamId": "team_white",
+    "selectedTeamColorLabel": "white",
+    "returnedClipCount": 11,
+    "matchedCurrentPredictionCount": 11,
+    "unmatchedHumanLabelCount": 32,
+    "metrics": {
+      "highlightPrecision": 0.0909,
+      "highlightRecall": 0.5,
+      "selectedTeamRecallWithUncertain": 0.5,
+      "selectedTeamHighlightCount": 2,
+      "opponentHighlightCount": 3,
+      "selectedTeamDefensiveEventCount": 0,
+      "shotOutcomeEvidenceQuality": 0.0
+    },
+    "blockingFailures": [
+      "selectedTeamRecallWithUncertain 0.5 is below required 0.85",
+      "highlightPrecision 0.0909 is below required 0.85",
+      "highlightRecall 0.5 is below required 0.85",
+      "selectedTeamHighlightCount 2 is below required 6",
+      "selectedTeamDefensiveEventCount 0 is below required 2",
+      "made and missed shot-outcome evidence remain missing"
+    ]
+  },
   "mapping": {
     "method": "one_to_one_time_overlap_after_ignoring_stale_prediction_identifiers",
     "predictionMatchingMode": "one_to_one_time_overlap",
@@ -73,8 +103,9 @@
     "evaluator": "scripts/evaluate_team_highlight_accuracy.py",
     "payloadBuilderFlags": [
       "--allow-unlabeled-predictions",
-      "--remap-stale-predictions-by-time"
+      "--remap-stale-predictions-by-time",
+      "--selected-team-id team_white"
     ],
-    "note": "Source analysis and label artifacts are local launch evidence and are not committed with this aggregate report."
+    "note": "Source analysis and label artifacts are local launch evidence and are not committed with this aggregate report. The supplemental selected-team probe does not replace the missing independent human-reviewed case."
   }
 }
