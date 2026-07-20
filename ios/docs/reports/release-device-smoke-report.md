@@ -117,6 +117,7 @@ At this snapshot, installed build `44` TestFlight smoke was unproven pending App
 | Accessibility Reduce Motion | blocked | Verify using `ios/docs/checklists/release-accessibility-smoke-checklist.md` once device is online. |
 
 ## Current Blockers
+- Paired-device recheck on July 20 found the trusted iPhone 15 Pro available with HoopClips `1.0.0 (53)` still installed. TestFlight `4.2.2` is present and was opened, but build `57` had not yet installed. This is install-state evidence only, not an upload or end-to-end smoke result.
 - Install internal TestFlight build `57` on the trusted iPhone and complete the real-basketball upload-through-export smoke, including crossing the old 15-minute upload failure point.
 - Complete the human-reviewed team/highlight accuracy report and meet the required 85% gate without weakening detection thresholds.
 - Run and verify a signed production Release archive/upload before claiming App Store submission proof. Release preflight run `29639140468` proves configuration and unsigned compilation only.
