@@ -17,6 +17,9 @@ API keys.
   evidence shared by iOS and macOS. It reuses the completed iOS human labels,
   remaps stale cloud prediction identifiers one-to-one by reviewed time overlap,
   does not create a duplicate Mac labeling set, and truthfully remains failed.
+  A current selected-white staging probe is recorded as supplemental evidence;
+  because it reuses the same reviewed game, it is not counted as a second
+  independent launch case.
 
 The screenshots use the current Debug-only seeded workflow so they can show the
 real Review-to-AI-Edit product UI without uploading user footage or exposing

@@ -155,6 +155,53 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(report.metrics.selectedTeamRecallWithUncertain, 1.0)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)
 
+    def test_selected_team_override_reuses_all_team_labels_as_team_case(self) -> None:
+        payload = build_eval_payload(
+            analysis={
+                "jobId": "job_real_001",
+                "results": {
+                    "teamSelection": {"mode": "team", "teamId": "team_light", "colorLabel": "white"},
+                    "detectedTeams": [
+                        {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.93},
+                        {"teamId": "team_light", "colorLabel": "white", "confidence": 0.91},
+                    ],
+                    "clips": [analysis_clip(10.0, 14.0, "Made Shot", True, "team_light", 0.94)],
+                },
+            },
+            labels={
+                "caseId": "reviewed_all_teams",
+                "videoId": "video_real_001",
+                "teamMode": "all",
+                "detectedTeams": [
+                    {"teamId": "team_dark_old", "colorLabel": "black", "confidence": 0.90},
+                    {"teamId": "team_light_old", "colorLabel": "white", "confidence": 0.90},
+                ],
+                "clips": [
+                    {
+                        "labelId": "made_001",
+                        "predictionIndex": 0,
+                        "start": 10.0,
+                        "end": 14.0,
+                        "needsLabel": False,
+                        "reviewedByHuman": True,
+                        "expected": {
+                            "teamId": "team_light",
+                            "isHighlight": True,
+                            "eventType": "made_shot",
+                            "outcome": "made",
+                        },
+                    }
+                ],
+            },
+            selected_team_id="team_light",
+        )
+
+        case = payload["cases"][0]
+        self.assertEqual(case["teamMode"], "team")
+        self.assertEqual(case["selectedTeamId"], "team_light")
+        self.assertEqual(case["selectedTeamColorLabel"], "white")
+        self.assertEqual(case["detectedTeams"][0]["teamId"], "team_dark")
+
     def test_build_payload_fails_when_analysis_prediction_is_unlabeled(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unlabeled prediction clips"):
             build_eval_payload(
