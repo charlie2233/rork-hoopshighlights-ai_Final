@@ -1511,8 +1511,10 @@ private struct ReviewAnalysisWaitingView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var safeProgress: Double {
-        guard progress.isFinite else { return 0 }
-        return min(max(progress, 0), 1)
+        CloudAnalysisProgressCopy.displayProgress(
+            overallProgress: progress,
+            statusMessage: statusMessage
+        )
     }
 
     private var progressPercentText: String {

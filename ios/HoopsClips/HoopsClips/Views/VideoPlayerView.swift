@@ -132,13 +132,10 @@ struct VideoPlayerView: View {
     private let videoImportRecoveryPollNanoseconds: UInt64 = 2 * 1_000_000_000
 
     private var analysisDisplayProgress: Double {
-        if isUploadProgressStage,
-           let uploadPercent = CloudAnalysisProgressCopy.uploadTransferPercent(
-               statusMessage: viewModel.analysisService.statusMessage
-           ) {
-            return Double(uploadPercent) / 100
-        }
-        return min(max(viewModel.analysisService.progress, 0), 1)
+        CloudAnalysisProgressCopy.displayProgress(
+            overallProgress: viewModel.analysisService.progress,
+            statusMessage: viewModel.analysisService.statusMessage
+        )
     }
 
     private var analysisDisplayPercent: Int {

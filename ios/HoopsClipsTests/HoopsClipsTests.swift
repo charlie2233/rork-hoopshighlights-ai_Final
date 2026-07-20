@@ -864,6 +864,27 @@ struct HoopsClipsTests {
         )
     }
 
+    @Test func testCloudAnalysisDisplayProgressUsesTransferPercentDuringUpload() {
+        #expect(
+            CloudAnalysisProgressCopy.displayProgress(
+                overallProgress: 0.14,
+                statusMessage: "Uploading video for team scan 38% · 145/380 MB · 2.1 MB/s"
+            ) == 0.38
+        )
+        #expect(
+            CloudAnalysisProgressCopy.displayProgress(
+                overallProgress: 0.42,
+                statusMessage: "Finding candidate clips 38%"
+            ) == 0.42
+        )
+        #expect(
+            CloudAnalysisProgressCopy.displayProgress(
+                overallProgress: .infinity,
+                statusMessage: "Preparing cloud upload"
+            ) == 0
+        )
+    }
+
     @Test func testCloudAnalysisCompactUploadTransferMetricsHidesChunkInternals() {
         let metrics = CloudAnalysisProgressCopy.compactUploadTransferMetrics(
             statusMessage: "Uploading video chunks 38% · chunk 9/24 try 1 · 145/380 MB · 2.1 MB/s · about 1m 52s left · 48s"
