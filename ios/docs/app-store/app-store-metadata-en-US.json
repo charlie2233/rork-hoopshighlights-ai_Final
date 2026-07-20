@@ -76,7 +76,7 @@
     "versionState": "prepare_for_submission",
     "testFlightBuild": {
       "version": "1.0.0",
-      "build": "55",
+      "build": "56",
       "processingState": "valid",
       "audience": "internal",
       "configuration": "internal_staging",
@@ -85,7 +85,7 @@
     },
     "productionStoreBuild": {
       "version": "1.0.0",
-      "build": "56",
+      "build": "57",
       "configuration": "production",
       "backendMode": "production_cloud_only",
       "status": "pending_archive_upload",
@@ -212,7 +212,7 @@
   },
   "release": {
     "version": "1.0.0",
-    "build": "56",
+    "build": "57",
     "releaseMode": "manual",
     "configurationPath": "ios/HoopsClips/HoopsClips/Config/Release.xcconfig",
     "archiveWorkflowPath": ".github/workflows/ios-app-store-production-upload.yml",
@@ -240,7 +240,7 @@
     {
       "id": "build_selection",
       "status": "operator_review_required",
-      "detail": "Archive and upload production-cloud build 1.0.0 (56), wait for Valid processing, and select that build for App Store version 1.0. Never select internal-staging build 55 for public review."
+      "detail": "Archive and upload production-cloud build 1.0.0 (57), wait for Valid processing, and select that build for App Store version 1.0. Never select internal-staging build 56 for public review."
     },
     {
       "id": "production_backend_cutover",
@@ -280,7 +280,7 @@
     {
       "id": "installed_testflight_smoke",
       "status": "operator_review_required",
-      "detail": "After production-cloud build 56 is uploaded, run that exact build from TestFlight on an iPhone through cloud upload, analysis, Review, AI Edit, render, preview, save, and share, or record an explicit release-owner waiver. Build 55 remains internal-staging evidence only."
+      "detail": "After production-cloud build 57 is uploaded, run that exact build from TestFlight on an iPhone through cloud upload, analysis, Review, AI Edit, render, preview, save, and share, or record an explicit release-owner waiver. Build 56 remains internal-staging evidence only."
     },
     {
       "id": "shared_backend_accuracy",
