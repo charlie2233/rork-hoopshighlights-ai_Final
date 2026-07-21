@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from urllib.error import URLError
 from unittest.mock import patch
 
+from scripts.check_installed_testflight_build import EXPECTED_BUILD_NUMBER as INSTALLED_EXPECTED_BUILD_NUMBER
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
 from scripts.submission_readiness_preflight import (
     BLOCKER_DOCS,
@@ -44,6 +45,35 @@ from scripts.submission_readiness_preflight import (
 
 
 class SubmissionReadinessPreflightTests(unittest.TestCase):
+    def test_internal_testflight_build_references_stay_aligned(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        expected = EXPECTED_IOS_BUILD_NUMBER
+
+        self.assertEqual(INSTALLED_EXPECTED_BUILD_NUMBER, expected)
+
+        project_text = (repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
+        self.assertGreaterEqual(project_text.count(f"CURRENT_PROJECT_VERSION = {expected};"), 2)
+
+        config_check = (repo_root / "ios/scripts/verify_internal_staging_config.sh").read_text(encoding="utf-8")
+        self.assertIn(f'require_exact "CURRENT_PROJECT_VERSION" "{expected}"', config_check)
+
+        workflow_text = (repo_root / ".github/workflows/ios-testflight-upload.yml").read_text(encoding="utf-8")
+        self.assertIn(f'require_archive_value "CFBundleVersion" "{expected}"', workflow_text)
+        self.assertIn(f"name: Verify build {expected} internal TestFlight status", workflow_text)
+        self.assertIn(f"--build-version {expected}", workflow_text)
+
+        metadata = json.loads(
+            (repo_root / "ios/docs/app-store/app-store-metadata-en-US.json").read_text(encoding="utf-8")
+        )
+        testflight_build = metadata["appStoreConnectAudit"]["testFlightBuild"]["build"]
+        production_build = metadata["appStoreConnectAudit"]["productionStoreBuild"]["build"]
+        self.assertEqual(testflight_build, expected)
+        self.assertGreater(int(production_build), int(expected))
+
+        package_readme = (repo_root / "ios/docs/app-store/README.md").read_text(encoding="utf-8")
+        self.assertIn(f"TestFlight build `1.0.0 ({expected})`", package_readme)
+        self.assertIn(f"reserved build number {production_build}", package_readme)
+
     def test_ready_fixture_passes_without_printing_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
@@ -523,7 +553,7 @@ Current device information:
         self.assertIn("Recovery: unlock the iPhone", collector.findings[0].detail)
         self.assertIn("connect it by USB", collector.findings[0].detail)
 
-    def test_installed_testflight_build_passes_for_build_56(self) -> None:
+    def test_installed_testflight_build_passes_for_build_57(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             helper = repo_root / "scripts/check_installed_testflight_build.py"
@@ -535,7 +565,7 @@ Current device information:
                 "installedApp": {
                     "bundleId": "atrak.charlie.hoopsclips",
                     "marketingVersion": "1.0.0",
-                    "buildNumber": "56",
+                    "buildNumber": "57",
                 },
                 "blockers": [],
             }
@@ -547,7 +577,7 @@ Current device information:
                 check_installed_testflight_build(repo_root, collector)
 
         self.assertFalse(has_failures(collector.findings))
-        self.assertIn("1.0.0 (56)", collector.findings[0].detail)
+        self.assertIn("1.0.0 (57)", collector.findings[0].detail)
 
     def test_installed_testflight_build_fails_for_old_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -563,7 +593,7 @@ Current device information:
                     "marketingVersion": "1.0.0",
                     "buildNumber": "49",
                 },
-                "blockers": ["Build number mismatch: expected 56, got 49."],
+                "blockers": ["Build number mismatch: expected 57, got 49."],
             }
 
             with patch(
@@ -576,7 +606,7 @@ Current device information:
         detail = collector.findings[0].detail
         self.assertIn("Build number mismatch", detail)
         self.assertIn("buildNumber=49", detail)
-        self.assertIn("Install/update build 56", detail)
+        self.assertIn("Install/update build 57", detail)
 
     def test_github_workflow_runs_fail_when_latest_required_runs_failed(self) -> None:
         payload = [
@@ -1637,7 +1667,7 @@ Current device information:
             },
         ]
         status_log = "App Store Connect confirms this build is ready for internal TestFlight."
-        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘56’."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘57’."
 
         def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
             if command[:3] == ["gh", "run", "list"]:
@@ -1669,7 +1699,7 @@ Current device information:
                 "createdAt": "2026-07-18T10:33:27Z",
             },
         ]
-        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘56’."
+        duplicate_log = "The bundle version must be higher than the previously uploaded version: ‘57’."
 
         def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
             if command[:3] == ["gh", "run", "list"]:

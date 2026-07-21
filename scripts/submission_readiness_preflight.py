@@ -20,6 +20,7 @@ if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
 
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
+from scripts.check_installed_testflight_build import EXPECTED_BUILD_NUMBER as EXPECTED_IOS_BUILD_NUMBER
 from scripts.launch_backend_config_preflight import has_failures as backend_has_failures
 from scripts.launch_backend_config_preflight import run_checks as run_backend_config_checks
 from scripts.launch_backend_config_preflight import summarize as summarize_backend_findings
@@ -30,7 +31,6 @@ DEFAULT_WORKER_BASE_URL = "https://hoopsclips-control-plane-staging.charliehan-l
 DEFAULT_EDITING_VERSION_URL = "https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version"
 EXPECTED_IOS_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_IOS_MARKETING_VERSION = "1.0.0"
-EXPECTED_IOS_BUILD_NUMBER = "56"
 KNOWN_CONFLICTING_BUNDLE_IDS = ("app.rork.hoopshighlights-ai",)
 REQUIRED_FEATURE_FLAGS = (
     "aiEditEnabled",

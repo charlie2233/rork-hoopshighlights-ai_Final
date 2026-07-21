@@ -63,7 +63,7 @@ The public product-specific pages are live and recorded in the metadata:
 
 The public Store candidate uses
 `.github/workflows/ios-app-store-production-upload.yml`, the `production`
-GitHub environment, `Release.xcconfig`, and reserved build number 56. It never
+GitHub environment, `Release.xcconfig`, and reserved build number 58. It never
 uses `InternalStaging.xcconfig` and its export options do not set
 `testFlightInternalTestingOnly`.
 
@@ -84,15 +84,15 @@ three upload secret names missing, so the lane is intentionally blocked.
 
 ## Live App Store Connect State
 
-The in-app side browser audit and read-only App Store Connect status run
-`29706397510` on July 19, 2026 established the following without copying
+The in-app side browser audit on July 19 and read-only App Store Connect status
+run `29723517882` on July 20, 2026 established the following without copying
 credentials or private contact values into the repository:
 
 - App version `1.0` remains `Prepare for Submission`.
-- TestFlight build `1.0.0 (55)` is valid internal-staging evidence. Its archive
+- TestFlight build `1.0.0 (57)` is valid internal-staging evidence. Its archive
   uses `InternalStaging.xcconfig`, `internal_staging`, and the staging Worker, so
   it is not eligible for public App Store review and must not be selected.
-- Production-cloud build `1.0.0 (56)` is reserved as the next Store candidate.
+- Production-cloud build `1.0.0 (58)` is reserved as the next Store candidate.
   Its fail-closed workflow is prepared, but archive/upload remains blocked while
   production cloud URL variables still carry staging markers and App Store
   Connect upload secrets are absent from the production GitHub environment.
