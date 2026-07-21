@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from urllib.error import URLError
 from unittest.mock import patch
 
+from scripts.check_installed_testflight_build import EXPECTED_BUILD_NUMBER as INSTALLED_EXPECTED_BUILD_NUMBER
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
 from scripts.submission_readiness_preflight import (
     BLOCKER_DOCS,
@@ -44,6 +45,35 @@ from scripts.submission_readiness_preflight import (
 
 
 class SubmissionReadinessPreflightTests(unittest.TestCase):
+    def test_internal_testflight_build_references_stay_aligned(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        expected = EXPECTED_IOS_BUILD_NUMBER
+
+        self.assertEqual(INSTALLED_EXPECTED_BUILD_NUMBER, expected)
+
+        project_text = (repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
+        self.assertGreaterEqual(project_text.count(f"CURRENT_PROJECT_VERSION = {expected};"), 2)
+
+        config_check = (repo_root / "ios/scripts/verify_internal_staging_config.sh").read_text(encoding="utf-8")
+        self.assertIn(f'require_exact "CURRENT_PROJECT_VERSION" "{expected}"', config_check)
+
+        workflow_text = (repo_root / ".github/workflows/ios-testflight-upload.yml").read_text(encoding="utf-8")
+        self.assertIn(f'require_archive_value "CFBundleVersion" "{expected}"', workflow_text)
+        self.assertIn(f"name: Verify build {expected} internal TestFlight status", workflow_text)
+        self.assertIn(f"--build-version {expected}", workflow_text)
+
+        metadata = json.loads(
+            (repo_root / "ios/docs/app-store/app-store-metadata-en-US.json").read_text(encoding="utf-8")
+        )
+        testflight_build = metadata["appStoreConnectAudit"]["testFlightBuild"]["build"]
+        production_build = metadata["appStoreConnectAudit"]["productionStoreBuild"]["build"]
+        self.assertEqual(testflight_build, expected)
+        self.assertGreater(int(production_build), int(expected))
+
+        package_readme = (repo_root / "ios/docs/app-store/README.md").read_text(encoding="utf-8")
+        self.assertIn(f"TestFlight build `1.0.0 ({expected})`", package_readme)
+        self.assertIn(f"reserved build number {production_build}", package_readme)
+
     def test_ready_fixture_passes_without_printing_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
